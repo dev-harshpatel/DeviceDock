@@ -16,6 +16,8 @@ export interface InventoryStats {
  * Fetch aggregate inventory statistics
  */
 export async function fetchInventoryStats(companyId?: string): Promise<InventoryStats> {
+  console.log("[fetchInventoryStats] companyId:", companyId);
+
   let countQuery = supabase
     .from("inventory")
     .select("id, quantity, selling_price", { count: "exact", head: false });
@@ -25,7 +27,17 @@ export async function fetchInventoryStats(companyId?: string): Promise<Inventory
   }
 
   const { data: countData, error: countError } = await countQuery;
-  if (countError) throw countError;
+  if (countError) {
+    console.error(
+      "[fetchInventoryStats] error:",
+      countError.code,
+      countError.message,
+      countError.details,
+      countError.hint,
+    );
+    throw countError;
+  }
+  console.log("[fetchInventoryStats] rows returned:", countData?.length ?? 0);
 
   const totalDevices = countData?.length || 0;
 
@@ -80,9 +92,7 @@ export interface OrderStats {
  * Fetch aggregate order statistics
  */
 export async function fetchOrderStats(companyId?: string): Promise<OrderStats> {
-  let totalQuery = supabase
-    .from("orders")
-    .select("id", { count: "exact", head: true });
+  let totalQuery = supabase.from("orders").select("id", { count: "exact", head: true });
 
   if (companyId) {
     totalQuery = (totalQuery as any).eq("company_id", companyId);
@@ -127,9 +137,10 @@ export async function fetchOrderStats(companyId?: string): Promise<OrderStats> {
   const { data: revenueData, error: revenueError } = await revenueQuery;
   if (revenueError) throw revenueError;
 
-  const totalRevenue = (
-    (revenueData || []) as Array<{ total_price: number | null }>
-  ).reduce((sum, row) => sum + (Number(row.total_price) || 0), 0);
+  const totalRevenue = ((revenueData || []) as Array<{ total_price: number | null }>).reduce(
+    (sum, row) => sum + (Number(row.total_price) || 0),
+    0,
+  );
 
   return {
     totalOrders: totalOrders || 0,

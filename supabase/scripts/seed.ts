@@ -1,9 +1,9 @@
 /**
  * Database Seed Script
  * Creates admin user, sample users, inventory items, and orders
- * 
+ *
  * Usage: npm run seed
- * 
+ *
  * Environment variables required:
  * - NEXT_PUBLIC_SUPABASE_URL
  * - SUPABASE_SERVICE_ROLE_KEY
@@ -12,28 +12,29 @@
  */
 
 // Load environment variables from .env file
-import { config } from 'dotenv';
-import { resolve } from 'path';
+import { config } from "dotenv";
+import { resolve } from "path";
 
 // Load .env file from project root
-config({ path: resolve(process.cwd(), '.env.local') });
+config({ path: resolve(process.cwd(), ".env.local") });
 // Fallback to .env if .env.local doesn't exist
 if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-  config({ path: resolve(process.cwd(), '.env') });
+  config({ path: resolve(process.cwd(), ".env") });
 }
 
-import { createClient } from '@supabase/supabase-js';
-import { Database } from '../../src/lib/database.types';
-import { inventoryData } from '../../src/data/inventory';
+import { createClient } from "@supabase/supabase-js";
+import { Database } from "../../src/lib/database.types";
+import { inventoryData } from "../../src/data/inventory";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const adminEmail = process.env.SEED_ADMIN_EMAIL || 'admin@stoq.com';
-const adminPassword = process.env.SEED_ADMIN_PASSWORD || 'admin123';
+const adminEmail = process.env.SEED_ADMIN_EMAIL || "admin@stoq.com";
+const adminPassword = process.env.SEED_ADMIN_PASSWORD || "admin123";
+const seedCompanySlug = process.env.SEED_COMPANY_SLUG ?? null;
 
 if (!supabaseUrl || !supabaseServiceKey) {
-  console.error('❌ Missing Supabase environment variables');
-  console.error('Required: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY');
+  console.error("❌ Missing Supabase environment variables");
+  console.error("Required: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY");
   process.exit(1);
 }
 
@@ -46,12 +47,30 @@ const supabase = createClient<Database>(supabaseUrl, supabaseServiceKey, {
 });
 
 /**
+ * Resolve company UUID from SEED_COMPANY_SLUG or first company in DB
+ */
+async function resolveCompanyId(): Promise<string | null> {
+  let query = (supabase.from("companies") as any).select("id, slug, name");
+  if (seedCompanySlug) {
+    query = query.eq("slug", seedCompanySlug);
+  }
+  const { data, error } = await query.limit(1).maybeSingle();
+  if (error || !data) {
+    console.warn("   ⚠️  No company found — inventory will be skipped.");
+    console.warn("   Set SEED_COMPANY_SLUG=<slug> to target a company.");
+    return null;
+  }
+  console.log(`   🏢 Using company: "${data.name}" (slug: ${data.slug})`);
+  return data.id as string;
+}
+
+/**
  * Generate UUID v4
  */
 function generateUUID(): string {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
     return v.toString(16);
   });
 }
@@ -60,7 +79,7 @@ function generateUUID(): string {
  * Create admin user and profile
  */
 async function createAdminUser() {
-  console.log('👤 Creating admin user...');
+  console.log("👤 Creating admin user...");
 
   try {
     // Check if admin user already exists
@@ -85,7 +104,7 @@ async function createAdminUser() {
       }
 
       if (!newUser.user) {
-        throw new Error('Failed to create admin user');
+        throw new Error("Failed to create admin user");
       }
 
       adminUserId = newUser.user.id;
@@ -93,40 +112,38 @@ async function createAdminUser() {
     }
 
     // Create or update admin profile
-    const { data: existingProfile } = await (supabase
-      .from('user_profiles') as any)
-      .select('*')
-      .eq('user_id', adminUserId)
+    const { data: existingProfile } = await (supabase.from("user_profiles") as any)
+      .select("*")
+      .eq("user_id", adminUserId)
       .single();
 
     if (existingProfile) {
       // Update to admin role if not already
-      if (existingProfile.role !== 'admin') {
-        await (supabase
-          .from('user_profiles') as any)
-          .update({ role: 'admin' })
-          .eq('user_id', adminUserId);
-        console.log('   ✅ Updated admin profile role');
+      if (existingProfile.role !== "admin") {
+        await (supabase.from("user_profiles") as any)
+          .update({ role: "admin" })
+          .eq("user_id", adminUserId);
+        console.log("   ✅ Updated admin profile role");
       } else {
-        console.log('   ✅ Admin profile already exists');
+        console.log("   ✅ Admin profile already exists");
       }
     } else {
       // Create admin profile
-      const { error: profileError } = await supabase.from('user_profiles').insert({
+      const { error: profileError } = await supabase.from("user_profiles").insert({
         user_id: adminUserId,
-        role: 'admin',
+        role: "admin",
       });
 
       if (profileError) {
         throw profileError;
       }
 
-      console.log('   ✅ Created admin profile');
+      console.log("   ✅ Created admin profile");
     }
 
     return adminUserId;
   } catch (error) {
-    console.error('   ❌ Failed to create admin user:', error);
+    console.error("   ❌ Failed to create admin user:", error);
     throw error;
   }
 }
@@ -135,11 +152,11 @@ async function createAdminUser() {
  * Create sample regular users
  */
 async function createSampleUsers(): Promise<string[]> {
-  console.log('👥 Creating sample users...');
+  console.log("👥 Creating sample users...");
 
   const sampleUsers = [
-    { email: 'user1@example.com', password: 'user123' },
-    { email: 'user2@example.com', password: 'user123' },
+    { email: "user1@example.com", password: "user123" },
+    { email: "user2@example.com", password: "user123" },
   ];
 
   const userIds: string[] = [];
@@ -179,15 +196,15 @@ async function createSampleUsers(): Promise<string[]> {
 
       // Create or check profile
       const { data: existingProfile } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('user_id', userId)
+        .from("user_profiles")
+        .select("*")
+        .eq("user_id", userId)
         .single();
 
       if (!existingProfile) {
-        await supabase.from('user_profiles').insert({
+        await supabase.from("user_profiles").insert({
           user_id: userId,
-          role: 'user',
+          role: "user",
         });
         console.log(`   ✅ Created profile for: ${userData.email}`);
       }
@@ -202,97 +219,104 @@ async function createSampleUsers(): Promise<string[]> {
 }
 
 /**
- * Seed inventory items
+ * Seed inventory items (company-scoped)
  */
-async function seedInventory() {
-  console.log('📦 Seeding inventory...');
+async function seedInventory(companyId: string | null) {
+  console.log("📦 Seeding inventory...");
+
+  if (!companyId) {
+    console.log("   ⏭️  No company resolved — skipping inventory.");
+    return;
+  }
 
   try {
-    // Get existing items to check what's already in the database
-    const { data: existingItems } = await supabase.from('inventory').select('device_name, brand, grade, storage');
+    // Get existing items for this company to skip duplicates
+    const { data: existingItems } = await (supabase.from("inventory") as any)
+      .select("device_name, brand, grade, storage")
+      .eq("company_id", companyId);
 
-    // Convert inventory data to database format
-    const inventoryItems = inventoryData.map((item) => ({
-      id: generateUUID(),
-      device_name: item.deviceName,
-      brand: item.brand,
-      grade: item.grade,
-      storage: item.storage,
-      quantity: item.quantity,
-      price_per_unit: item.pricePerUnit,
-      purchase_price: item.purchasePrice ?? null,
-      hst: item.hst ?? null,
-      selling_price: item.sellingPrice,
-      last_updated: item.lastUpdated,
-      price_change: item.priceChange || null,
-    }));
+    const existingKeys = new Set(
+      (existingItems ?? []).map(
+        (item: any) => `${item.device_name}|${item.brand}|${item.grade}|${item.storage}`,
+      ),
+    );
 
-    // If inventory already has items, only add new ones that don't exist
-    if (existingItems && existingItems.length > 0) {
-      const existingKeys = new Set(
-        existingItems.map((item) => `${item.device_name}|${item.brand}|${item.grade}|${item.storage}`)
-      );
-      
-      const newItems = inventoryItems.filter(
-        (item) => !existingKeys.has(`${item.device_name}|${item.brand}|${item.grade}|${item.storage}`)
-      );
+    const inventoryItems = inventoryData
+      .filter(
+        (item) =>
+          !existingKeys.has(`${item.deviceName}|${item.brand}|${item.grade}|${item.storage}`),
+      )
+      .map((item) => ({
+        company_id: companyId,
+        device_name: item.deviceName,
+        brand: item.brand,
+        grade: item.grade,
+        storage: item.storage,
+        quantity: item.quantity,
+        price_per_unit: item.pricePerUnit,
+        purchase_price: item.purchasePrice ?? null,
+        hst: item.hst ?? null,
+        selling_price: item.sellingPrice,
+        last_updated: item.lastUpdated,
+        price_change: item.priceChange || null,
+        is_active: true,
+      }));
 
-      if (newItems.length === 0) {
-        console.log('   ⏭️  All inventory items already exist, skipping...');
-        return;
-      }
-
-      const { error } = await supabase.from('inventory').insert(newItems);
-
-      if (error) {
-        throw error;
-      }
-
-      console.log(`   ✅ Added ${newItems.length} new inventory items (${existingItems.length} already existed)`);
-    } else {
-      // No existing items, insert all
-      const { error } = await supabase.from('inventory').insert(inventoryItems);
-
-      if (error) {
-        throw error;
-      }
-
-      console.log(`   ✅ Seeded ${inventoryItems.length} inventory items`);
+    if (inventoryItems.length === 0) {
+      console.log(`   ⏭️  All inventory items already exist, skipping...`);
+      return;
     }
+
+    const { error } = await (supabase.from("inventory") as any).insert(inventoryItems);
+    if (error) throw error;
+
+    const skipped = inventoryData.length - inventoryItems.length;
+    console.log(
+      `   ✅ Seeded ${inventoryItems.length} inventory items` +
+        (skipped > 0 ? ` (${skipped} skipped)` : ""),
+    );
   } catch (error) {
-    console.error('   ❌ Failed to seed inventory:', error);
+    console.error("   ❌ Failed to seed inventory:", error);
     throw error;
   }
 }
 
 /**
- * Create sample orders
+ * Create sample orders (company-scoped)
  */
-async function createSampleOrders(userIds: string[]) {
-  console.log('🛒 Creating sample orders...');
+async function createSampleOrders(userIds: string[], companyId: string | null) {
+  console.log("🛒 Creating sample orders...");
 
   if (userIds.length === 0) {
-    console.log('   ⏭️  No users available, skipping orders...');
+    console.log("   ⏭️  No users available, skipping orders...");
+    return;
+  }
+
+  if (!companyId) {
+    console.log("   ⏭️  No company resolved, skipping orders...");
     return;
   }
 
   try {
-    // Get inventory items
-    const { data: inventoryItems, error: invError } = await (supabase
-      .from('inventory') as any)
-      .select('*')
+    // Get inventory items for this company
+    const { data: inventoryItems, error: invError } = await (supabase.from("inventory") as any)
+      .select("*")
+      .eq("company_id", companyId)
       .limit(5);
 
     if (invError || !inventoryItems || inventoryItems.length === 0) {
-      console.log('   ⏭️  No inventory items available, skipping orders...');
+      console.log("   ⏭️  No inventory items available, skipping orders...");
       return;
     }
 
-    // Check if orders already exist
-    const { data: existingOrders } = await supabase.from('orders').select('id').limit(1);
+    // Check if orders already exist for this company
+    const { data: existingOrders } = await (supabase.from("orders") as any)
+      .select("id")
+      .eq("company_id", companyId)
+      .limit(1);
 
     if (existingOrders && existingOrders.length > 0) {
-      console.log('   ⏭️  Orders already exist, skipping...');
+      console.log("   ⏭️  Orders already exist, skipping...");
       return;
     }
 
@@ -339,19 +363,20 @@ async function createSampleOrders(userIds: string[]) {
 
       const totalPrice = orderItems.reduce(
         (sum, oi) => sum + oi.item.sellingPrice * oi.quantity,
-        0
+        0,
       );
 
       sampleOrders.push({
         id: generateUUID(),
+        company_id: companyId,
         user_id: userId,
         items: orderItems,
         total_price: totalPrice,
-        status: i === 0 ? 'pending' : i === 1 ? 'approved' : 'completed',
+        status: i === 0 ? "pending" : i === 1 ? "approved" : "completed",
       });
     }
 
-    const { error } = await supabase.from('orders').insert(sampleOrders);
+    const { error } = await (supabase.from("orders") as any).insert(sampleOrders);
 
     if (error) {
       throw error;
@@ -359,7 +384,7 @@ async function createSampleOrders(userIds: string[]) {
 
     console.log(`   ✅ Created ${sampleOrders.length} sample orders`);
   } catch (error) {
-    console.error('   ❌ Failed to create sample orders:', error);
+    console.error("   ❌ Failed to create sample orders:", error);
     throw error;
   }
 }
@@ -368,40 +393,44 @@ async function createSampleOrders(userIds: string[]) {
  * Main seed function
  */
 async function seed() {
-  console.log('🌱 Starting database seed...\n');
+  console.log("🌱 Starting database seed...\n");
 
   try {
     // Create admin user
     const adminUserId = await createAdminUser();
-    console.log('');
+    console.log("");
 
     // Create sample users
     const userIds = await createSampleUsers();
-    console.log('');
+    console.log("");
+
+    // Resolve company for inventory seeding
+    const companyId = await resolveCompanyId();
+    console.log("");
 
     // Seed inventory
-    await seedInventory();
-    console.log('');
+    await seedInventory(companyId);
+    console.log("");
 
     // Create sample orders
-    await createSampleOrders([adminUserId, ...userIds]);
-    console.log('');
+    await createSampleOrders([adminUserId, ...userIds], companyId);
+    console.log("");
 
-    console.log('✅ Seed completed successfully!');
-    console.log('\n📝 Login credentials:');
+    console.log("✅ Seed completed successfully!");
+    console.log("\n📝 Login credentials:");
     console.log(`   Admin: ${adminEmail} / ${adminPassword}`);
     console.log(`   User 1: user1@example.com / user123`);
     console.log(`   User 2: user2@example.com / user123`);
   } catch (error) {
-    console.error('\n❌ Seed failed:', error);
+    console.error("\n❌ Seed failed:", error);
     process.exit(1);
   }
 }
 
 // Run seed if executed directly
-if (require.main === module || process.argv[1]?.endsWith('seed.ts')) {
+if (require.main === module || process.argv[1]?.endsWith("seed.ts")) {
   seed().catch((error) => {
-    console.error('Fatal error:', error);
+    console.error("Fatal error:", error);
     process.exit(1);
   });
 }

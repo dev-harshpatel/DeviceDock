@@ -7,13 +7,8 @@ import { supabase } from "@/lib/supabase/client/browser";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { PasswordInput } from "@/components/ui/password-input";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -80,7 +75,6 @@ const COUNTRIES = [
   { value: "OTHER", label: "Other" },
 ];
 
-
 const STEPS = [
   { id: 1, label: "Account", icon: User },
   { id: 2, label: "Company", icon: Building2 },
@@ -98,10 +92,7 @@ interface SignupSplitLayoutProps {
   rightPaneClassName?: string;
 }
 
-function SignupSplitLayout({
-  children,
-  rightPaneClassName,
-}: SignupSplitLayoutProps) {
+function SignupSplitLayout({ children, rightPaneClassName }: SignupSplitLayoutProps) {
   return (
     <div className="grid h-dvh grid-cols-1 overflow-hidden bg-background lg:grid-cols-[minmax(20rem,0.88fr)_minmax(36rem,1.12fr)] xl:grid-cols-[minmax(22rem,0.84fr)_minmax(40rem,1.16fr)]">
       <aside className="relative hidden overflow-hidden border-r border-border/60 lg:flex">
@@ -127,17 +118,15 @@ function SignupSplitLayout({
                   Set up your company workspace with the right defaults.
                 </h2>
                 <p className="max-w-xl text-base leading-7 text-muted-foreground">
-                  Create the admin account, define company details, and review your setup
-                  before access is activated.
+                  Create the admin account, define company details, and review your setup before
+                  access is activated.
                 </p>
               </div>
             </div>
           </div>
 
           <div>
-            <p className="text-sm font-semibold text-foreground">
-              What you can expect
-            </p>
+            <p className="text-sm font-semibold text-foreground">What you can expect</p>
             <div className="mt-4 space-y-3">
               {TRUST_POINTS.map((point) => (
                 <div key={point} className="flex items-start gap-3 text-sm text-muted-foreground">
@@ -155,6 +144,15 @@ function SignupSplitLayout({
           <div className="w-full max-w-3xl space-y-5">{children}</div>
         </div>
       </section>
+    </div>
+  );
+}
+
+function ReviewRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] gap-3 px-4 py-2.5 text-sm sm:grid-cols-[160px_1fr]">
+      <span className="text-muted-foreground leading-snug">{label}</span>
+      <span className="font-medium text-foreground break-words leading-snug">{value}</span>
     </div>
   );
 }
@@ -349,8 +347,8 @@ export default function CompanySignup() {
               {registeredEmail}
             </p>
             <p className="text-center text-sm leading-6 text-muted-foreground">
-              Click the link in the email to verify your account and access your
-              dashboard. Check your spam folder if you don&apos;t see it.
+              Click the link in the email to verify your account and access your dashboard. Check
+              your spam folder if you don&apos;t see it.
             </p>
             <Button
               className="w-full"
@@ -382,7 +380,11 @@ export default function CompanySignup() {
   // ── Step indicator helper ────────────────────────────────────────────────
   const companySlugPreview =
     form.companyName.trim().length > 2
-      ? form.companyName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
+      ? form.companyName
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "")
       : null;
 
   return (
@@ -428,9 +430,7 @@ export default function CompanySignup() {
                 <s.icon className="h-3 w-3" />
                 {s.label}
               </div>
-              {i < STEPS.length - 1 && (
-                <ChevronRight className="h-4 w-4 text-muted-foreground" />
-              )}
+              {i < STEPS.length - 1 && <ChevronRight className="h-4 w-4 text-muted-foreground" />}
             </div>
           ))}
         </div>
@@ -452,7 +452,6 @@ export default function CompanySignup() {
           {/* Clip the sliding content */}
           <CardContent className="overflow-hidden p-5 pt-0 sm:p-6 sm:pt-0">
             <div ref={contentRef} className="space-y-4">
-
               {/* ── Step 1: Account ── */}
               {step === 1 && (
                 <>
@@ -496,16 +495,13 @@ export default function CompanySignup() {
                       autoComplete="email"
                       className={cn(errors.email && "border-destructive")}
                     />
-                    {errors.email && (
-                      <p className="text-xs text-destructive">{errors.email}</p>
-                    )}
+                    {errors.email && <p className="text-xs text-destructive">{errors.email}</p>}
                   </div>
 
                   <div className="space-y-2">
                     <Label htmlFor="password">Password</Label>
-                    <Input
+                    <PasswordInput
                       id="password"
-                      type="password"
                       value={form.password}
                       onChange={(e) => update("password", e.target.value)}
                       placeholder="At least 8 characters"
@@ -519,9 +515,8 @@ export default function CompanySignup() {
 
                   <div className="space-y-2">
                     <Label htmlFor="confirmPassword">Confirm Password</Label>
-                    <Input
+                    <PasswordInput
                       id="confirmPassword"
-                      type="password"
                       value={form.confirmPassword}
                       onChange={(e) => update("confirmPassword", e.target.value)}
                       placeholder="Repeat your password"
@@ -577,7 +572,9 @@ export default function CompanySignup() {
                         </SelectTrigger>
                         <SelectContent>
                           {COUNTRIES.map((c) => (
-                            <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                            <SelectItem key={c.value} value={c.value}>
+                              {c.label}
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -588,16 +585,15 @@ export default function CompanySignup() {
                     <div className="space-y-2">
                       <Label htmlFor="province">Province / State</Label>
                       {form.country === "CA" ? (
-                        <Select
-                          value={form.province}
-                          onValueChange={(v) => update("province", v)}
-                        >
+                        <Select value={form.province} onValueChange={(v) => update("province", v)}>
                           <SelectTrigger className={cn(errors.province && "border-destructive")}>
                             <SelectValue placeholder="Select province" />
                           </SelectTrigger>
                           <SelectContent>
                             {CANADIAN_PROVINCES.map((p) => (
-                              <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                              <SelectItem key={p.value} value={p.value}>
+                                {p.label}
+                              </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
@@ -626,9 +622,7 @@ export default function CompanySignup() {
                       placeholder="Toronto"
                       className={cn(errors.city && "border-destructive")}
                     />
-                    {errors.city && (
-                      <p className="text-xs text-destructive">{errors.city}</p>
-                    )}
+                    {errors.city && <p className="text-xs text-destructive">{errors.city}</p>}
                   </div>
 
                   {/* Postal Address */}
@@ -695,123 +689,133 @@ export default function CompanySignup() {
                       placeholder="https://example.com"
                       className={cn(errors.website && "border-destructive")}
                     />
-                    {errors.website && (
-                      <p className="text-xs text-destructive">{errors.website}</p>
-                    )}
+                    {errors.website && <p className="text-xs text-destructive">{errors.website}</p>}
                   </div>
                 </div>
               )}
 
               {/* ── Step 3: Review ── */}
               {step === 3 && (
-                <div className="space-y-4">
-                  <div className="rounded-lg border border-border p-4 space-y-4">
-
-                    {/* Account */}
-                    <div>
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                        Account
-                      </p>
-                      <div className="space-y-1 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Name</span>
-                          <span className="font-medium text-foreground">
-                            {form.firstName} {form.lastName}
-                          </span>
+                <div className="space-y-3">
+                  {/* Account section */}
+                  <div className="rounded-lg border border-border bg-muted/30 overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-muted/50">
+                      <div className="flex items-center gap-2">
+                        <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10">
+                          <User className="h-3.5 w-3.5 text-primary" />
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Email</span>
-                          <span className="font-medium text-foreground">{form.email}</span>
-                        </div>
+                        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                          Account
+                        </span>
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => goToStep(1, "back")}
+                        className="text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded"
+                        aria-label="Edit account details"
+                      >
+                        Edit
+                      </button>
                     </div>
-
-                    <div className="border-t border-border" />
-
-                    {/* Company */}
-                    <div>
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                        Company
-                      </p>
-                      <div className="space-y-1 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Business Name</span>
-                          <span className="font-medium text-foreground">{form.companyName}</span>
-                        </div>
-                        {form.businessEmail && (
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Business Email</span>
-                            <span className="font-medium text-foreground truncate max-w-[200px]">
-                              {form.businessEmail}
-                            </span>
-                          </div>
-                        )}
-                        {form.website && (
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Website</span>
-                            <span className="font-medium text-foreground truncate max-w-[200px]">
-                              {form.website}
-                            </span>
-                          </div>
-                        )}
-                        {form.yearsInBusiness && (
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Years in Business</span>
-                            <span className="font-medium text-foreground">{form.yearsInBusiness}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="border-t border-border" />
-
-                    {/* Address */}
-                    <div>
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                        Address
-                      </p>
-                      <div className="space-y-1 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Country</span>
-                          <span className="font-medium text-foreground">
-                            {COUNTRIES.find((c) => c.value === form.country)?.label ?? form.country}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Province / State</span>
-                          <span className="font-medium text-foreground">{form.province}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">City</span>
-                          <span className="font-medium text-foreground">{form.city}</span>
-                        </div>
-                        {form.streetAddress && (
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Postal Address</span>
-                            <span className="font-medium text-foreground truncate max-w-[200px]">
-                              {form.streetAddress}
-                            </span>
-                          </div>
-                        )}
-                      </div>
+                    <div className="divide-y divide-border/60">
+                      <ReviewRow label="Full Name" value={`${form.firstName} ${form.lastName}`} />
+                      <ReviewRow label="Email" value={form.email} />
+                      <ReviewRow label="Password" value="••••••••" />
                     </div>
                   </div>
 
-                  <p className="text-xs text-muted-foreground text-center">
-                    By registering, you confirm that you are an authorized representative of this company.
-                  </p>
+                  {/* Company section */}
+                  <div className="rounded-lg border border-border bg-muted/30 overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-muted/50">
+                      <div className="flex items-center gap-2">
+                        <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10">
+                          <Building2 className="h-3.5 w-3.5 text-primary" />
+                        </div>
+                        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                          Company
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => goToStep(2, "back")}
+                        className="text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded"
+                        aria-label="Edit company details"
+                      >
+                        Edit
+                      </button>
+                    </div>
+                    <div className="divide-y divide-border/60">
+                      <ReviewRow label="Business Name" value={form.companyName} />
+                      {form.businessEmail && (
+                        <ReviewRow label="Business Email" value={form.businessEmail} />
+                      )}
+                      {form.website && <ReviewRow label="Website" value={form.website} />}
+                      {form.yearsInBusiness && (
+                        <ReviewRow
+                          label="Years in Business"
+                          value={`${form.yearsInBusiness} yr${Number(form.yearsInBusiness) !== 1 ? "s" : ""}`}
+                        />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Address section */}
+                  <div className="rounded-lg border border-border bg-muted/30 overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-muted/50">
+                      <div className="flex items-center gap-2">
+                        <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10">
+                          <Package className="h-3.5 w-3.5 text-primary" />
+                        </div>
+                        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                          Location
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => goToStep(2, "back")}
+                        className="text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded"
+                        aria-label="Edit location details"
+                      >
+                        Edit
+                      </button>
+                    </div>
+                    <div className="divide-y divide-border/60">
+                      <ReviewRow
+                        label="Country"
+                        value={
+                          COUNTRIES.find((c) => c.value === form.country)?.label ?? form.country
+                        }
+                      />
+                      <ReviewRow
+                        label="Province / State"
+                        value={
+                          form.country === "CA"
+                            ? (CANADIAN_PROVINCES.find((p) => p.value === form.province)?.label ??
+                              form.province)
+                            : form.province
+                        }
+                      />
+                      <ReviewRow label="City" value={form.city} />
+                      {form.streetAddress && (
+                        <ReviewRow label="Street Address" value={form.streetAddress} />
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2.5 rounded-lg border border-border/60 bg-primary/5 px-4 py-3">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                    <p className="text-xs leading-relaxed text-muted-foreground">
+                      By registering, you confirm that you are an authorized representative of this
+                      company and agree to our terms of service.
+                    </p>
+                  </div>
                 </div>
               )}
 
               {/* Navigation buttons */}
               <div className="flex gap-2 pt-2">
                 {step > 1 && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleBack}
-                    className="flex-1"
-                  >
+                  <Button type="button" variant="outline" onClick={handleBack} className="flex-1">
                     <ChevronLeft className="h-4 w-4 mr-1" />
                     Back
                   </Button>

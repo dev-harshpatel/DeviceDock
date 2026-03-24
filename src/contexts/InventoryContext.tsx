@@ -6,19 +6,9 @@ import { supabase } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/context";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useRealtimeContext } from "@/contexts/RealtimeContext";
-import {
-  ReactNode,
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  useCallback,
-} from "react";
+import { ReactNode, createContext, useContext, useEffect, useState, useCallback } from "react";
 import { UploadHistory, BulkInsertResult } from "@/types/upload";
-import {
-  dbRowToInventoryItem,
-  INVENTORY_ADMIN_FIELDS,
-} from "@/lib/supabase/queries";
+import { dbRowToInventoryItem, INVENTORY_ADMIN_FIELDS } from "@/lib/supabase/queries";
 import { BULK_INSERT_BATCH_SIZE, INVENTORY_SORT_ORDER } from "@/lib/constants";
 
 interface InventoryContextType {
@@ -32,9 +22,7 @@ interface InventoryContextType {
   isLoading: boolean;
 }
 
-const InventoryContext = createContext<InventoryContextType | undefined>(
-  undefined
-);
+const InventoryContext = createContext<InventoryContextType | undefined>(undefined);
 
 interface InventoryProviderProps {
   children: ReactNode;
@@ -42,19 +30,14 @@ interface InventoryProviderProps {
 
 type InventoryUpdate = Database["public"]["Tables"]["inventory"]["Update"];
 
-const toInventoryUpdate = (
-  updates: Partial<InventoryItem>
-): InventoryUpdate => {
+const toInventoryUpdate = (updates: Partial<InventoryItem>): InventoryUpdate => {
   const updateData: InventoryUpdate = {};
 
   if (updates.brand !== undefined) updateData.brand = updates.brand;
-  if (updates.deviceName !== undefined)
-    updateData.device_name = updates.deviceName;
+  if (updates.deviceName !== undefined) updateData.device_name = updates.deviceName;
   if (updates.grade !== undefined) updateData.grade = updates.grade;
-  if (updates.lastUpdated !== undefined)
-    updateData.last_updated = updates.lastUpdated;
-  if (updates.priceChange !== undefined)
-    updateData.price_change = updates.priceChange ?? null;
+  if (updates.lastUpdated !== undefined) updateData.last_updated = updates.lastUpdated;
+  if (updates.priceChange !== undefined) updateData.price_change = updates.priceChange ?? null;
   if (updates.pricePerUnit !== undefined) {
     updateData.price_per_unit = Number(updates.pricePerUnit);
   }
@@ -112,12 +95,14 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
         .order("id", INVENTORY_SORT_ORDER.id);
 
       if (error) {
+        console.error("[InventoryContext] loadInventory error:", error.message, error);
         setInventory([]);
         return;
       }
 
       setInventory(data ? data.map(dbRowToInventoryItem) : []);
-    } catch {
+    } catch (err) {
+      console.error("[InventoryContext] loadInventory exception:", err);
       setInventory([]);
     }
   }, [companyId]);
@@ -132,7 +117,9 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
     };
 
     init();
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+    };
   }, [loadInventory]);
 
   // Reload inventory when RealtimeProvider signals inventory changes
@@ -142,30 +129,23 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
     }
   }, [inventoryVersion, loadInventory]);
 
-  const updateProduct = useCallback(
-    async (id: string, updates: Partial<InventoryItem>) => {
-      const updateData: InventoryUpdate = toInventoryUpdate({
-        ...updates,
-        lastUpdated: "Just now",
-      });
-      updateData.updated_at = new Date().toISOString();
+  const updateProduct = useCallback(async (id: string, updates: Partial<InventoryItem>) => {
+    const updateData: InventoryUpdate = toInventoryUpdate({
+      ...updates,
+      lastUpdated: "Just now",
+    });
+    updateData.updated_at = new Date().toISOString();
 
-      const { error } = await (supabase.from("inventory") as any)
-        .update(updateData)
-        .eq("id", id);
+    const { error } = await (supabase.from("inventory") as any).update(updateData).eq("id", id);
 
-      if (error) throw error;
+    if (error) throw error;
 
-      setInventory((prev) =>
-        prev.map((item) =>
-          item.id === id
-            ? { ...item, ...updates, lastUpdated: "Just now" }
-            : item
-        )
-      );
-    },
-    []
-  );
+    setInventory((prev) =>
+      prev.map((item) =>
+        item.id === id ? { ...item, ...updates, lastUpdated: "Just now" } : item,
+      ),
+    );
+  }, []);
 
   const decreaseQuantity = useCallback(
     async (id: string, amount: number) => {
@@ -187,9 +167,7 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
         ...(newPurchasePrice !== null && { purchase_price: newPurchasePrice }),
       };
 
-      const { error } = await (supabase.from("inventory") as any)
-        .update(updateData)
-        .eq("id", id);
+      const { error } = await (supabase.from("inventory") as any).update(updateData).eq("id", id);
 
       if (error) throw error;
 
@@ -204,11 +182,11 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
                   purchasePrice: newPurchasePrice,
                 }),
               }
-            : item
-        )
+            : item,
+        ),
       );
     },
-    [inventory]
+    [inventory],
   );
 
   const resetInventory = useCallback(async () => {
@@ -253,12 +231,14 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
               try {
                 const { data: individualData, error: individualError } = await (
                   supabase.from("inventory") as any
-                ).insert(productToInsertRow(product, companyId)).select("id");
+                )
+                  .insert(productToInsertRow(product, companyId))
+                  .select("id");
 
                 if (individualError) {
                   result.failed++;
                   result.errors.push(
-                    `${product.deviceName} ${product.storage}: ${individualError.message}`
+                    `${product.deviceName} ${product.storage}: ${individualError.message}`,
                   );
                 } else {
                   result.success++;
@@ -271,7 +251,7 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
                 result.errors.push(
                   `${product.deviceName} ${product.storage}: ${
                     err instanceof Error ? err.message : "Unknown error"
-                  }`
+                  }`,
                 );
               }
             }
@@ -288,7 +268,7 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
           result.errors.push(
             `Batch ${Math.floor(i / batchSize) + 1}: ${
               error instanceof Error ? error.message : "Unknown error"
-            }`
+            }`,
           );
         }
       }
@@ -296,10 +276,12 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
       await loadInventory();
       return result;
     },
-    [user?.id, companyId, loadInventory]
+    [user?.id, companyId, loadInventory],
   );
 
   const getUploadHistory = useCallback(async (): Promise<UploadHistory[]> => {
+    if (!companyId) return [];
+
     const { data, error } = await (supabase.from("product_uploads") as any)
       .select(
         [
@@ -313,11 +295,15 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
           "error_message",
           "created_at",
           "updated_at",
-        ].join(", ")
+        ].join(", "),
       )
+      .eq("company_id", companyId)
       .order("created_at", { ascending: false });
 
-    if (error) throw error;
+    if (error) {
+      console.error("[InventoryContext] getUploadHistory error:", error.message, error);
+      throw error;
+    }
     if (!data) return [];
 
     return (data as any[]).map((row: any) => ({
@@ -332,7 +318,7 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     }));
-  }, []);
+  }, [companyId]);
 
   return (
     <InventoryContext.Provider

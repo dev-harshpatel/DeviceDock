@@ -32,12 +32,10 @@ export async function updateSession(request: NextRequest) {
         return request.cookies.getAll();
       },
       setAll(cookiesToSet: { name: string; value: string; options: any }[]) {
-        cookiesToSet.forEach(({ name, value }) =>
-          request.cookies.set(name, value)
-        );
+        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
         supabaseResponse = NextResponse.next({ request });
         cookiesToSet.forEach(({ name, value, options }) =>
-          supabaseResponse.cookies.set(name, value, options)
+          supabaseResponse.cookies.set(name, value, options),
         );
       },
     },
@@ -55,10 +53,11 @@ export async function updateSession(request: NextRequest) {
     } = await supabase.auth.getUser();
 
     if (error) {
-      if (
-        error.message?.includes("refresh_token_not_found") ||
-        error.message?.includes("Invalid Refresh Token")
-      ) {
+      const msg = error.message ?? "";
+      // Normal when the user is not logged in — not an error condition
+      if (msg.toLowerCase().includes("session missing")) {
+        user = null;
+      } else if (msg.includes("refresh_token_not_found") || msg.includes("Invalid Refresh Token")) {
         // Clear stale auth cookies
         const allCookies = request.cookies.getAll();
         allCookies.forEach((cookie) => {

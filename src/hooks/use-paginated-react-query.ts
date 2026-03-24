@@ -1,34 +1,34 @@
-'use client'
+"use client";
 
-import { useEffect, useRef } from 'react'
-import { useQuery, keepPreviousData } from '@tanstack/react-query'
-import { PAGE_SIZE } from '@/hooks/use-paginated-query'
+import { useEffect, useRef } from "react";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { PAGE_SIZE } from "@/hooks/use-paginated-query";
 
-export { PAGE_SIZE }
+export { PAGE_SIZE };
 
 export interface PaginatedResult<T> {
-  data: T[]
-  count: number
+  data: T[];
+  count: number;
 }
 
 export interface UsePaginatedReactQueryOptions<T> {
-  queryKey: readonly unknown[]
-  fetchFn: (range: { from: number; to: number }) => Promise<PaginatedResult<T>>
-  currentPage: number
-  setCurrentPage: (page: number) => void
-  pageSize?: number
-  enabled?: boolean
-  filtersKey?: string
-  refetchOnWindowFocus?: boolean
+  queryKey: readonly unknown[];
+  fetchFn: (range: { from: number; to: number }) => Promise<PaginatedResult<T>>;
+  currentPage: number;
+  setCurrentPage: (page: number) => void;
+  pageSize?: number;
+  enabled?: boolean;
+  filtersKey?: string;
+  refetchOnWindowFocus?: boolean;
 }
 
 export interface UsePaginatedReactQueryReturn<T> {
-  data: T[]
-  totalCount: number
-  totalPages: number
-  isLoading: boolean
-  isFetching: boolean
-  rangeText: string
+  data: T[];
+  totalCount: number;
+  totalPages: number;
+  isLoading: boolean;
+  isFetching: boolean;
+  rangeText: string;
 }
 
 export function usePaginatedReactQuery<T>(
@@ -43,10 +43,10 @@ export function usePaginatedReactQuery<T>(
     enabled = true,
     filtersKey,
     refetchOnWindowFocus,
-  } = options
+  } = options;
 
-  const from = (currentPage - 1) * pageSize
-  const to = from + pageSize - 1
+  const from = (currentPage - 1) * pageSize;
+  const to = from + pageSize - 1;
 
   const query = useQuery({
     queryKey,
@@ -54,32 +54,35 @@ export function usePaginatedReactQuery<T>(
     enabled,
     placeholderData: keepPreviousData,
     refetchOnWindowFocus,
-  })
+  });
 
-  const data = query.data?.data ?? []
-  const totalCount = query.data?.count ?? 0
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
+  if (query.isError) {
+    console.error("[usePaginatedReactQuery] query error for key", queryKey, "→", query.error);
+  }
+
+  const data = query.data?.data ?? [];
+  const totalCount = query.data?.count ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
   // Reset to page 1 when filters change
-  const prevFiltersRef = useRef(filtersKey)
+  const prevFiltersRef = useRef(filtersKey);
   useEffect(() => {
     if (filtersKey !== undefined && prevFiltersRef.current !== filtersKey) {
-      prevFiltersRef.current = filtersKey
-      setCurrentPage(1)
+      prevFiltersRef.current = filtersKey;
+      setCurrentPage(1);
     }
-  }, [filtersKey, setCurrentPage])
+  }, [filtersKey, setCurrentPage]);
 
   // Clamp page if it exceeds totalPages
   useEffect(() => {
     if (currentPage > totalPages && totalPages > 0 && !query.isLoading) {
-      setCurrentPage(totalPages)
+      setCurrentPage(totalPages);
     }
-  }, [currentPage, totalPages, query.isLoading, setCurrentPage])
+  }, [currentPage, totalPages, query.isLoading, setCurrentPage]);
 
-  const rangeFrom = (currentPage - 1) * pageSize + 1
-  const rangeTo = Math.min(currentPage * pageSize, totalCount)
-  const rangeText =
-    totalCount > 0 ? `${rangeFrom}-${rangeTo} of ${totalCount}` : '0 items'
+  const rangeFrom = (currentPage - 1) * pageSize + 1;
+  const rangeTo = Math.min(currentPage * pageSize, totalCount);
+  const rangeText = totalCount > 0 ? `${rangeFrom}-${rangeTo} of ${totalCount}` : "0 items";
 
   return {
     data,
@@ -88,5 +91,5 @@ export function usePaginatedReactQuery<T>(
     isLoading: query.isLoading,
     isFetching: query.isFetching,
     rangeText,
-  }
+  };
 }

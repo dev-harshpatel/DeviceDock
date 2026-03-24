@@ -13,7 +13,16 @@
     "migrate:record": "tsx supabase/scripts/migrate.ts record",
     "reset-inventory": "tsx supabase/scripts/reset-inventory.ts",
     "seed": "tsx supabase/scripts/seed.ts",
-    "seed:super-admin": "tsx supabase/scripts/seed-super-admin.ts"
+    "seed:inventory": "tsx supabase/scripts/seed-inventory.ts",
+    "seed:super-admin": "tsx supabase/scripts/seed-super-admin.ts",
+    "prepare": "husky",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,mjs,cjs,json,css,md,mdx,yml,yaml}": [
+      "prettier --write"
+    ]
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -88,11 +97,15 @@
     "autoprefixer": "^10.4.21",
     "dotenv": "^17.2.3",
     "eslint": "^9.32.0",
+    "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^15.15.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
     "pg": "^8.18.0",
     "postcss": "^8.5.6",
+    "prettier": "^3.8.1",
     "tsx": "^4.19.2",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.38.0"

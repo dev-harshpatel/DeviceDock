@@ -7,13 +7,8 @@ import { useUserProfile } from "@/contexts/UserProfileContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { PasswordInput } from "@/components/ui/password-input";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { TOAST_MESSAGES } from "@/lib/constants/toast-messages";
@@ -64,8 +59,7 @@ export default function ResetPasswordPage() {
       }
       router.refresh();
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : TOAST_MESSAGES.PASSWORD_RESET_FAILED;
+      const message = error instanceof Error ? error.message : TOAST_MESSAGES.PASSWORD_RESET_FAILED;
       toast.error(message);
     } finally {
       setIsLoading(false);
@@ -87,8 +81,8 @@ export default function ResetPasswordPage() {
           <CardHeader>
             <CardTitle>Invalid or Expired Link</CardTitle>
             <CardDescription>
-              This password reset link has expired or has already been used.
-              Please request a new one from the login page.
+              This password reset link has expired or has already been used. Please request a new
+              one from the login page.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -117,9 +111,8 @@ export default function ResetPasswordPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="new-password">New Password</Label>
-              <Input
+              <PasswordInput
                 id="new-password"
-                type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter new password"
@@ -131,9 +124,8 @@ export default function ResetPasswordPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="confirm-password">Confirm Password</Label>
-              <Input
+              <PasswordInput
                 id="confirm-password"
-                type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Confirm new password"

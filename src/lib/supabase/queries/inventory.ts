@@ -93,11 +93,11 @@ function applyInventoryFilters(query: any, filters: InventoryFilters) {
 export async function fetchPaginatedInventory(
   filters: InventoryFilters,
   range: { from: number; to: number },
-  options?: { showInactive?: boolean; includeAdminFields?: boolean; companyId?: string }
+  options?: { showInactive?: boolean; includeAdminFields?: boolean; companyId?: string },
 ): Promise<PaginatedResult<InventoryItem>> {
-  const fields = options?.includeAdminFields
-    ? INVENTORY_ADMIN_FIELDS
-    : INVENTORY_PUBLIC_FIELDS;
+  const fields = options?.includeAdminFields ? INVENTORY_ADMIN_FIELDS : INVENTORY_PUBLIC_FIELDS;
+
+  console.log("[fetchPaginatedInventory] companyId:", options?.companyId, "range:", range);
 
   let query = supabase
     .from("inventory")
@@ -117,8 +117,19 @@ export async function fetchPaginatedInventory(
   query = query.range(range.from, range.to);
 
   const { data, count, error } = await query;
-  if (error) throw error;
 
+  if (error) {
+    console.error(
+      "[fetchPaginatedInventory] Supabase error:",
+      error.code,
+      error.message,
+      error.details,
+      error.hint,
+    );
+    throw error;
+  }
+
+  console.log("[fetchPaginatedInventory] returned rows:", data?.length ?? 0, "total count:", count);
   return {
     data: (data || []).map(dbRowToInventoryItem),
     count: count || 0,
@@ -162,11 +173,9 @@ export async function fetchFilterOptions(companyId?: string): Promise<{
 
 export async function fetchAllFilteredInventory(
   filters: InventoryFilters,
-  options?: { showInactive?: boolean; includeAdminFields?: boolean; companyId?: string }
+  options?: { showInactive?: boolean; includeAdminFields?: boolean; companyId?: string },
 ): Promise<InventoryItem[]> {
-  const fields = options?.includeAdminFields
-    ? INVENTORY_ADMIN_FIELDS
-    : INVENTORY_PUBLIC_FIELDS;
+  const fields = options?.includeAdminFields ? INVENTORY_ADMIN_FIELDS : INVENTORY_PUBLIC_FIELDS;
 
   let query = supabase
     .from("inventory")
@@ -194,7 +203,7 @@ export async function fetchAllFilteredInventory(
  */
 export async function fetchInventoryByIds(
   itemIds: string[],
-  companyId?: string
+  companyId?: string,
 ): Promise<InventoryItem[]> {
   if (itemIds.length === 0) return [];
 

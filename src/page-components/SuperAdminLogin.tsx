@@ -7,13 +7,8 @@ import { supabase } from "@/lib/supabase/client/browser";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { PasswordInput } from "@/components/ui/password-input";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Loader2, ShieldCheck } from "lucide-react";
 
@@ -47,8 +42,7 @@ export default function SuperAdminLogin() {
         }
       }
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Sign in failed";
+      const message = error instanceof Error ? error.message : "Sign in failed";
       toast.error(message);
       setPassword("");
     } finally {
@@ -83,9 +77,8 @@ export default function SuperAdminLogin() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="sa-password">Password</Label>
-              <Input
+              <PasswordInput
                 id="sa-password"
-                type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter password"

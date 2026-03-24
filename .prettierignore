@@ -1,0 +1,11 @@
+.husky
+node_modules
+.next
+out
+build
+dist
+coverage
+package-lock.json
+*.min.js
+.env
+.env.*

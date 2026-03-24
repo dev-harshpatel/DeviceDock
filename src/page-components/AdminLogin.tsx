@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase/client/browser";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { TOAST_MESSAGES } from "@/lib/constants/toast-messages";
@@ -38,8 +39,7 @@ export default function AdminLogin() {
       if (error) throw error;
       toast.success("Confirmation email sent! Please check your inbox.");
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to resend email";
+      const message = error instanceof Error ? error.message : "Failed to resend email";
       toast.error(message);
     } finally {
       setIsResending(false);
@@ -55,8 +55,7 @@ export default function AdminLogin() {
       setResetEmailSent(true);
       toast.success(TOAST_MESSAGES.PASSWORD_RESET_EMAIL_SENT);
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : TOAST_MESSAGES.PASSWORD_RESET_FAILED;
+      const message = error instanceof Error ? error.message : TOAST_MESSAGES.PASSWORD_RESET_FAILED;
       toast.error(message);
     } finally {
       setIsSendingReset(false);
@@ -87,13 +86,14 @@ export default function AdminLogin() {
         } else {
           // No active company membership
           await signOut();
-          toast.error("No active company found for your account. Please contact your administrator.");
+          toast.error(
+            "No active company found for your account. Please contact your administrator.",
+          );
           setPassword("");
         }
       }
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : TOAST_MESSAGES.LOGIN_FAILED;
+      const errorMessage = error instanceof Error ? error.message : TOAST_MESSAGES.LOGIN_FAILED;
       if (
         error instanceof Error &&
         (error.message.toLowerCase().includes("email not confirmed") ||
@@ -116,20 +116,15 @@ export default function AdminLogin() {
             <Package className="h-6 w-6 text-primary" />
           </div>
           <CardTitle className="text-xl">DeviceDock</CardTitle>
-          <CardDescription>
-            Sign in to your inventory portal
-          </CardDescription>
+          <CardDescription>Sign in to your inventory portal</CardDescription>
         </CardHeader>
         <CardContent>
           {showEmailNotConfirmed ? (
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground text-center">
-                Your email address hasn't been confirmed yet. We've sent a
-                confirmation link to{" "}
-                <span className="font-medium text-foreground break-all">
-                  {email}
-                </span>
-                . Check your inbox and spam folder, or request a new link below.
+                Your email address hasn't been confirmed yet. We've sent a confirmation link to{" "}
+                <span className="font-medium text-foreground break-all">{email}</span>. Check your
+                inbox and spam folder, or request a new link below.
               </p>
               <div className="flex flex-col gap-2">
                 <Button
@@ -161,10 +156,8 @@ export default function AdminLogin() {
                 <div className="space-y-3">
                   <p className="text-sm text-muted-foreground text-center">
                     We've sent a password reset link to{" "}
-                    <span className="font-medium text-foreground break-all">
-                      {email}
-                    </span>
-                    . Check your inbox and spam folder.
+                    <span className="font-medium text-foreground break-all">{email}</span>. Check
+                    your inbox and spam folder.
                   </p>
                   <Button
                     variant="outline"
@@ -192,11 +185,7 @@ export default function AdminLogin() {
                     />
                   </div>
                   <div className="flex flex-col gap-2">
-                    <Button
-                      type="submit"
-                      className="w-full"
-                      disabled={isSendingReset}
-                    >
+                    <Button type="submit" className="w-full" disabled={isSendingReset}>
                       {isSendingReset ? (
                         <>
                           <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -244,9 +233,8 @@ export default function AdminLogin() {
                     Forgot password?
                   </button>
                 </div>
-                <Input
+                <PasswordInput
                   id="login-password"
-                  type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter password"

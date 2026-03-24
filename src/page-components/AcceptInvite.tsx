@@ -1,16 +1,17 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { toast } from 'sonner';
-import { Building2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { supabase } from '@/lib/supabase/client/browser';
-import { ROLE_LABELS } from '@/types/company';
-import type { CompanyRole } from '@/types/company';
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { Building2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { supabase } from "@/lib/supabase/client/browser";
+import { ROLE_LABELS } from "@/types/company";
+import type { CompanyRole } from "@/types/company";
 
 interface AcceptInviteProps {
   token: string;
@@ -34,39 +35,39 @@ export default function AcceptInvite({
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
 
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [signInPassword, setSignInPassword] = useState('');
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [signInPassword, setSignInPassword] = useState("");
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!firstName.trim() || !lastName.trim()) {
-      toast.error('Please enter your first and last name');
+      toast.error("Please enter your first and last name");
       return;
     }
     if (password.length < 8) {
-      toast.error('Password must be at least 8 characters');
+      toast.error("Password must be at least 8 characters");
       return;
     }
     if (password !== confirmPassword) {
-      toast.error('Passwords do not match');
+      toast.error("Passwords do not match");
       return;
     }
 
     setIsLoading(true);
     try {
       // Step 1: Create the account via the API
-      const res = await fetch('/api/invite/accept', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, mode: 'signup', firstName, lastName, password }),
+      const res = await fetch("/api/invite/accept", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, mode: "signup", firstName, lastName, password }),
       });
 
       const data = await res.json();
       if (!res.ok) {
-        toast.error(data.error ?? 'Failed to accept invitation');
+        toast.error(data.error ?? "Failed to accept invitation");
         return;
       }
 
@@ -79,14 +80,14 @@ export default function AcceptInvite({
       if (signInError) {
         // Account was created but sign-in failed; send to login
         toast.success(`Welcome to ${companyName}! Please sign in to continue.`);
-        router.push('/login');
+        router.push("/login");
         return;
       }
 
       toast.success(`Welcome to ${companyName}!`);
       router.push(`/${data.slug}/dashboard`);
     } catch {
-      toast.error('Something went wrong. Please try again.');
+      toast.error("Something went wrong. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -95,7 +96,7 @@ export default function AcceptInvite({
   const handleSignin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!signInPassword) {
-      toast.error('Please enter your password');
+      toast.error("Please enter your password");
       return;
     }
 
@@ -108,27 +109,27 @@ export default function AcceptInvite({
       });
 
       if (signInError) {
-        toast.error('Invalid password. Please try again.');
+        toast.error("Invalid password. Please try again.");
         return;
       }
 
       // Step 2: Accept the invitation (API reads user from session cookie)
-      const res = await fetch('/api/invite/accept', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, mode: 'signin' }),
+      const res = await fetch("/api/invite/accept", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, mode: "signin" }),
       });
 
       const data = await res.json();
       if (!res.ok) {
-        toast.error(data.error ?? 'Failed to accept invitation');
+        toast.error(data.error ?? "Failed to accept invitation");
         return;
       }
 
       toast.success(`Welcome to ${companyName}!`);
       router.push(`/${data.slug}/dashboard`);
     } catch {
-      toast.error('Something went wrong. Please try again.');
+      toast.error("Something went wrong. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -142,7 +143,7 @@ export default function AcceptInvite({
         icon="✅"
         title="Invitation Already Used"
         message="This invitation has already been accepted. If you have an account, sign in to access your company dashboard."
-        action={{ label: 'Go to Sign In', href: '/login' }}
+        action={{ label: "Go to Sign In", href: "/login" }}
       />
     );
   }
@@ -172,16 +173,13 @@ export default function AcceptInvite({
           <div>
             <h1 className="text-2xl font-semibold text-foreground">You&apos;re invited!</h1>
             <p className="text-muted-foreground text-sm mt-1">
-              Join{' '}
-              <span className="font-semibold text-foreground">{companyName}</span>
-              {' '}as{' '}
+              Join <span className="font-semibold text-foreground">{companyName}</span> as{" "}
               <span className="font-semibold text-foreground">
                 {ROLE_LABELS[role as CompanyRole] ?? role}
               </span>
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              Invite sent to:{' '}
-              <span className="font-mono text-foreground">{inviteeEmail}</span>
+              Invite sent to: <span className="font-mono text-foreground">{inviteeEmail}</span>
             </p>
           </div>
         </div>
@@ -190,8 +188,12 @@ export default function AcceptInvite({
         <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
           <Tabs defaultValue="signup">
             <TabsList className="w-full mb-5">
-              <TabsTrigger value="signup" className="flex-1">New Account</TabsTrigger>
-              <TabsTrigger value="signin" className="flex-1">Existing Account</TabsTrigger>
+              <TabsTrigger value="signup" className="flex-1">
+                New Account
+              </TabsTrigger>
+              <TabsTrigger value="signin" className="flex-1">
+                Existing Account
+              </TabsTrigger>
             </TabsList>
 
             {/* Create new account */}
@@ -225,9 +227,8 @@ export default function AcceptInvite({
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="password">Password</Label>
-                  <Input
+                  <PasswordInput
                     id="password"
-                    type="password"
                     placeholder="At least 8 characters"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -236,9 +237,8 @@ export default function AcceptInvite({
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="confirmPassword">Confirm Password</Label>
-                  <Input
+                  <PasswordInput
                     id="confirmPassword"
-                    type="password"
                     placeholder="Repeat your password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
@@ -246,7 +246,7 @@ export default function AcceptInvite({
                   />
                 </div>
                 <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading ? 'Creating Account…' : 'Accept & Create Account'}
+                  {isLoading ? "Creating Account…" : "Accept & Create Account"}
                 </Button>
               </form>
             </TabsContent>
@@ -260,9 +260,8 @@ export default function AcceptInvite({
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="signInPassword">Password</Label>
-                  <Input
+                  <PasswordInput
                     id="signInPassword"
-                    type="password"
                     placeholder="Your existing password"
                     value={signInPassword}
                     onChange={(e) => setSignInPassword(e.target.value)}
@@ -270,7 +269,7 @@ export default function AcceptInvite({
                   />
                 </div>
                 <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading ? 'Joining…' : 'Sign In & Accept Invitation'}
+                  {isLoading ? "Joining…" : "Sign In & Accept Invitation"}
                 </Button>
               </form>
             </TabsContent>
