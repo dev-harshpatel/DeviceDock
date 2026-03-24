@@ -1,0 +1,40 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(findstr:*)",
+      "Bash(npx tsc:*)",
+      "Bash(dir:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(wc:*)",
+      "Bash(npm run build:*)",
+      "Bash(npx next build:*)",
+      "Bash(echo Exit: $?:*)",
+      "mcp__claude_ai_Notion__notion-fetch",
+      "Bash(node -e \"const p = require\\(''./package.json''\\); console.log\\(''tailwind:'', p.dependencies?.tailwindcss || p.devDependencies?.tailwindcss\\)\")",
+      "Bash(node -e \"const p = require\\(''./package.json''\\); console.log\\(JSON.stringify\\(p.devDependencies, null, 2\\)\\)\")",
+      "Bash(node -e \"const p = require\\(''./package.json''\\); console.log\\(''tailwind:'', p.dependencies?.[''@tailwindcss/vite''] || p.dependencies?.tailwindcss || ''check deps''\\); console.log\\(Object.keys\\(p.dependencies || {}\\).filter\\(k => k.includes\\(''tailwind''\\)\\)\\)\")",
+      "Bash(node -e \"const p = require\\(''./package.json''\\); console.log\\(p.dependencies[''@tailwindcss/postcss'']\\)\")",
+      "Bash(claude doctor:*)",
+      "Bash(xargs cat:*)",
+      "Bash(xargs ls:*)",
+      "Bash(mkdir -p \"D:/Projects/learning-projects/inventory-managment/devicedock/app/[companySlug]/dashboard\")",
+      "Bash(mkdir -p \"D:/Projects/learning-projects/inventory-managment/devicedock/app/[companySlug]/inventory\")",
+      "Bash(mkdir -p \"D:/Projects/learning-projects/inventory-managment/devicedock/app/[companySlug]/orders/[orderId]/invoice\")",
+      "Bash(mkdir -p \"D:/Projects/learning-projects/inventory-managment/devicedock/app/[companySlug]/products\")",
+      "Bash(mkdir -p \"D:/Projects/learning-projects/inventory-managment/devicedock/app/[companySlug]/upload-products\")",
+      "Bash(for dir:*)",
+      "Bash(do echo:*)",
+      "Read(//d/Projects/learning-projects/inventory-managment/devicedock/app/**)",
+      "Bash(done)",
+      "Bash(mkdir -p \"D:\\\\Projects\\\\learning-projects\\\\inventory-managment\\\\devicedock\\\\app\\\\api\\\\company\\\\members\\\\[userId]\")",
+      "Bash(mkdir -p \"D:\\\\Projects\\\\learning-projects\\\\inventory-managment\\\\devicedock\\\\app\\\\api\\\\company\\\\invitations\\\\[id]\")",
+      "Bash(mkdir -p \"D:\\\\Projects\\\\learning-projects\\\\inventory-managment\\\\devicedock\\\\app\\\\invite\\\\[token]\")",
+      "Bash(npm install:*)"
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "node -e \"let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{const j=JSON.parse(d);const m=j.model?.display_name||'Claude';const u=j.context_window?.used_percentage||0;console.log(m+' | Context: '+u.toFixed(0)+'%')}catch{console.log('Claude')}})\""
+  }
+}

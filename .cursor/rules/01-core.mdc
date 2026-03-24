@@ -1,0 +1,17 @@
+---
+description: Core implementation standards for this repository
+alwaysApply: true
+---
+
+Follow all instructions in:
+- `AGENTS.md`
+- `docs/ARCHITECTURE.md`
+
+Mandatory:
+- Keep existing tech stack (Next.js + TS + Supabase + shadcn/Tailwind).
+- Do not introduce breaking behavior outside task scope.
+- Use additive SQL migrations only; never rewrite historical migrations.
+- Keep code modular and typed; avoid `any` unless unavoidable.
+- Preserve folder boundaries and existing architecture patterns.
+- Run lint checks for touched files before completing substantive edits.
+

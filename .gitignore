@@ -1,0 +1,48 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# Next.js
+.next
+out
+build
+next-env.d.ts
+
+# Lock files (keep only one)
+bun.lockb
+yarn.lock
+pnpm-lock.yaml
+
+# Environment files (including variants)
+*.local
+_env.local
+.env*
+
+# Production data dumps (never commit)
+prod_public_data.sql
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

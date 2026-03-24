@@ -1,0 +1,3 @@
+
+# PROD_CONNECTION_STRING=postgresql://postgres:JycwSKe01p4zjDGP@db.ezfcguwigdfbhycufgtd.supabase.co:5432/postgres
+# DEV_CONNECTION_STRING=postgresql://postgres:XlmSTh4QFstAPmGu@db.qhzmlezvvyhhxtiytsob.supabase.co:5432/postgres

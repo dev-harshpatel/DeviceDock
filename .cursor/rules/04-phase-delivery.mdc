@@ -1,0 +1,15 @@
+---
+description: Phase-by-phase implementation protocol
+alwaysApply: true
+---
+
+Follow phased execution from `docs/ADMIN_REBUILD_PHASE_PLAN.md`.
+
+Delivery protocol:
+1. Confirm requested phase scope.
+2. Implement that phase end-to-end (schema/API/UI/validation).
+3. Validate and summarize changes + test steps.
+4. Pause for approval before next phase.
+
+Do not partially implement multiple phases in one pass unless user explicitly asks.
+

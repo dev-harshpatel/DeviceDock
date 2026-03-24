@@ -1,0 +1,18 @@
+---
+description: SaaS multi-tenant and RBAC enforcement rules
+alwaysApply: true
+---
+
+Follow:
+- `docs/SAAS_TENANCY_MODEL.md`
+- `docs/RBAC_AUTHORIZATION.md`
+- `docs/ADMIN_REBUILD_PHASE_PLAN.md`
+
+Mandatory tenancy rules:
+- Build single-tenant-now but multi-tenant-ready.
+- Enforce tenant/company isolation on reads, writes, and aggregates.
+- Validate role + tenant ownership on every privileged mutation.
+- Respect role hierarchy including `super_admin`.
+- Never allow cross-tenant data leakage.
+- Include tenant context in audit/log-sensitive operations.
+

@@ -1,0 +1,15 @@
+---
+description: Global UI/UX and responsive standards
+alwaysApply: true
+---
+
+Follow `docs/DESIGN.md` for every UI change.
+
+Mandatory UI rules:
+- Use Black/Blue/White palette with super-light-blue accents (no new purple accents).
+- Build responsive UI for mobile, tablet, laptop, and desktop.
+- For data tables, provide proper mobile restructuring (cards/stacked rows), not overflow-only.
+- Think like a product designer for card hierarchy and scanability.
+- Theme setup must use global CSS variables in `global.css` for both light and dark modes.
+- Avoid hardcoded hex values when theme tokens exist.
+

@@ -1,0 +1,30 @@
+/**
+ * Application-wide constants
+ * Centralized constants to avoid hardcoded values throughout the codebase
+ */
+
+// Timezone
+export const ONTARIO_TIMEZONE = "America/Toronto";
+
+// Company Information (fallback defaults)
+export const DEFAULT_COMPANY_NAME = "HARI OM TRADERS LTD.";
+export const DEFAULT_COMPANY_ADDRESS = "48 Pickard Lane, Brampton, ON, L6Y 2M5";
+
+// Search & Debounce
+export const SEARCH_DEBOUNCE_MS = 300;
+
+// Blob Cleanup Timeout
+export const BLOB_CLEANUP_TIMEOUT_MS = 200;
+
+// Bulk Operations
+export const BULK_INSERT_BATCH_SIZE = 50;
+
+// Payment Methods
+export const PAYMENT_METHODS = ["EMT", "WIRE", "CHQ", "CASH"] as const;
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+
+// Inventory Sort Order
+export const INVENTORY_SORT_ORDER = {
+  created_at: { ascending: true },
+  id: { ascending: true },
+} as const;
