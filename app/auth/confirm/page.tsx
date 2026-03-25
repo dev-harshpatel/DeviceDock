@@ -27,7 +27,10 @@ const getPostAuthDestination = async (): Promise<string> => {
     .eq("user_id", user.id)
     .maybeSingle();
 
-  if (superAdminResult.data?.user_id) {
+  const superAdminData = superAdminResult.data as {
+    user_id: string;
+  } | null;
+  if (superAdminData?.user_id) {
     return "/superadmin/dashboard";
   }
 

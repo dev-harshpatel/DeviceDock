@@ -151,7 +151,8 @@ export async function updateSession(request: NextRequest) {
           .limit(1)
           .single();
 
-        const slug = (membership?.companies as any)?.slug;
+        const row = membership as { companies: { slug: string } | null } | null;
+        const slug = row?.companies?.slug;
         if (slug) {
           const url = request.nextUrl.clone();
           url.pathname = `/${slug}/dashboard`;
@@ -191,7 +192,8 @@ export async function updateSession(request: NextRequest) {
         .limit(1)
         .single();
 
-      const slug = (membership?.companies as any)?.slug;
+      const loginRow = membership as { companies: { slug: string } | null } | null;
+      const slug = loginRow?.companies?.slug;
       if (slug) {
         const url = request.nextUrl.clone();
         url.pathname = `/${slug}/dashboard`;
