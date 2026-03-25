@@ -78,7 +78,8 @@ export default function AdminLogin() {
           .limit(1)
           .single();
 
-        const slug = (membership?.companies as any)?.slug;
+        const row = membership as { companies: { slug: string } | null } | null;
+        const slug = row?.companies?.slug;
 
         if (slug) {
           toast.success(TOAST_MESSAGES.LOGIN_SUCCESS);

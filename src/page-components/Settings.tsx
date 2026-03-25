@@ -16,26 +16,17 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { TOAST_MESSAGES } from "@/lib/constants/toast-messages";
-import {
-  Bell,
-  Building2,
-  Loader2,
-  Palette,
-  Save,
-  Shield,
-  Upload,
-  User,
-  X,
-} from "lucide-react";
+import { Bell, Building2, Loader2, Palette, Save, Upload, User, X } from "lucide-react";
 import { supabase } from "@/lib/supabase/client/browser";
 import {
-  ONTARIO_TIMEZONE,
-  DEFAULT_COMPANY_NAME,
-  DEFAULT_COMPANY_ADDRESS,
-} from "@/lib/constants";
+  COMPANY_LOGOS_BUCKET,
+  getStorageObjectPathFromPublicUrl,
+} from "@/lib/supabase/storage-path";
+import { useCompany } from "@/contexts/CompanyContext";
+import { useNotificationSettings } from "@/contexts/NotificationSettingsContext";
+import { ONTARIO_TIMEZONE } from "@/lib/constants";
 
-interface CompanySettings {
-  id: string;
+interface CompanySettingsForm {
   companyName: string;
   companyAddress: string;
   hstNumber: string;
@@ -44,87 +35,161 @@ interface CompanySettings {
 
 export default function Settings() {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { company, companyId } = useCompany();
 
-  const [settings, setSettings] = useState({
+  const {
+    pushNotificationsEnabled,
+    lowStockThreshold,
+    criticalStockThreshold,
+    isLoaded: notifLoaded,
+    updateSettings,
+  } = useNotificationSettings();
+
+  const [profileSettings, setProfileSettings] = useState({
     email: "",
     currency: "CAD",
     timezone: ONTARIO_TIMEZONE,
-    lowStockThreshold: 5,
-    criticalStockThreshold: 2,
-    emailAlerts: true,
-    pushNotifications: true,
-    dailyDigest: false,
-    autoRefreshInterval: 5,
-    twoFactorAuth: false,
   });
 
-  const [companySettings, setCompanySettings] = useState<CompanySettings>({
-    id: "",
-    companyName: DEFAULT_COMPANY_NAME,
-    companyAddress: DEFAULT_COMPANY_ADDRESS,
+  const [companyForm, setCompanyForm] = useState<CompanySettingsForm>({
+    companyName: company.name,
+    companyAddress: "",
     hstNumber: "",
     logoUrl: null,
   });
 
+  const [notifSettings, setNotifSettings] = useState({
+    pushNotifications: true,
+    lowStockThreshold: 5,
+    criticalStockThreshold: 2,
+  });
+
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  /** Browser `<img>` cannot send auth; private buckets need a signed URL. */
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
   const [isSavingCompany, setIsSavingCompany] = useState(false);
+  const [isSavingNotifSettings, setIsSavingNotifSettings] = useState(false);
 
   // Load current user's email
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (data.user?.email) {
-        setSettings((s) => ({ ...s, email: data.user!.email! }));
+        setProfileSettings((s) => ({ ...s, email: data.user!.email! }));
       }
     });
   }, []);
 
-  // Load company settings
+  // Load company settings row (company_id scoped)
   useEffect(() => {
-    const loadCompanySettings = async () => {
+    if (!companyId) return;
+
+    const load = async () => {
       try {
-        const { data, error } = await supabase
+        const { data } = await supabase
           .from("company_settings")
-          .select("id, company_name, company_address, hst_number, logo_url")
-          .single();
+          .select("company_name, company_address, hst_number, logo_url")
+          .eq("company_id", companyId)
+          .maybeSingle();
 
-        if (!error && data) {
-          const companyData = data as {
-            id: string;
-            company_name: string | null;
-            company_address: string | null;
-            hst_number: string | null;
-            logo_url: string | null;
-          };
+        const row = data as {
+          company_name: string | null;
+          company_address: string | null;
+          hst_number: string | null;
+          logo_url: string | null;
+        } | null;
 
-          setCompanySettings({
-            id: companyData.id,
-            companyName: companyData.company_name || "",
-            companyAddress: companyData.company_address || "",
-            hstNumber: companyData.hst_number || "",
-            logoUrl: companyData.logo_url,
-          });
-        }
-      } catch (error) {
-        console.error("Error loading company settings:", error);
+        setCompanyForm({
+          // Fall back to companies.name so the field is never blank on first load
+          companyName: row?.company_name || company.name,
+          companyAddress: row?.company_address || "",
+          hstNumber: row?.hst_number || "",
+          logoUrl: row?.logo_url ?? null,
+        });
+      } catch {
+        // Leave form pre-filled with company.name on error
       }
     };
 
-    loadCompanySettings();
-  }, []);
+    load();
+  }, [companyId, company.name]);
 
-  const handleLogoUpload = async (
-    event: React.ChangeEvent<HTMLInputElement>
-  ) => {
+  // Resolve a display URL for the logo (signed URL works for private buckets).
+  useEffect(() => {
+    if (!companyForm.logoUrl) {
+      setLogoPreviewUrl(null);
+      return;
+    }
+
+    setLogoPreviewUrl(null);
+
+    const path = getStorageObjectPathFromPublicUrl(companyForm.logoUrl, COMPANY_LOGOS_BUCKET);
+
+    if (!path) {
+      setLogoPreviewUrl(companyForm.logoUrl);
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      const { data, error } = await supabase.storage
+        .from(COMPANY_LOGOS_BUCKET)
+        .createSignedUrl(path, 60 * 60 * 24);
+
+      if (cancelled) return;
+
+      if (!error && data?.signedUrl) {
+        setLogoPreviewUrl(data.signedUrl);
+        return;
+      }
+
+      setLogoPreviewUrl(companyForm.logoUrl);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [companyForm.logoUrl]);
+
+  // Sync notification/inventory form from context once loaded
+  useEffect(() => {
+    if (notifLoaded) {
+      setNotifSettings({
+        pushNotifications: pushNotificationsEnabled,
+        lowStockThreshold,
+        criticalStockThreshold,
+      });
+    }
+  }, [notifLoaded, pushNotificationsEnabled, lowStockThreshold, criticalStockThreshold]);
+
+  const handleClickLogoUpload = () => {
+    if (companyForm.logoUrl) {
+      toast.error(TOAST_MESSAGES.SETTINGS_LOGO_REMOVE_BEFORE_UPLOAD);
+      return;
+    }
+    fileInputRef.current?.click();
+  };
+
+  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // Validate file type
+    if (!companyId) {
+      toast.error("Company not loaded. Please refresh and try again.");
+      return;
+    }
+
+    if (companyForm.logoUrl) {
+      toast.error(TOAST_MESSAGES.SETTINGS_LOGO_REMOVE_BEFORE_UPLOAD);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
     if (!file.type.startsWith("image/")) {
       toast.error(TOAST_MESSAGES.SETTINGS_IMAGE_REQUIRED);
       return;
     }
 
-    // Validate file size (max 2MB)
     if (file.size > 2 * 1024 * 1024) {
       toast.error(TOAST_MESSAGES.SETTINGS_IMAGE_SIZE);
       return;
@@ -133,88 +198,56 @@ export default function Settings() {
     setIsUploadingLogo(true);
 
     try {
-      // Delete old logo if exists
-      if (companySettings.logoUrl) {
-        const oldPath = companySettings.logoUrl.split("/").pop();
-        if (oldPath) {
-          await supabase.storage.from("company-logos").remove([oldPath]);
-        }
-      }
-
-      // Upload new logo
       const fileExt = file.name.split(".").pop();
-      const fileName = `logo-${Date.now()}.${fileExt}`;
+      const fileName = `${companyId}/logo-${Date.now()}.${fileExt}`;
       const { error: uploadError } = await supabase.storage
-        .from("company-logos")
-        .upload(fileName, file, {
-          cacheControl: "3600",
-          upsert: true,
-        });
+        .from(COMPANY_LOGOS_BUCKET)
+        .upload(fileName, file, { cacheControl: "3600", upsert: true });
 
-      if (uploadError) {
-        throw uploadError;
-      }
+      if (uploadError) throw uploadError;
 
-      // Get public URL
-      const { data: urlData } = supabase.storage
-        .from("company-logos")
-        .getPublicUrl(fileName);
+      const { data: urlData } = supabase.storage.from(COMPANY_LOGOS_BUCKET).getPublicUrl(fileName);
 
-      // Update company settings with new logo URL
-      const { error: updateError } = await supabase
-        .from("company_settings")
-        .update({ logo_url: urlData.publicUrl } as never)
-        .eq("id", companySettings.id);
+      // Persist the new logo URL immediately via upsert
+      const { error: upsertError } = await supabase.from("company_settings").upsert(
+        {
+          company_id: companyId,
+          logo_url: urlData.publicUrl,
+        } as never,
+        { onConflict: "company_id" },
+      );
 
-      if (updateError) {
-        throw updateError;
-      }
+      if (upsertError) throw upsertError;
 
-      setCompanySettings({
-        ...companySettings,
-        logoUrl: urlData.publicUrl,
-      });
-
+      setCompanyForm((prev) => ({ ...prev, logoUrl: urlData.publicUrl }));
       toast.success(TOAST_MESSAGES.SETTINGS_LOGO_UPLOADED);
     } catch (error) {
       console.error("Error uploading logo:", error);
       toast.error("Failed to upload logo");
     } finally {
       setIsUploadingLogo(false);
-      // Reset file input
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
   const handleRemoveLogo = async () => {
-    if (!companySettings.logoUrl) return;
+    if (!companyForm.logoUrl || !companyId) return;
 
     setIsUploadingLogo(true);
 
     try {
-      // Delete logo from storage
-      const logoPath = companySettings.logoUrl.split("/").pop();
+      const logoPath = getStorageObjectPathFromPublicUrl(companyForm.logoUrl, COMPANY_LOGOS_BUCKET);
       if (logoPath) {
-        await supabase.storage.from("company-logos").remove([logoPath]);
+        await supabase.storage.from(COMPANY_LOGOS_BUCKET).remove([logoPath]);
       }
 
-      // Update company settings
       const { error } = await supabase
         .from("company_settings")
-        .update({ logo_url: null } as never)
-        .eq("id", companySettings.id);
+        .upsert({ company_id: companyId, logo_url: null } as never, { onConflict: "company_id" });
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
-      setCompanySettings({
-        ...companySettings,
-        logoUrl: null,
-      });
-
+      setCompanyForm((prev) => ({ ...prev, logoUrl: null }));
       toast.success(TOAST_MESSAGES.SETTINGS_LOGO_REMOVED);
     } catch (error) {
       console.error("Error removing logo:", error);
@@ -228,19 +261,17 @@ export default function Settings() {
     setIsSavingCompany(true);
 
     try {
-      const { error } = await supabase
-        .from("company_settings")
-        .update({
-          company_name: companySettings.companyName,
-          company_address: companySettings.companyAddress,
-          hst_number: companySettings.hstNumber,
-          updated_at: new Date().toISOString(),
-        } as never)
-        .eq("id", companySettings.id);
+      const { error } = await supabase.from("company_settings").upsert(
+        {
+          company_id: companyId,
+          company_name: companyForm.companyName,
+          company_address: companyForm.companyAddress,
+          hst_number: companyForm.hstNumber,
+        } as never,
+        { onConflict: "company_id" },
+      );
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
       toast.success("Company settings saved successfully");
     } catch (error) {
@@ -251,8 +282,36 @@ export default function Settings() {
     }
   };
 
-  const handleSave = () => {
-    toast.success(TOAST_MESSAGES.SETTINGS_SAVED);
+  const handleSaveNotifSettings = async () => {
+    setIsSavingNotifSettings(true);
+
+    try {
+      const { error } = await supabase.from("company_settings").upsert(
+        {
+          company_id: companyId,
+          push_notifications_enabled: notifSettings.pushNotifications,
+          low_stock_threshold: notifSettings.lowStockThreshold,
+          critical_stock_threshold: notifSettings.criticalStockThreshold,
+        } as never,
+        { onConflict: "company_id" },
+      );
+
+      if (error) throw error;
+
+      // Propagate to context so the sidebar badge and Alerts page update immediately
+      updateSettings({
+        pushNotificationsEnabled: notifSettings.pushNotifications,
+        lowStockThreshold: notifSettings.lowStockThreshold,
+        criticalStockThreshold: notifSettings.criticalStockThreshold,
+      });
+
+      toast.success(TOAST_MESSAGES.SETTINGS_SAVED);
+    } catch (error) {
+      console.error("Error saving notification settings:", error);
+      toast.error("Failed to save settings");
+    } finally {
+      setIsSavingNotifSettings(false);
+    }
   };
 
   return (
@@ -273,12 +332,8 @@ export default function Settings() {
               <Building2 className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="font-semibold text-foreground">
-                Company Information
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                Details displayed on invoices
-              </p>
+              <h3 className="font-semibold text-foreground">Company Information</h3>
+              <p className="text-sm text-muted-foreground">Details displayed on invoices</p>
             </div>
           </div>
 
@@ -287,13 +342,19 @@ export default function Settings() {
             <div className="grid gap-2">
               <Label htmlFor="logo">Company Logo</Label>
               <div className="flex items-start gap-4">
-                {companySettings.logoUrl ? (
+                {companyForm.logoUrl ? (
                   <div className="relative">
-                    <img
-                      src={companySettings.logoUrl}
-                      alt="Company Logo"
-                      className="w-24 h-24 object-contain border border-border rounded-lg"
-                    />
+                    {!logoPreviewUrl ? (
+                      <div className="w-24 h-24 border border-border rounded-lg flex items-center justify-center bg-muted/50">
+                        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : (
+                      <img
+                        src={logoPreviewUrl}
+                        alt="Company Logo"
+                        className="w-24 h-24 object-contain border border-border rounded-lg bg-background"
+                      />
+                    )}
                     <Button
                       type="button"
                       size="icon"
@@ -322,7 +383,7 @@ export default function Settings() {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={handleClickLogoUpload}
                     disabled={isUploadingLogo}
                     className="w-full sm:w-auto"
                   >
@@ -352,13 +413,8 @@ export default function Settings() {
               <Label htmlFor="companyName">Company Name</Label>
               <Input
                 id="companyName"
-                value={companySettings.companyName}
-                onChange={(e) =>
-                  setCompanySettings({
-                    ...companySettings,
-                    companyName: e.target.value,
-                  })
-                }
+                value={companyForm.companyName}
+                onChange={(e) => setCompanyForm({ ...companyForm, companyName: e.target.value })}
                 className="bg-background"
               />
             </div>
@@ -368,13 +424,8 @@ export default function Settings() {
               <Label htmlFor="companyAddress">Company Address</Label>
               <Textarea
                 id="companyAddress"
-                value={companySettings.companyAddress}
-                onChange={(e) =>
-                  setCompanySettings({
-                    ...companySettings,
-                    companyAddress: e.target.value,
-                  })
-                }
+                value={companyForm.companyAddress}
+                onChange={(e) => setCompanyForm({ ...companyForm, companyAddress: e.target.value })}
                 className="bg-background min-h-[80px]"
               />
             </div>
@@ -384,24 +435,15 @@ export default function Settings() {
               <Label htmlFor="hstNumber">HST Number</Label>
               <Input
                 id="hstNumber"
-                value={companySettings.hstNumber}
-                onChange={(e) =>
-                  setCompanySettings({
-                    ...companySettings,
-                    hstNumber: e.target.value,
-                  })
-                }
+                value={companyForm.hstNumber}
+                onChange={(e) => setCompanyForm({ ...companyForm, hstNumber: e.target.value })}
                 className="bg-background"
                 placeholder="Optional"
               />
             </div>
 
-            {/* Save Company Settings Button */}
             <div className="flex justify-end pt-2">
-              <Button
-                onClick={handleSaveCompanySettings}
-                disabled={isSavingCompany}
-              >
+              <Button onClick={handleSaveCompanySettings} disabled={isSavingCompany}>
                 {isSavingCompany ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -426,9 +468,7 @@ export default function Settings() {
             </div>
             <div>
               <h3 className="font-semibold text-foreground">Profile</h3>
-              <p className="text-sm text-muted-foreground">
-                Your account details
-              </p>
+              <p className="text-sm text-muted-foreground">Your account details</p>
             </div>
           </div>
 
@@ -438,21 +478,17 @@ export default function Settings() {
               <Input
                 id="email"
                 type="email"
-                value={settings.email}
-                onChange={(e) =>
-                  setSettings({ ...settings, email: e.target.value })
-                }
-                className="bg-background"
+                value={profileSettings.email}
+                readOnly
+                className="bg-background text-muted-foreground cursor-default"
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label>Currency</Label>
                 <Select
-                  value={settings.currency}
-                  onValueChange={(v) =>
-                    setSettings({ ...settings, currency: v })
-                  }
+                  value={profileSettings.currency}
+                  onValueChange={(v) => setProfileSettings({ ...profileSettings, currency: v })}
                 >
                   <SelectTrigger className="bg-background">
                     <SelectValue />
@@ -468,24 +504,16 @@ export default function Settings() {
               <div className="grid gap-2">
                 <Label>Timezone</Label>
                 <Select
-                  value={settings.timezone}
-                  onValueChange={(v) =>
-                    setSettings({ ...settings, timezone: v })
-                  }
+                  value={profileSettings.timezone}
+                  onValueChange={(v) => setProfileSettings({ ...profileSettings, timezone: v })}
                 >
                   <SelectTrigger className="bg-background">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-card">
-                    <SelectItem value={ONTARIO_TIMEZONE}>
-                      Eastern (Toronto)
-                    </SelectItem>
-                    <SelectItem value="America/Vancouver">
-                      Pacific (Vancouver)
-                    </SelectItem>
-                    <SelectItem value="America/Chicago">
-                      Central (Chicago)
-                    </SelectItem>
+                    <SelectItem value={ONTARIO_TIMEZONE}>Eastern (Toronto)</SelectItem>
+                    <SelectItem value="America/Vancouver">Pacific (Vancouver)</SelectItem>
+                    <SelectItem value="America/Chicago">Central (Chicago)</SelectItem>
                     <SelectItem value="Europe/London">GMT (London)</SelectItem>
                   </SelectContent>
                 </Select>
@@ -509,58 +537,22 @@ export default function Settings() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-foreground">
-                  Email Alerts
-                </p>
+                <p className="text-sm font-medium text-foreground">Push Notifications</p>
                 <p className="text-xs text-muted-foreground">
-                  Get notified via email
+                  Show stock alerts in the sidebar bell icon
                 </p>
               </div>
               <Switch
-                checked={settings.emailAlerts}
+                checked={notifSettings.pushNotifications}
                 onCheckedChange={(v) =>
-                  setSettings({ ...settings, emailAlerts: v })
-                }
-              />
-            </div>
-            <Separator />
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-foreground">
-                  Push Notifications
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Browser notifications
-                </p>
-              </div>
-              <Switch
-                checked={settings.pushNotifications}
-                onCheckedChange={(v) =>
-                  setSettings({ ...settings, pushNotifications: v })
-                }
-              />
-            </div>
-            <Separator />
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-foreground">
-                  Daily Digest
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Receive a daily summary
-                </p>
-              </div>
-              <Switch
-                checked={settings.dailyDigest}
-                onCheckedChange={(v) =>
-                  setSettings({ ...settings, dailyDigest: v })
+                  setNotifSettings({ ...notifSettings, pushNotifications: v })
                 }
               />
             </div>
           </div>
         </div>
 
-        {/* Inventory Settings */}
+        {/* Inventory Thresholds */}
         <div className="bg-card rounded-lg border border-border shadow-soft p-6">
           <div className="flex items-center gap-3 mb-6">
             <div className="p-2 rounded-lg bg-accent text-accent-foreground">
@@ -568,9 +560,7 @@ export default function Settings() {
             </div>
             <div>
               <h3 className="font-semibold text-foreground">Inventory</h3>
-              <p className="text-sm text-muted-foreground">
-                Stock thresholds and display
-              </p>
+              <p className="text-sm text-muted-foreground">Stock alert thresholds</p>
             </div>
           </div>
 
@@ -580,110 +570,67 @@ export default function Settings() {
               <Input
                 id="low-stock"
                 type="number"
-                value={settings.lowStockThreshold || ""}
+                min={1}
+                value={notifSettings.lowStockThreshold || ""}
                 onChange={(e) => {
                   const val = e.target.value;
-                  setSettings({
-                    ...settings,
+                  setNotifSettings({
+                    ...notifSettings,
                     lowStockThreshold: val === "" ? 0 : parseInt(val),
                   });
                 }}
                 onBlur={() => {
-                  if (!settings.lowStockThreshold || settings.lowStockThreshold < 1) {
-                    setSettings({ ...settings, lowStockThreshold: 1 });
+                  if (!notifSettings.lowStockThreshold || notifSettings.lowStockThreshold < 1) {
+                    setNotifSettings({ ...notifSettings, lowStockThreshold: 1 });
                   }
                 }}
                 className="bg-background"
               />
-              <p className="text-xs text-muted-foreground">
-                Show warning below this quantity
-              </p>
+              <p className="text-xs text-muted-foreground">Show warning below this quantity</p>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="critical-stock">Critical Stock Threshold</Label>
               <Input
                 id="critical-stock"
                 type="number"
-                value={settings.criticalStockThreshold || ""}
+                min={1}
+                value={notifSettings.criticalStockThreshold || ""}
                 onChange={(e) => {
                   const val = e.target.value;
-                  setSettings({
-                    ...settings,
+                  setNotifSettings({
+                    ...notifSettings,
                     criticalStockThreshold: val === "" ? 0 : parseInt(val),
                   });
                 }}
                 onBlur={() => {
-                  if (!settings.criticalStockThreshold || settings.criticalStockThreshold < 1) {
-                    setSettings({ ...settings, criticalStockThreshold: 1 });
+                  if (
+                    !notifSettings.criticalStockThreshold ||
+                    notifSettings.criticalStockThreshold < 1
+                  ) {
+                    setNotifSettings({ ...notifSettings, criticalStockThreshold: 1 });
                   }
                 }}
                 className="bg-background"
               />
-              <p className="text-xs text-muted-foreground">
-                Show critical below this quantity
-              </p>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="refresh">Auto-Refresh Interval (minutes)</Label>
-              <Input
-                id="refresh"
-                type="number"
-                value={settings.autoRefreshInterval || ""}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setSettings({
-                    ...settings,
-                    autoRefreshInterval: val === "" ? 0 : parseInt(val),
-                  });
-                }}
-                onBlur={() => {
-                  if (!settings.autoRefreshInterval || settings.autoRefreshInterval < 1) {
-                    setSettings({ ...settings, autoRefreshInterval: 1 });
-                  }
-                }}
-                className="bg-background"
-              />
+              <p className="text-xs text-muted-foreground">Show critical below this quantity</p>
             </div>
           </div>
         </div>
 
-        {/* Security Section */}
-        <div className="bg-card rounded-lg border border-border shadow-soft p-6">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 rounded-lg bg-success/10 text-success">
-              <Shield className="h-5 w-5" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-foreground">Security</h3>
-              <p className="text-sm text-muted-foreground">
-                Account security settings
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-foreground">
-                Two-Factor Authentication
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Add an extra layer of security
-              </p>
-            </div>
-            <Switch
-              checked={settings.twoFactorAuth}
-              onCheckedChange={(v) =>
-                setSettings({ ...settings, twoFactorAuth: v })
-              }
-            />
-          </div>
-        </div>
-
-        {/* Save Button */}
+        {/* Save Notifications + Thresholds */}
         <div className="flex justify-end">
-          <Button onClick={handleSave}>
-            <Save className="h-4 w-4 mr-2" />
-            Save Changes
+          <Button onClick={handleSaveNotifSettings} disabled={isSavingNotifSettings}>
+            {isSavingNotifSettings ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4 mr-2" />
+                Save Changes
+              </>
+            )}
           </Button>
         </div>
       </div>

@@ -36,19 +36,15 @@ export const TOAST_MESSAGES = {
     `Order #${orderId.slice(-8).toUpperCase()} has been rejected.`,
   ORDER_NO_ITEMS: "Order has no items to approve.",
   ORDER_PLACED: (orderId: string) =>
-    `Order #${orderId.slice(
-      -8
-    )} has been submitted. Admin will contact you soon.`,
-  ORDER_FAILED_APPROVE:
-    "Failed to update inventory quantities. Please try again.",
+    `Order #${orderId.slice(-8)} has been submitted. Admin will contact you soon.`,
+  ORDER_FAILED_APPROVE: "Failed to update inventory quantities. Please try again.",
   ORDER_FAILED_REJECT: "Failed to reject order. Please try again.",
   ORDER_FAILED_CREATE: "Failed to create order. Please try again.",
 
   // Invoice messages
   INVOICE_DOWNLOADED: "Invoice PDF has been downloaded.",
   INVOICE_DOWNLOAD_FAILED: "Failed to download invoice. Please try again.",
-  INVOICE_CONFIRMED:
-    "Invoice has been confirmed. Customer can now download it.",
+  INVOICE_CONFIRMED: "Invoice has been confirmed. Customer can now download it.",
   INVOICE_CONFIRM_FAILED: "Failed to confirm invoice. Please try again.",
   INVOICE_PREPARING: "Invoice is being prepared. Please check back later.",
 
@@ -59,18 +55,14 @@ export const TOAST_MESSAGES = {
   CART_USER_NOT_FOUND: "User information not found",
   CART_PROFILE_NOT_APPROVED:
     "Your profile must be approved before placing orders. Please wait for admin approval.",
-  CART_ADDRESSES_REQUIRED:
-    "Please select shipping and billing addresses before checkout.",
+  CART_ADDRESSES_REQUIRED: "Please select shipping and billing addresses before checkout.",
   CART_OUT_OF_STOCK: (items: string[]) =>
-    `${items.join(", ")} ${
-      items.length === 1 ? "is" : "are"
-    } now out of stock. Please remove ${
+    `${items.join(", ")} ${items.length === 1 ? "is" : "are"} now out of stock. Please remove ${
       items.length === 1 ? "it" : "them"
     } from your cart.`,
   CART_INSUFFICIENT_STOCK: (itemDetails: string) =>
     `Some items have less stock than requested: ${itemDetails}. Please adjust quantities.`,
-  CART_PRICE_CHANGED:
-    "Prices changed again. Please review the updated prices before continuing.",
+  CART_PRICE_CHANGED: "Prices changed again. Please review the updated prices before continuing.",
   CART_VERIFY_PRICES_FAILED: "Failed to verify prices. Please try again.",
 
   // Purchase modal messages
@@ -88,6 +80,7 @@ export const TOAST_MESSAGES = {
   SETTINGS_LOGO_UPLOADED: "Logo uploaded successfully",
   SETTINGS_LOGO_UPLOAD_FAILED: "Failed to upload logo",
   SETTINGS_LOGO_REMOVED: "Logo removed successfully",
+  SETTINGS_LOGO_REMOVE_BEFORE_UPLOAD: "Remove the current logo before uploading a new one.",
   SETTINGS_LOGO_REMOVE_FAILED: "Failed to remove logo",
   SETTINGS_COMPANY_SAVED: "Company settings saved successfully",
   SETTINGS_COMPANY_SAVE_FAILED: "Failed to save company settings",
@@ -96,8 +89,7 @@ export const TOAST_MESSAGES = {
   // User profile messages
   PROFILE_UPDATED: "User business details have been updated successfully.",
   PROFILE_UPDATE_FAILED: "Failed to update profile. Please try again.",
-  PROFILE_APPROVED:
-    "User profile has been approved. They can now place orders.",
+  PROFILE_APPROVED: "User profile has been approved. They can now place orders.",
   PROFILE_APPROVE_FAILED: "Failed to approve profile. Please try again.",
   PROFILE_REJECTED: "User profile has been rejected.",
   PROFILE_REJECT_FAILED: "Failed to reject profile. Please try again.",

@@ -1,17 +1,12 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useInventory } from "@/contexts/InventoryContext";
 import { useOrders } from "@/contexts/OrdersContext";
 import { useAuth } from "@/lib/auth/context";
 import { InventoryItem } from "@/data/inventory";
 import { OrderItem } from "@/types/order";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,17 +22,10 @@ import { GradeBadge } from "@/components/common/GradeBadge";
 import { formatPrice } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import {
-  ArrowLeft,
-  Check,
-  Loader2,
-  Minus,
-  Plus,
-  Search,
-  ShoppingBag,
-} from "lucide-react";
+import { ArrowLeft, Check, Loader2, Minus, Plus, Search, ShoppingBag, Trash2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PAYMENT_METHODS } from "@/lib/constants";
+import { supabase } from "@/lib/supabase/client";
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   EMT: "E-Transfer (EMT)",
@@ -49,9 +37,16 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   "NET 60": "Net 60",
 };
 
+type Step = 1 | 2 | 3 | 4;
+
 interface SelectedItem {
   item: InventoryItem;
   quantity: number;
+}
+
+interface ColorRow {
+  color: string;
+  quantity: string;
 }
 
 interface ManualSaleModalProps {
@@ -59,18 +54,82 @@ interface ManualSaleModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
+const STEPS = [
+  { n: 1, label: "Select Items" },
+  { n: 2, label: "Selling Price" },
+  { n: 3, label: "Colour Assignment" },
+  { n: 4, label: "Customer & Payment" },
+] as const;
+
+function StepIndicator({ step }: { step: Step }) {
+  return (
+    <div className="flex items-center gap-1 mt-3 overflow-x-auto pb-1">
+      {STEPS.map((s, i) => {
+        const isDone = step > s.n;
+        const isActive = step === s.n;
+        return (
+          <div key={s.n} className="flex items-center gap-1 flex-shrink-0">
+            <div
+              className={cn(
+                "flex items-center gap-1.5 text-xs font-medium",
+                isActive
+                  ? "text-primary"
+                  : isDone
+                    ? "text-muted-foreground"
+                    : "text-muted-foreground/50",
+              )}
+            >
+              <div
+                className={cn(
+                  "w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0",
+                  isActive
+                    ? "bg-primary text-primary-foreground"
+                    : isDone
+                      ? "bg-muted text-muted-foreground"
+                      : "bg-muted/40 text-muted-foreground/50",
+                )}
+              >
+                {isDone ? <Check className="h-3 w-3" /> : s.n}
+              </div>
+              <span className="whitespace-nowrap">{s.label}</span>
+            </div>
+            {i < STEPS.length - 1 && (
+              <div
+                className={cn(
+                  "w-6 h-px flex-shrink-0",
+                  step > s.n ? "bg-muted-foreground/40" : "bg-border",
+                )}
+              />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function ManualSaleModal({ open, onOpenChange }: ManualSaleModalProps) {
   const { inventory, decreaseQuantity } = useInventory();
   const { createManualOrder } = useOrders();
   const { user } = useAuth();
 
-  const [step, setStep] = useState<1 | 2>(1);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedItems, setSelectedItems] = useState<
-    Record<string, SelectedItem>
-  >({});
+  // Step routing
+  const [step, setStep] = useState<Step>(1);
 
-  // Step 2 fields
+  // ── Step 1: Select Items ──────────────────────────────────────────────────
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedItems, setSelectedItems] = useState<Record<string, SelectedItem>>({});
+
+  // ── Step 2: Selling Price ─────────────────────────────────────────────────
+  // Record<itemId, price string> — string so input is editable; validated on advance
+  const [sellingPrices, setSellingPrices] = useState<Record<string, string>>({});
+
+  // ── Step 3: Colour Assignment ─────────────────────────────────────────────
+  const [colorAssignments, setColorAssignments] = useState<Record<string, ColorRow[]>>({});
+  const [availableColors, setAvailableColors] = useState<Record<string, string[]>>({});
+  const [loadingColors, setLoadingColors] = useState(false);
+
+  // ── Step 4: Customer & Payment ────────────────────────────────────────────
   const [customerName, setCustomerName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -82,6 +141,7 @@ export function ManualSaleModal({ open, onOpenChange }: ManualSaleModalProps) {
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // ── Derived ───────────────────────────────────────────────────────────────
   const availableItems = useMemo(
     () =>
       inventory.filter(
@@ -89,25 +149,37 @@ export function ManualSaleModal({ open, onOpenChange }: ManualSaleModalProps) {
           item.isActive !== false &&
           item.quantity > 0 &&
           (searchQuery === "" ||
-            item.deviceName
-              .toLowerCase()
-              .includes(searchQuery.toLowerCase()) ||
+            item.deviceName.toLowerCase().includes(searchQuery.toLowerCase()) ||
             item.brand.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            item.storage.toLowerCase().includes(searchQuery.toLowerCase()))
+            item.storage.toLowerCase().includes(searchQuery.toLowerCase())),
       ),
-    [inventory, searchQuery]
+    [inventory, searchQuery],
   );
 
-  const selectedItemsList = Object.values(selectedItems);
-  const subtotal = selectedItemsList.reduce(
-    (sum, { item, quantity }) =>
-      sum + (item.sellingPrice ?? item.pricePerUnit) * quantity,
-    0
+  const selectedItemsList = useMemo(() => Object.values(selectedItems), [selectedItems]);
+
+  const getEffectivePrice = useCallback(
+    (item: InventoryItem): number => {
+      const custom = parseFloat(sellingPrices[item.id] ?? "");
+      return isNaN(custom) ? (item.sellingPrice ?? item.pricePerUnit) : custom;
+    },
+    [sellingPrices],
   );
+
+  const subtotal = useMemo(
+    () =>
+      selectedItemsList.reduce(
+        (sum, { item, quantity }) => sum + getEffectivePrice(item) * quantity,
+        0,
+      ),
+    [selectedItemsList, getEffectivePrice],
+  );
+
   const hstRate = Math.max(0, parseFloat(hstPercent) || 0) / 100;
   const hstAmount = subtotal * hstRate;
   const total = subtotal + hstAmount;
 
+  // ── Step 1 handlers ───────────────────────────────────────────────────────
   const handleToggleItem = (item: InventoryItem) => {
     setSelectedItems((prev) => {
       if (prev[item.id]) {
@@ -123,10 +195,7 @@ export function ManualSaleModal({ open, onOpenChange }: ManualSaleModalProps) {
     setSelectedItems((prev) => {
       const current = prev[itemId];
       if (!current) return prev;
-      const newQty = Math.max(
-        1,
-        Math.min(current.item.quantity, current.quantity + delta)
-      );
+      const newQty = Math.max(1, Math.min(current.item.quantity, current.quantity + delta));
       return { ...prev, [itemId]: { ...current, quantity: newQty } };
     });
   };
@@ -136,17 +205,150 @@ export function ManualSaleModal({ open, onOpenChange }: ManualSaleModalProps) {
     setSelectedItems((prev) => {
       const current = prev[itemId];
       if (!current) return prev;
-      // Allow empty string while typing; clamp on blur via onBlur
       if (value === "" || isNaN(parsed)) return { ...prev, [itemId]: { ...current, quantity: 1 } };
       const clamped = Math.max(1, Math.min(maxQty, parsed));
       return { ...prev, [itemId]: { ...current, quantity: clamped } };
     });
   };
 
+  // ── Step 2 handlers ───────────────────────────────────────────────────────
+  const handleGoToStep2 = () => {
+    // Pre-fill selling prices from item's current selling price
+    const prices: Record<string, string> = {};
+    selectedItemsList.forEach(({ item }) => {
+      prices[item.id] = String(item.sellingPrice ?? item.pricePerUnit);
+    });
+    setSellingPrices(prices);
+    setStep(2);
+  };
+
+  const handleSellingPriceChange = (itemId: string, value: string) => {
+    setSellingPrices((prev) => ({ ...prev, [itemId]: value }));
+  };
+
+  const handleSellingPriceBlur = (itemId: string) => {
+    const item = selectedItems[itemId]?.item;
+    if (!item) return;
+    const listPrice = item.sellingPrice ?? item.pricePerUnit;
+    const entered = parseFloat(sellingPrices[itemId] ?? "");
+    if (isNaN(entered) || entered < listPrice) {
+      setSellingPrices((prev) => ({ ...prev, [itemId]: String(listPrice) }));
+    }
+  };
+
+  const handleGoToStep3 = () => {
+    // Validate selling prices — none can be below list price
+    for (const { item } of selectedItemsList) {
+      const listPrice = item.sellingPrice ?? item.pricePerUnit;
+      const entered = parseFloat(sellingPrices[item.id] ?? "");
+      if (isNaN(entered) || entered < listPrice) {
+        toast.error(
+          `Selling price for ${item.deviceName} cannot be below $${listPrice.toFixed(2)}.`,
+        );
+        return;
+      }
+    }
+    // Init colour assignments with one empty row per item
+    const assignments: Record<string, ColorRow[]> = {};
+    selectedItemsList.forEach(({ item }) => {
+      assignments[item.id] = [{ color: "", quantity: "" }];
+    });
+    setColorAssignments(assignments);
+    setStep(3);
+  };
+
+  // ── Step 3 handlers ───────────────────────────────────────────────────────
+  const fetchAvailableColors = useCallback(async () => {
+    if (selectedItemsList.length === 0) return;
+    setLoadingColors(true);
+    const colors: Record<string, string[]> = {};
+    try {
+      await Promise.all(
+        selectedItemsList.map(async ({ item }) => {
+          const { data, error } = await (supabase as any)
+            .from("inventory_colors")
+            .select("color, quantity")
+            .eq("inventory_id", item.id)
+            .gt("quantity", 0)
+            .order("color");
+          colors[item.id] = !error && data ? data.map((r: any) => r.color as string) : [];
+        }),
+      );
+      setAvailableColors(colors);
+    } catch {
+      // leave colors empty — user can still proceed (skip tracking)
+    } finally {
+      setLoadingColors(false);
+    }
+  }, [selectedItemsList]);
+
+  // Fetch colors when step 3 becomes active
+  useEffect(() => {
+    if (step === 3) {
+      fetchAvailableColors();
+    }
+  }, [step, fetchAvailableColors]);
+
+  const handleColorRowChange = (
+    itemId: string,
+    rowIdx: number,
+    field: keyof ColorRow,
+    value: string,
+  ) => {
+    setColorAssignments((prev) => {
+      const rows = [...(prev[itemId] ?? [])];
+      rows[rowIdx] = { ...rows[rowIdx], [field]: value };
+      return { ...prev, [itemId]: rows };
+    });
+  };
+
+  const handleAddColorRow = (itemId: string) => {
+    setColorAssignments((prev) => ({
+      ...prev,
+      [itemId]: [...(prev[itemId] ?? []), { color: "", quantity: "" }],
+    }));
+  };
+
+  const handleRemoveColorRow = (itemId: string, rowIdx: number) => {
+    setColorAssignments((prev) => {
+      const rows = (prev[itemId] ?? []).filter((_, i) => i !== rowIdx);
+      return { ...prev, [itemId]: rows.length > 0 ? rows : [{ color: "", quantity: "" }] };
+    });
+  };
+
+  const handleGoToStep4 = () => {
+    for (const { item, quantity: soldQty } of selectedItemsList) {
+      const rows = colorAssignments[item.id] ?? [];
+      const filledRows = rows.filter((r) => r.color || r.quantity !== "");
+      if (filledRows.length === 0) continue; // empty = skip tracking for this item
+
+      // Partial rows: both fields required
+      const partialRow = filledRows.find((r) => !r.color || r.quantity === "");
+      if (partialRow) {
+        toast.error(`Each colour row for ${item.deviceName} needs both a colour and a quantity.`);
+        return;
+      }
+
+      const total = filledRows.reduce((sum, r) => sum + (parseInt(r.quantity, 10) || 0), 0);
+      if (total !== soldQty) {
+        toast.error(
+          `Colour quantities for ${item.deviceName} must total ${soldQty} (currently ${total}).`,
+        );
+        return;
+      }
+    }
+    setStep(4);
+  };
+
+  // ── Reset / Close ─────────────────────────────────────────────────────────
   const handleClose = () => {
     setStep(1);
     setSearchQuery("");
     setSelectedItems({});
+    setSellingPrices({});
+    setColorAssignments({});
+    setAvailableColors({});
+    setLoadingColors(false);
     setCustomerName("");
     setCustomerEmail("");
     setCustomerPhone("");
@@ -159,24 +361,20 @@ export function ManualSaleModal({ open, onOpenChange }: ManualSaleModalProps) {
     onOpenChange(false);
   };
 
+  // ── Submit ────────────────────────────────────────────────────────────────
   const handleSubmit = async () => {
-    if (
-      !user?.id ||
-      selectedItemsList.length === 0 ||
-      !customerName.trim() ||
-      !paymentMethod
-    )
+    if (!user?.id || selectedItemsList.length === 0 || !customerName.trim() || !paymentMethod)
       return;
 
     setIsSubmitting(true);
     try {
-      const orderItems: OrderItem[] = selectedItemsList.map(
-        ({ item, quantity }) => ({ item, quantity })
-      );
+      // Build order items using effective (possibly overridden) selling prices
+      const orderItems: OrderItem[] = selectedItemsList.map(({ item, quantity }) => ({
+        item: { ...item, sellingPrice: getEffectivePrice(item) },
+        quantity,
+      }));
 
-      const finalShippingAddress = sameAsShipping
-        ? billingAddress.trim()
-        : shippingAddress.trim();
+      const finalShippingAddress = sameAsShipping ? billingAddress.trim() : shippingAddress.trim();
 
       const order = await createManualOrder(
         user.id,
@@ -184,27 +382,70 @@ export function ManualSaleModal({ open, onOpenChange }: ManualSaleModalProps) {
         {
           name: customerName.trim(),
           email: customerEmail.trim() || undefined,
-          phone: customerPhone.trim()
-            ? `+1${customerPhone.trim()}`
-            : undefined,
+          phone: customerPhone.trim() ? `+1${customerPhone.trim()}` : undefined,
         },
         paymentMethod,
         Math.max(0, parseFloat(hstPercent) || 0),
         billingAddress.trim() || undefined,
         finalShippingAddress || undefined,
-        notes.trim() || undefined
+        notes.trim() || undefined,
       );
 
-      // Decrement inventory since the sale is already approved
+      // Decrement inventory quantities
       await Promise.all(
-        orderItems.map(({ item, quantity }) =>
-          decreaseQuantity(item.id, quantity)
-        )
+        orderItems.map(({ item, quantity }) => decreaseQuantity(item.id, quantity)),
       );
 
-      toast.success(
-        `Sale recorded — Order #${order.id.slice(-8).toUpperCase()}`
+      // Save colour assignments if any were provided
+      const assignmentEntries = Object.entries(colorAssignments).filter(([, rows]) =>
+        rows.some((r) => r.color && r.quantity !== ""),
       );
+
+      if (assignmentEntries.length > 0) {
+        await Promise.all(
+          assignmentEntries.map(async ([itemId, rows]) => {
+            const filledRows = rows.filter(
+              (r) => r.color && r.quantity !== "" && parseInt(r.quantity, 10) > 0,
+            );
+            if (filledRows.length === 0) return;
+
+            // Decrement inventory_colors quantities
+            await Promise.all(
+              filledRows.map(async (r) => {
+                const qty = parseInt(r.quantity, 10);
+                const { data: colorRow } = await (supabase as any)
+                  .from("inventory_colors")
+                  .select("quantity")
+                  .eq("inventory_id", itemId)
+                  .eq("color", r.color)
+                  .maybeSingle();
+                if (colorRow) {
+                  await (supabase as any)
+                    .from("inventory_colors")
+                    .update({
+                      quantity: Math.max(0, colorRow.quantity - qty),
+                      updated_at: new Date().toISOString(),
+                    })
+                    .eq("inventory_id", itemId)
+                    .eq("color", r.color);
+                }
+              }),
+            );
+
+            // Record order_color_assignments
+            await (supabase as any).from("order_color_assignments").insert(
+              filledRows.map((r) => ({
+                order_id: order.id,
+                inventory_id: itemId,
+                color: r.color,
+                quantity: parseInt(r.quantity, 10),
+              })),
+            );
+          }),
+        );
+      }
+
+      toast.success(`Sale recorded — Order #${order.id.slice(-8).toUpperCase()}`);
       handleClose();
     } catch {
       toast.error("Failed to record sale. Please try again.");
@@ -216,58 +457,17 @@ export function ManualSaleModal({ open, onOpenChange }: ManualSaleModalProps) {
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col gap-0 p-0">
-        <DialogHeader className="px-6 pt-6 pb-4 border-b border-border">
+        <DialogHeader className="px-6 pt-6 pb-4 border-b border-border flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <ShoppingBag className="h-5 w-5 text-primary" />
             Record Manual Sale
           </DialogTitle>
-
-          {/* Step indicator */}
-          <div className="flex items-center gap-3 mt-3">
-            <div
-              className={cn(
-                "flex items-center gap-2 text-xs font-medium",
-                step === 1 ? "text-primary" : "text-muted-foreground"
-              )}
-            >
-              <div
-                className={cn(
-                  "w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold",
-                  step === 1
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground"
-                )}
-              >
-                {step > 1 ? <Check className="h-3 w-3" /> : "1"}
-              </div>
-              Select Items
-            </div>
-            <div className="flex-1 h-px bg-border" />
-            <div
-              className={cn(
-                "flex items-center gap-2 text-xs font-medium",
-                step === 2 ? "text-primary" : "text-muted-foreground"
-              )}
-            >
-              <div
-                className={cn(
-                  "w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold",
-                  step === 2
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground"
-                )}
-              >
-                2
-              </div>
-              Customer & Payment
-            </div>
-          </div>
+          <StepIndicator step={step} />
         </DialogHeader>
 
-        {/* ── STEP 1: Select Items ─────────────────────────────── */}
+        {/* ── STEP 1: Select Items ──────────────────────────────────────── */}
         {step === 1 && (
           <div className="flex flex-col flex-1 min-h-0 px-6 py-4 gap-4">
-            {/* Search */}
             <div className="relative flex-shrink-0">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -278,7 +478,6 @@ export function ManualSaleModal({ open, onOpenChange }: ManualSaleModalProps) {
               />
             </div>
 
-            {/* Items list */}
             <div className="flex-1 overflow-y-auto min-h-0 space-y-2 -mx-1 px-1">
               {availableItems.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-12 text-center">
@@ -296,68 +495,48 @@ export function ManualSaleModal({ open, onOpenChange }: ManualSaleModalProps) {
                         "p-3 rounded-lg border cursor-pointer transition-colors select-none",
                         isSelected
                           ? "border-primary bg-primary/5"
-                          : "border-border bg-card hover:bg-muted/50"
+                          : "border-border bg-card hover:bg-muted/50",
                       )}
                     >
                       <div className="flex items-start gap-3">
-                        {/* Checkbox */}
                         <div
                           className={cn(
                             "mt-0.5 w-4 h-4 rounded border flex items-center justify-center flex-shrink-0",
-                            isSelected
-                              ? "bg-primary border-primary"
-                              : "border-muted-foreground"
+                            isSelected ? "bg-primary border-primary" : "border-muted-foreground",
                           )}
                         >
-                          {isSelected && (
-                            <Check className="h-2.5 w-2.5 text-primary-foreground" />
-                          )}
+                          {isSelected && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
                         </div>
-
-                        {/* Item info */}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <p className="font-medium text-sm text-foreground">
-                              {item.deviceName}
-                            </p>
+                            <p className="font-medium text-sm text-foreground">{item.deviceName}</p>
                             <GradeBadge grade={item.grade} />
                           </div>
                           <p className="text-xs text-muted-foreground">
                             {item.brand} • {item.storage}
                           </p>
-                          <p className="text-xs text-muted-foreground">
-                            {item.quantity} in stock
-                          </p>
+                          <p className="text-xs text-muted-foreground">{item.quantity} in stock</p>
                         </div>
-
-                        {/* Price */}
                         <div className="text-right flex-shrink-0">
                           <p className="font-semibold text-sm text-foreground">
                             {formatPrice(item.sellingPrice ?? item.pricePerUnit)}
                           </p>
-                          <p className="text-xs text-muted-foreground">
-                            per unit
-                          </p>
+                          <p className="text-xs text-muted-foreground">per unit</p>
                         </div>
                       </div>
 
-                      {/* Quantity selector — shown when selected */}
                       {isSelected && (
                         <div
                           className="mt-3 flex items-center gap-3 pt-3 border-t border-primary/20"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <span className="text-xs text-muted-foreground">
-                            Qty:
-                          </span>
+                          <span className="text-xs text-muted-foreground">Qty:</span>
                           <div className="flex items-center gap-2">
                             <Button
                               variant="outline"
                               size="icon"
                               className="h-6 w-6"
-                              onClick={() =>
-                                handleQuantityChange(item.id, -1)
-                              }
+                              onClick={() => handleQuantityChange(item.id, -1)}
                               disabled={selected.quantity <= 1}
                             >
                               <Minus className="h-3 w-3" />
@@ -372,7 +551,8 @@ export function ManualSaleModal({ open, onOpenChange }: ManualSaleModalProps) {
                               }
                               onBlur={(e) => {
                                 const parsed = parseInt(e.target.value, 10);
-                                if (isNaN(parsed) || parsed < 1) handleQuantityInput(item.id, "1", item.quantity);
+                                if (isNaN(parsed) || parsed < 1)
+                                  handleQuantityInput(item.id, "1", item.quantity);
                               }}
                               className="h-7 w-16 text-center text-sm px-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                               onClick={(e) => e.stopPropagation()}
@@ -390,8 +570,7 @@ export function ManualSaleModal({ open, onOpenChange }: ManualSaleModalProps) {
                           <span className="text-xs text-muted-foreground ml-auto">
                             ={" "}
                             {formatPrice(
-                              (item.sellingPrice ?? item.pricePerUnit) *
-                                selected.quantity
+                              (item.sellingPrice ?? item.pricePerUnit) * selected.quantity,
                             )}
                           </span>
                         </div>
@@ -402,13 +581,11 @@ export function ManualSaleModal({ open, onOpenChange }: ManualSaleModalProps) {
               )}
             </div>
 
-            {/* Footer */}
             <div className="flex-shrink-0 border-t border-border pt-4 flex items-center justify-between gap-4">
               <p className="text-sm text-muted-foreground">
                 {selectedItemsList.length > 0 ? (
                   <span className="font-medium text-foreground">
-                    {selectedItemsList.length} item(s) — subtotal{" "}
-                    {formatPrice(subtotal)}
+                    {selectedItemsList.length} item(s) — subtotal {formatPrice(subtotal)}
                   </span>
                 ) : (
                   "No items selected"
@@ -418,31 +595,232 @@ export function ManualSaleModal({ open, onOpenChange }: ManualSaleModalProps) {
                 <Button variant="outline" onClick={handleClose}>
                   Cancel
                 </Button>
-                <Button
-                  disabled={selectedItemsList.length === 0}
-                  onClick={() => setStep(2)}
-                >
-                  Next: Customer Details →
+                <Button disabled={selectedItemsList.length === 0} onClick={handleGoToStep2}>
+                  Next: Selling Price →
                 </Button>
               </div>
             </div>
           </div>
         )}
 
-        {/* ── STEP 2: Customer & Payment ───────────────────────── */}
+        {/* ── STEP 2: Selling Price ─────────────────────────────────────── */}
         {step === 2 && (
+          <div className="flex flex-col flex-1 min-h-0 px-6 py-4 gap-4">
+            <p className="text-sm text-muted-foreground flex-shrink-0">
+              Set the selling price for each line. You cannot go below the inventory list price.
+            </p>
+
+            <div className="flex-1 overflow-y-auto min-h-0 space-y-3 -mx-1 px-1">
+              {selectedItemsList.map(({ item, quantity }) => {
+                const listPrice = item.sellingPrice ?? item.pricePerUnit;
+                const priceStr = sellingPrices[item.id] ?? String(listPrice);
+                const parsedPrice = parseFloat(priceStr);
+                const lineTotal = isNaN(parsedPrice) ? 0 : parsedPrice * quantity;
+                const isBelowMin = !isNaN(parsedPrice) && parsedPrice < listPrice;
+
+                return (
+                  <div
+                    key={item.id}
+                    className="rounded-lg border border-border bg-card p-4 space-y-3"
+                  >
+                    {/* Item header */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-sm text-foreground">{item.deviceName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {item.brand} · {item.storage} · Qty {quantity}
+                        </p>
+                      </div>
+                      <p className="text-xs text-muted-foreground text-right flex-shrink-0">
+                        List price (minimum):{" "}
+                        <span className="font-semibold text-destructive">
+                          {formatPrice(listPrice)}
+                        </span>
+                      </p>
+                    </div>
+
+                    {/* Price input */}
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium">Selling price per unit (CAD)</Label>
+                      <div className="relative flex items-center">
+                        <span className="absolute left-3 text-sm text-muted-foreground select-none pointer-events-none">
+                          $
+                        </span>
+                        <Input
+                          type="number"
+                          min={listPrice}
+                          step="0.01"
+                          value={priceStr}
+                          onChange={(e) => handleSellingPriceChange(item.id, e.target.value)}
+                          onBlur={() => handleSellingPriceBlur(item.id)}
+                          className={cn(
+                            "pl-7 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none",
+                            isBelowMin && "border-destructive focus-visible:ring-destructive",
+                          )}
+                        />
+                      </div>
+                      {isBelowMin && (
+                        <p className="text-xs text-destructive">
+                          Cannot be below the list price of {formatPrice(listPrice)}.
+                        </p>
+                      )}
+                    </div>
+
+                    <p className="text-xs text-muted-foreground">
+                      Line total:{" "}
+                      <span className="font-semibold text-foreground">
+                        {formatPrice(lineTotal)}
+                      </span>
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex-shrink-0 border-t border-border pt-4 flex items-center justify-between gap-4">
+              <p className="text-sm font-medium text-foreground">
+                Subtotal {formatPrice(subtotal)}
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setStep(1)} className="gap-2">
+                  <ArrowLeft className="h-4 w-4" />
+                  Back
+                </Button>
+                <Button onClick={handleGoToStep3}>Next: Colour Assignment →</Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── STEP 3: Colour Assignment ─────────────────────────────────── */}
+        {step === 3 && (
+          <div className="flex flex-col flex-1 min-h-0 px-6 py-4 gap-4">
+            <p className="text-sm text-muted-foreground flex-shrink-0">
+              Assign the colours for each item sold. Quantities must match exactly, or leave all
+              rows empty to skip colour tracking for that item.
+            </p>
+
+            {loadingColors ? (
+              <div className="flex-1 flex items-center justify-center">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <div className="flex-1 overflow-y-auto min-h-0 space-y-3 -mx-1 px-1">
+                {selectedItemsList.map(({ item, quantity: soldQty }) => {
+                  const colors = availableColors[item.id] ?? [];
+                  const rows = colorAssignments[item.id] ?? [];
+                  const hasColors = colors.length > 0;
+
+                  return (
+                    <div
+                      key={item.id}
+                      className="rounded-lg border border-border bg-card p-4 space-y-3"
+                    >
+                      {/* Item header */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-semibold text-sm text-foreground">{item.deviceName}</p>
+                        <GradeBadge grade={item.grade} />
+                        <span className="text-xs text-muted-foreground">{item.storage}</span>
+                        <span className="text-xs text-muted-foreground">
+                          Qty sold: <span className="font-semibold text-foreground">{soldQty}</span>
+                        </span>
+                      </div>
+
+                      {!hasColors ? (
+                        <p className="text-xs text-muted-foreground italic">
+                          No colours configured for this item — colour tracking will be skipped.
+                        </p>
+                      ) : (
+                        <>
+                          {/* Colour rows */}
+                          <div className="space-y-2">
+                            {rows.map((row, rowIdx) => (
+                              <div key={rowIdx} className="flex items-center gap-2">
+                                <Select
+                                  value={row.color}
+                                  onValueChange={(v) =>
+                                    handleColorRowChange(item.id, rowIdx, "color", v)
+                                  }
+                                >
+                                  <SelectTrigger className="flex-1">
+                                    <SelectValue placeholder="Select colour..." />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {colors.map((c) => (
+                                      <SelectItem key={c} value={c}>
+                                        {c}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  placeholder="Qty"
+                                  value={row.quantity}
+                                  onChange={(e) =>
+                                    handleColorRowChange(
+                                      item.id,
+                                      rowIdx,
+                                      "quantity",
+                                      e.target.value,
+                                    )
+                                  }
+                                  className="w-20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                />
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-9 w-9 text-muted-foreground hover:text-destructive flex-shrink-0"
+                                  onClick={() => handleRemoveColorRow(item.id, rowIdx)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Add colour button */}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full gap-2 text-muted-foreground"
+                            onClick={() => handleAddColorRow(item.id)}
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                            Add Colour
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="flex-shrink-0 border-t border-border pt-4 flex items-center justify-between gap-4">
+              <Button variant="outline" onClick={() => setStep(2)} className="gap-2">
+                <ArrowLeft className="h-4 w-4" />
+                Back
+              </Button>
+              <Button onClick={handleGoToStep4} disabled={loadingColors}>
+                Next: Customer Details →
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* ── STEP 4: Customer & Payment ────────────────────────────────── */}
+        {step === 4 && (
           <div className="flex flex-col flex-1 min-h-0 px-6 py-4 gap-4">
             <div className="flex-1 overflow-y-auto min-h-0 space-y-5 px-1 -mx-1">
               {/* Customer info */}
               <div className="space-y-3">
-                <h3 className="text-sm font-semibold text-foreground">
-                  Customer Information
-                </h3>
+                <h3 className="text-sm font-semibold text-foreground">Customer Information</h3>
                 <div className="space-y-3">
                   <div className="space-y-1.5">
                     <Label htmlFor="customerName">
-                      Customer Name{" "}
-                      <span className="text-destructive">*</span>
+                      Customer Name <span className="text-destructive">*</span>
                     </Label>
                     <Input
                       id="customerName"
@@ -454,10 +832,7 @@ export function ManualSaleModal({ open, onOpenChange }: ManualSaleModalProps) {
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
                       <Label htmlFor="customerEmail">
-                        Email{" "}
-                        <span className="text-xs text-muted-foreground">
-                          (optional)
-                        </span>
+                        Email <span className="text-xs text-muted-foreground">(optional)</span>
                       </Label>
                       <Input
                         id="customerEmail"
@@ -469,10 +844,7 @@ export function ManualSaleModal({ open, onOpenChange }: ManualSaleModalProps) {
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="customerPhone">
-                        Phone{" "}
-                        <span className="text-xs text-muted-foreground">
-                          (optional)
-                        </span>
+                        Phone <span className="text-xs text-muted-foreground">(optional)</span>
                       </Label>
                       <div className="relative flex items-center">
                         <span className="absolute left-3 text-sm text-muted-foreground select-none pointer-events-none">
@@ -496,12 +868,8 @@ export function ManualSaleModal({ open, onOpenChange }: ManualSaleModalProps) {
               <div className="space-y-3">
                 <h3 className="text-sm font-semibold text-foreground">
                   Address{" "}
-                  <span className="text-xs font-normal text-muted-foreground">
-                    (optional)
-                  </span>
+                  <span className="text-xs font-normal text-muted-foreground">(optional)</span>
                 </h3>
-
-                {/* Billing Address */}
                 <div className="space-y-1.5">
                   <Label htmlFor="billingAddress">Billing Address</Label>
                   <Textarea
@@ -515,16 +883,12 @@ export function ManualSaleModal({ open, onOpenChange }: ManualSaleModalProps) {
                     className="min-h-[60px] resize-none"
                   />
                 </div>
-
-                {/* Same-as-billing toggle — shown only when billing has content */}
                 {billingAddress.trim() && (
                   <div className="flex items-center gap-2">
                     <Checkbox
                       id="sameAsShipping"
                       checked={sameAsShipping}
-                      onCheckedChange={(checked) =>
-                        setSameAsShipping(!!checked)
-                      }
+                      onCheckedChange={(checked) => setSameAsShipping(!!checked)}
                     />
                     <Label
                       htmlFor="sameAsShipping"
@@ -534,8 +898,6 @@ export function ManualSaleModal({ open, onOpenChange }: ManualSaleModalProps) {
                     </Label>
                   </div>
                 )}
-
-                {/* Shipping Address */}
                 <div className="space-y-1.5">
                   <Label htmlFor="shippingAddress">Shipping Address</Label>
                   {sameAsShipping ? (
@@ -554,16 +916,12 @@ export function ManualSaleModal({ open, onOpenChange }: ManualSaleModalProps) {
                 </div>
               </div>
 
-              {/* Payment method */}
+              {/* Payment */}
               <div className="space-y-1.5">
                 <Label>
-                  Payment Method{" "}
-                  <span className="text-destructive">*</span>
+                  Payment Method <span className="text-destructive">*</span>
                 </Label>
-                <Select
-                  value={paymentMethod}
-                  onValueChange={setPaymentMethod}
-                >
+                <Select value={paymentMethod} onValueChange={setPaymentMethod}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select payment method" />
                   </SelectTrigger>
@@ -580,8 +938,7 @@ export function ManualSaleModal({ open, onOpenChange }: ManualSaleModalProps) {
               {/* HST */}
               <div className="space-y-1.5">
                 <Label htmlFor="hstPercent">
-                  HST / Tax Rate{" "}
-                  <span className="text-xs text-muted-foreground">(%)</span>
+                  HST / Tax Rate <span className="text-xs text-muted-foreground">(%)</span>
                 </Label>
                 <div className="relative">
                   <Input
@@ -604,10 +961,7 @@ export function ManualSaleModal({ open, onOpenChange }: ManualSaleModalProps) {
               {/* Notes */}
               <div className="space-y-1.5">
                 <Label htmlFor="saleNotes">
-                  Notes{" "}
-                  <span className="text-xs text-muted-foreground">
-                    (optional)
-                  </span>
+                  Notes <span className="text-xs text-muted-foreground">(optional)</span>
                 </Label>
                 <Textarea
                   id="saleNotes"
@@ -620,22 +974,15 @@ export function ManualSaleModal({ open, onOpenChange }: ManualSaleModalProps) {
 
               {/* Order summary */}
               <div className="bg-muted/50 rounded-lg border border-border p-4 space-y-3">
-                <h3 className="text-sm font-semibold text-foreground">
-                  Order Summary
-                </h3>
+                <h3 className="text-sm font-semibold text-foreground">Order Summary</h3>
                 <div className="space-y-1.5">
                   {selectedItemsList.map(({ item, quantity }) => (
-                    <div
-                      key={item.id}
-                      className="flex justify-between text-sm"
-                    >
+                    <div key={item.id} className="flex justify-between text-sm">
                       <span className="text-muted-foreground">
                         {item.deviceName} {item.storage} × {quantity}
                       </span>
                       <span className="font-medium text-foreground">
-                        {formatPrice(
-                          (item.sellingPrice ?? item.pricePerUnit) * quantity
-                        )}
+                        {formatPrice(getEffectivePrice(item) * quantity)}
                       </span>
                     </div>
                   ))}
@@ -646,9 +993,7 @@ export function ManualSaleModal({ open, onOpenChange }: ManualSaleModalProps) {
                     <span>{formatPrice(subtotal)}</span>
                   </div>
                   <div className="flex justify-between text-sm text-muted-foreground">
-                    <span>
-                      HST ({parseFloat(hstPercent) || 0}%)
-                    </span>
+                    <span>HST ({parseFloat(hstPercent) || 0}%)</span>
                     <span>{formatPrice(hstAmount)}</span>
                   </div>
                   <div className="flex justify-between text-sm font-semibold">
@@ -659,26 +1004,17 @@ export function ManualSaleModal({ open, onOpenChange }: ManualSaleModalProps) {
               </div>
             </div>
 
-            {/* Footer */}
             <div className="flex-shrink-0 border-t border-border pt-4 flex items-center justify-between gap-4">
-              <Button
-                variant="outline"
-                onClick={() => setStep(1)}
-                className="gap-2"
-              >
+              <Button variant="outline" onClick={() => setStep(3)} className="gap-2">
                 <ArrowLeft className="h-4 w-4" />
                 Back
               </Button>
               <Button
-                disabled={
-                  !customerName.trim() || !paymentMethod || isSubmitting
-                }
+                disabled={!customerName.trim() || !paymentMethod || isSubmitting}
                 onClick={handleSubmit}
                 className="gap-2"
               >
-                {isSubmitting && (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                )}
+                {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
                 Record Sale
               </Button>
             </div>

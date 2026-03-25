@@ -17,20 +17,20 @@ async function getSupabaseClient() {
         setAll(cookiesToSet) {
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
+              cookieStore.set(name, value, options),
             );
           } catch {
             // Can be ignored if middleware is refreshing user sessions
           }
         },
       },
-    }
+    },
   );
 }
 
 async function redirectAfterAuth(
   supabase: Awaited<ReturnType<typeof getSupabaseClient>>,
-  origin: string
+  origin: string,
 ) {
   const {
     data: { user },
@@ -57,7 +57,8 @@ async function redirectAfterAuth(
       .limit(1)
       .single();
 
-    const slug = (membership?.companies as any)?.slug;
+    const row = membership as { companies: { slug: string } | null } | null;
+    const slug = row?.companies?.slug;
     if (slug) {
       return NextResponse.redirect(`${origin}/${slug}/dashboard`);
     }
@@ -90,8 +91,7 @@ export async function GET(request: NextRequest) {
           status: error.status,
         });
         const reason =
-          error.message?.includes("expired") ||
-          error.message?.includes("otp_expired")
+          error.message?.includes("expired") || error.message?.includes("otp_expired")
             ? "otp_expired"
             : undefined;
         const errorUrl = new URL(`${origin}/auth/auth-code-error`);
@@ -109,8 +109,7 @@ export async function GET(request: NextRequest) {
 
     // PKCE code flow (email confirmation or OAuth) — requires code_verifier in cookies
     if (code) {
-      const { error: exchangeError } =
-        await supabase.auth.exchangeCodeForSession(code);
+      const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
 
       if (exchangeError) {
         console.error("[Auth Callback] Code exchange error:", {
@@ -126,13 +125,8 @@ export async function GET(request: NextRequest) {
           return NextResponse.redirect(`${origin}/login`);
         }
 
-        if (
-          exchangeError.message?.includes("redirect") ||
-          exchangeError.message?.includes("URL")
-        ) {
-          return NextResponse.redirect(
-            `${origin}/auth/auth-code-error?reason=redirect_mismatch`
-          );
+        if (exchangeError.message?.includes("redirect") || exchangeError.message?.includes("URL")) {
+          return NextResponse.redirect(`${origin}/auth/auth-code-error?reason=redirect_mismatch`);
         }
 
         return NextResponse.redirect(`${origin}/auth/auth-code-error`);

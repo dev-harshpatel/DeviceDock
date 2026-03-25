@@ -18,7 +18,7 @@ import { DEFAULT_COMPANY_NAME, DEFAULT_COMPANY_ADDRESS } from "../constants";
  */
 async function fetchImageAsBase64(url: string): Promise<string | null> {
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { mode: "cors", credentials: "omit" });
     if (!response.ok) return null;
     const blob = await response.blob();
     return await new Promise<string>((resolve, reject) => {
@@ -33,17 +33,17 @@ async function fetchImageAsBase64(url: string): Promise<string | null> {
 }
 
 /**
- * Get company information from settings or defaults
+ * Get company information from settings or defaults (scoped to current tenant).
  */
-async function getCompanyInfo(): Promise<
-  CompanyInfo & { logoUrl?: string | null }
-> {
+async function getCompanyInfo(
+  companyId: string,
+): Promise<CompanyInfo & { logoUrl?: string | null }> {
   try {
-    // Try to get company settings from database
     const { data, error } = await supabase
       .from("company_settings")
       .select("company_name, company_address, hst_number, logo_url")
-      .single();
+      .eq("company_id", companyId)
+      .maybeSingle();
 
     if (!error && data) {
       const companyData = data as {
@@ -55,17 +55,12 @@ async function getCompanyInfo(): Promise<
 
       return {
         name:
-          companyData.company_name ||
-          process.env.NEXT_PUBLIC_COMPANY_NAME ||
-          DEFAULT_COMPANY_NAME,
+          companyData.company_name || process.env.NEXT_PUBLIC_COMPANY_NAME || DEFAULT_COMPANY_NAME,
         address:
           companyData.company_address ||
           process.env.NEXT_PUBLIC_COMPANY_ADDRESS ||
           DEFAULT_COMPANY_ADDRESS,
-        hstNumber:
-          companyData.hst_number ||
-          process.env.NEXT_PUBLIC_COMPANY_HST_NUMBER ||
-          "",
+        hstNumber: companyData.hst_number || process.env.NEXT_PUBLIC_COMPANY_HST_NUMBER || "",
         logoUrl: companyData.logo_url,
       };
     }
@@ -73,7 +68,6 @@ async function getCompanyInfo(): Promise<
     console.error("Error fetching company settings:", error);
   }
 
-  // Fallback to environment variables
   return {
     name: process.env.NEXT_PUBLIC_COMPANY_NAME || DEFAULT_COMPANY_NAME,
     address: process.env.NEXT_PUBLIC_COMPANY_ADDRESS || DEFAULT_COMPANY_ADDRESS,
@@ -89,22 +83,20 @@ async function getCompanyInfo(): Promise<
  * @param customerInfo - Customer business information
  */
 export async function generateInvoicePDF(
+  companyId: string,
   order: Order,
   invoiceData: InvoiceData,
   customerInfo?: {
     businessName?: string | null;
     businessAddress?: string | null;
-  }
+  },
 ): Promise<void> {
   try {
-    // Get company information with logo
-    const companyInfo = await getCompanyInfo();
+    const companyInfo = await getCompanyInfo(companyId);
 
     // Pre-fetch logo as base64 so @react-pdf/renderer doesn't hit CORS
     // when trying to load the Supabase Storage URL at render time
-    const logoDataUrl = companyInfo.logoUrl
-      ? await fetchImageAsBase64(companyInfo.logoUrl)
-      : null;
+    const logoDataUrl = companyInfo.logoUrl ? await fetchImageAsBase64(companyInfo.logoUrl) : null;
 
     // Create PDF document
     const pdfDocument = (
@@ -120,10 +112,7 @@ export async function generateInvoicePDF(
     const blob = await pdf(pdfDocument).toBlob();
 
     // Download PDF
-    const filename = `invoice-${invoiceData.invoiceNumber.replace(
-      "#",
-      ""
-    )}.pdf`;
+    const filename = `invoice-${invoiceData.invoiceNumber.replace("#", "")}.pdf`;
 
     downloadBlob(blob, filename);
   } catch (error) {
