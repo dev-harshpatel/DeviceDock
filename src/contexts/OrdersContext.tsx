@@ -6,14 +6,7 @@ import { useAuth } from "@/lib/auth/context";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useRealtimeContext } from "@/contexts/RealtimeContext";
 import { Order, OrderItem, OrderStatus } from "@/types/order";
-import {
-  ReactNode,
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  useCallback,
-} from "react";
+import { ReactNode, createContext, useContext, useEffect, useState, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query-keys";
 import { dbRowToOrder, ORDER_FIELDS } from "@/lib/supabase/queries";
@@ -31,7 +24,7 @@ interface OrdersContextType {
     subtotal?: number,
     taxRate?: number,
     taxAmount?: number,
-    addresses?: OrderAddresses
+    addresses?: OrderAddresses,
   ) => Promise<Order>;
   createManualOrder: (
     adminUserId: string,
@@ -41,14 +34,14 @@ interface OrdersContextType {
     hstPercent?: number,
     billingAddress?: string,
     shippingAddress?: string,
-    notes?: string
+    notes?: string,
   ) => Promise<Order>;
   updateOrderStatus: (
     orderId: string,
     status: OrderStatus,
     rejectionReason?: string,
     rejectionComment?: string,
-    discountAmount?: number
+    discountAmount?: number,
   ) => Promise<void>;
   deleteOrder: (orderId: string) => Promise<void>;
   updateInvoice: (
@@ -66,7 +59,7 @@ interface OrdersContextType {
       discountType?: string;
       shippingAmount?: number;
       imeiNumbers?: Record<string, string> | null;
-    }
+    },
   ) => Promise<void>;
   confirmInvoice: (orderId: string) => Promise<void>;
   downloadInvoicePDF: (orderId: string) => Promise<void>;
@@ -77,9 +70,7 @@ interface OrdersContextType {
   isLoading: boolean;
 }
 
-export const OrdersContext = createContext<OrdersContextType | undefined>(
-  undefined
-);
+export const OrdersContext = createContext<OrdersContextType | undefined>(undefined);
 
 export const useOrders = () => {
   const context = useContext(OrdersContext);
@@ -99,10 +90,8 @@ type OrderUpdate = Database["public"]["Tables"]["orders"]["Update"];
 function calculateOrderSubtotal(items: OrderItem[]): number {
   return items.reduce(
     (total, orderItem) =>
-      total +
-      (orderItem.item.sellingPrice ?? orderItem.item.pricePerUnit) *
-        orderItem.quantity,
-    0
+      total + (orderItem.item.sellingPrice ?? orderItem.item.pricePerUnit) * orderItem.quantity,
+    0,
   );
 }
 
@@ -120,12 +109,11 @@ const buildOrderInsert = (
   subtotal?: number,
   taxRate?: number,
   taxAmount?: number,
-  addresses?: OrderAddresses
+  addresses?: OrderAddresses,
 ): OrderInsert => {
   const calculatedSubtotal = subtotal ?? calculateOrderSubtotal(items);
   const calculatedTaxAmount =
-    taxAmount ??
-    (taxRate ? Math.round(calculatedSubtotal * taxRate * 100) / 100 : 0);
+    taxAmount ?? (taxRate ? Math.round(calculatedSubtotal * taxRate * 100) / 100 : 0);
   const totalPrice = calculatedSubtotal + calculatedTaxAmount;
   const itemsJson: Json = items as unknown as Json;
 
@@ -184,7 +172,9 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
     };
 
     init();
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+    };
   }, [loadOrders]);
 
   // Reload orders when RealtimeProvider signals orders changes
@@ -201,7 +191,7 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
       subtotal?: number,
       taxRate?: number,
       taxAmount?: number,
-      addresses?: OrderAddresses
+      addresses?: OrderAddresses,
     ): Promise<Order> => {
       if (!items || items.length === 0) {
         throw new Error("Order must have at least one item");
@@ -214,7 +204,7 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
         subtotal,
         taxRate,
         taxAmount,
-        addresses
+        addresses,
       );
 
       const { data, error } = await (supabase.from("orders") as any)
@@ -234,8 +224,7 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
 
       const fallbackSubtotal = subtotal ?? calculateOrderSubtotal(items);
       const fallbackTaxAmount =
-        taxAmount ??
-        (taxRate ? Math.round(fallbackSubtotal * taxRate * 100) / 100 : 0);
+        taxAmount ?? (taxRate ? Math.round(fallbackSubtotal * taxRate * 100) / 100 : 0);
       const fallbackTotalPrice = fallbackSubtotal + fallbackTaxAmount;
 
       return {
@@ -245,11 +234,10 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
         subtotal: Number((newOrder as any).subtotal ?? fallbackSubtotal),
         taxRate: (newOrder as any).tax_rate
           ? Number((newOrder as any).tax_rate)
-          : taxRate ?? null,
-        taxAmount:
-          (newOrder as any).tax_amount
-            ? Number((newOrder as any).tax_amount)
-            : fallbackTaxAmount > 0
+          : (taxRate ?? null),
+        taxAmount: (newOrder as any).tax_amount
+          ? Number((newOrder as any).tax_amount)
+          : fallbackTaxAmount > 0
             ? fallbackTaxAmount
             : null,
         totalPrice: Number(newOrder.total_price ?? fallbackTotalPrice),
@@ -258,7 +246,7 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
         updatedAt: newOrder.updated_at ?? new Date().toISOString(),
       };
     },
-    [companyId]
+    [companyId],
   );
 
   const createManualOrder = useCallback(
@@ -270,7 +258,7 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
       hstPercent?: number,
       billingAddress?: string,
       shippingAddress?: string,
-      notes?: string
+      notes?: string,
     ): Promise<Order> => {
       if (!items || items.length === 0) {
         throw new Error("Order must have at least one item");
@@ -317,14 +305,14 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
       setOrders((prev) => [createdOrder, ...prev]);
       return createdOrder;
     },
-    [companyId]
+    [companyId],
   );
 
   const getOrderById = useCallback(
     (orderId: string): Order | undefined => {
       return orders.find((order) => order.id === orderId);
     },
-    [orders]
+    [orders],
   );
 
   const updateOrderStatus = useCallback(
@@ -333,7 +321,7 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
       status: OrderStatus,
       rejectionReason?: string,
       rejectionComment?: string,
-      discountAmount?: number
+      discountAmount?: number,
     ) => {
       const updateData: OrderUpdate = {
         status,
@@ -371,14 +359,14 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
       await loadOrders();
       queryClient.invalidateQueries({ queryKey: queryKeys.orders });
     },
-    [loadOrders, getOrderById, queryClient]
+    [loadOrders, getOrderById, queryClient],
   );
 
   const deleteOrder = useCallback(
     async (orderId: string): Promise<void> => {
       const { data: deleted, error } = await (supabase as any).rpc(
         "delete_order_and_restore_inventory",
-        { p_order_id: orderId }
+        { p_order_id: orderId },
       );
 
       if (error) {
@@ -392,25 +380,21 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.orders });
       queryClient.invalidateQueries({ queryKey: queryKeys.inventory });
     },
-    [loadOrders, queryClient]
+    [loadOrders, queryClient],
   );
 
   const getUserOrders = useCallback(
     (userId: string): Order[] => {
       return orders
         .filter((order) => order.userId === userId)
-        .sort(
-          (a, b) =>
-            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     },
-    [orders]
+    [orders],
   );
 
   const getAllOrders = useCallback((): Order[] => {
     return [...orders].sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     );
   }, [orders]);
 
@@ -430,7 +414,7 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
         discountType?: string;
         shippingAmount?: number;
         imeiNumbers?: Record<string, string> | null;
-      }
+      },
     ): Promise<void> => {
       const order = getOrderById(orderId);
       if (!order) throw new Error("Order not found");
@@ -477,15 +461,13 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
         imei_numbers: imeiNumbersPayload,
       };
 
-      const { error } = await (supabase.from("orders") as any)
-        .update(updateData)
-        .eq("id", orderId);
+      const { error } = await (supabase.from("orders") as any).update(updateData).eq("id", orderId);
 
       if (error) throw error;
 
       await loadOrders();
     },
-    [loadOrders, getOrderById]
+    [loadOrders, getOrderById],
   );
 
   const confirmInvoice = useCallback(
@@ -496,15 +478,13 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
         updated_at: new Date().toISOString(),
       };
 
-      const { error } = await (supabase.from("orders") as any)
-        .update(updateData)
-        .eq("id", orderId);
+      const { error } = await (supabase.from("orders") as any).update(updateData).eq("id", orderId);
 
       if (error) throw error;
 
       await loadOrders();
     },
-    [loadOrders]
+    [loadOrders],
   );
 
   const downloadInvoicePDF = useCallback(
@@ -521,6 +501,8 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
 
       if (!order.invoiceNumber) throw new Error("Invoice not created yet");
 
+      if (!companyId) throw new Error("Company not loaded");
+
       const { generateInvoicePDF } = await import("@/lib/invoice/pdf");
       const { getUserProfile } = await import("@/lib/supabase/utils");
 
@@ -535,9 +517,8 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
         customerInfo = {
           businessName: order.manualCustomerName || "Walk-in Customer",
           businessAddress:
-            [order.manualCustomerEmail, order.manualCustomerPhone]
-              .filter(Boolean)
-              .join(" | ") || null,
+            [order.manualCustomerEmail, order.manualCustomerPhone].filter(Boolean).join(" | ") ||
+            null,
           billingAddress: order.billingAddress || null,
           shippingAddress: order.shippingAddress || null,
         };
@@ -562,9 +543,9 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
         invoiceTerms: order.invoiceTerms,
       };
 
-      await generateInvoicePDF(order, invoiceData, customerInfo);
+      await generateInvoicePDF(companyId, order, invoiceData, customerInfo);
     },
-    []
+    [companyId],
   );
 
   return (

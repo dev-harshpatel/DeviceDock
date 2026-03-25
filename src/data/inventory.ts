@@ -20,7 +20,7 @@ export interface InventoryItem {
 export function calculatePricePerUnit(
   purchasePrice: number,
   quantity: number,
-  hst: number
+  hst: number,
 ): number {
   if (quantity === 0) return 0;
   return Math.round((purchasePrice / quantity) * (1 + hst / 100) * 100) / 100;
@@ -464,17 +464,17 @@ export const inventoryData: InventoryItem[] = [
   },
 ];
 
-export type StockStatus =
-  | "in-stock"
-  | "low-stock"
-  | "critical"
-  | "out-of-stock";
+export type StockStatus = "in-stock" | "low-stock" | "critical" | "out-of-stock";
 
-export function getStockStatus(quantity: number): StockStatus {
+export function getStockStatus(
+  quantity: number,
+  lowStockThreshold = 5,
+  criticalStockThreshold = 2,
+): StockStatus {
   if (quantity === 0) return "out-of-stock";
-  if (quantity > 10) return "in-stock";
-  if (quantity >= 5) return "low-stock";
-  return "critical";
+  if (quantity <= criticalStockThreshold) return "critical";
+  if (quantity <= lowStockThreshold) return "low-stock";
+  return "in-stock";
 }
 
 // formatPrice has been moved to src/lib/utils.ts
