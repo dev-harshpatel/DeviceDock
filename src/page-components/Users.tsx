@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { useState, useCallback } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
+import { useState, useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   MoreHorizontal,
   UserPlus,
@@ -14,23 +14,23 @@ import {
   ShieldCheck,
   UserX,
   RefreshCw,
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+} from "@/components/ui/dropdown-menu";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -40,35 +40,35 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Loader } from '@/components/common/Loader';
-import { InviteUserModal } from '@/components/modals/InviteUserModal';
-import { useCompany } from '@/contexts/CompanyContext';
-import { queryKeys } from '@/lib/query-keys';
-import { ROLE_LABELS, type CompanyRole } from '@/types/company';
-import { TOAST_MESSAGES } from '@/lib/constants/toast-messages';
-import type { CompanyMember, PendingInvitation } from '@/types/member';
+} from "@/components/ui/alert-dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Loader } from "@/components/common/Loader";
+import { InviteUserModal } from "@/components/modals/InviteUserModal";
+import { useCompany } from "@/contexts/CompanyContext";
+import { queryKeys } from "@/lib/query-keys";
+import { ROLE_LABELS, type CompanyRole } from "@/types/company";
+import { TOAST_MESSAGES } from "@/lib/constants/toast-messages";
+import type { CompanyMember, PendingInvitation } from "@/types/member";
 
 // ---------------------------------------------------------------------------
 // Role options available to assign to existing members
 // ---------------------------------------------------------------------------
-const ASSIGNABLE_ROLES = ['owner', 'manager', 'inventory_admin', 'analyst'] as const;
+const ASSIGNABLE_ROLES = ["owner", "manager", "inventory_admin", "analyst"] as const;
 
 // ---------------------------------------------------------------------------
 // Status badge helper
 // ---------------------------------------------------------------------------
-function StatusBadge({ status }: { status: 'active' | 'suspended' }) {
+function StatusBadge({ status }: { status: "active" | "suspended" }) {
   return (
     <Badge
       variant="outline"
       className={
-        status === 'active'
-          ? 'border-green-500/40 text-green-600 bg-green-500/10'
-          : 'border-yellow-500/40 text-yellow-600 bg-yellow-500/10'
+        status === "active"
+          ? "border-green-500/40 text-green-600 bg-green-500/10"
+          : "border-yellow-500/40 text-yellow-600 bg-yellow-500/10"
       }
     >
-      {status === 'active' ? 'Active' : 'Suspended'}
+      {status === "active" ? "Active" : "Suspended"}
     </Badge>
   );
 }
@@ -121,23 +121,23 @@ export default function Users() {
   // -------------------------------------------------------------------------
   // Data fetching
   // -------------------------------------------------------------------------
-  const {
-    data: membersData,
-    isLoading: membersLoading,
-  } = useQuery<{ members: CompanyMember[] }>({
+  const { data: membersData, isLoading: membersLoading } = useQuery<{ members: CompanyMember[] }>({
     queryKey: queryKeys.companyMembers(companyId),
-    queryFn: () =>
-      fetch(`/api/company/members?companyId=${companyId}`).then((r) => r.json()),
+    queryFn: () => fetch(`/api/company/members?companyId=${companyId}`).then((r) => r.json()),
+    staleTime: 30_000,
+    gcTime: 10 * 60_000,
+    refetchOnWindowFocus: false,
   });
 
-  const {
-    data: invitationsData,
-    isLoading: invitationsLoading,
-  } = useQuery<{ invitations: PendingInvitation[] }>({
+  const { data: invitationsData, isLoading: invitationsLoading } = useQuery<{
+    invitations: PendingInvitation[];
+  }>({
     queryKey: queryKeys.companyInvitations(companyId),
-    queryFn: () =>
-      fetch(`/api/company/invitations?companyId=${companyId}`).then((r) => r.json()),
+    queryFn: () => fetch(`/api/company/invitations?companyId=${companyId}`).then((r) => r.json()),
     enabled: isOwner,
+    staleTime: 30_000,
+    gcTime: 10 * 60_000,
+    refetchOnWindowFocus: false,
   });
 
   const members = membersData?.members ?? [];
@@ -155,8 +155,8 @@ export default function Users() {
     setActionLoading(userId);
     try {
       const res = await fetch(`/api/company/members/${userId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ companyId, role: newRole }),
       });
       const data = await res.json();
@@ -174,12 +174,12 @@ export default function Users() {
   };
 
   const handleStatusToggle = async (member: CompanyMember) => {
-    const newStatus = member.status === 'active' ? 'suspended' : 'active';
+    const newStatus = member.status === "active" ? "suspended" : "active";
     setActionLoading(member.userId);
     try {
       const res = await fetch(`/api/company/members/${member.userId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ companyId, status: newStatus }),
       });
       const data = await res.json();
@@ -188,7 +188,7 @@ export default function Users() {
         return;
       }
       toast.success(
-        newStatus === 'suspended'
+        newStatus === "suspended"
           ? TOAST_MESSAGES.MEMBER_SUSPENDED
           : TOAST_MESSAGES.MEMBER_REACTIVATED,
       );
@@ -206,7 +206,7 @@ export default function Users() {
     try {
       const res = await fetch(
         `/api/company/members/${removeTarget.userId}?companyId=${companyId}`,
-        { method: 'DELETE' },
+        { method: "DELETE" },
       );
       const data = await res.json();
       if (!res.ok) {
@@ -228,10 +228,9 @@ export default function Users() {
   // -------------------------------------------------------------------------
   const handleCancelInvitation = async (invitationId: string) => {
     try {
-      const res = await fetch(
-        `/api/company/invitations/${invitationId}?companyId=${companyId}`,
-        { method: 'DELETE' },
-      );
+      const res = await fetch(`/api/company/invitations/${invitationId}?companyId=${companyId}`, {
+        method: "DELETE",
+      });
       const data = await res.json();
       if (!res.ok) {
         toast.error(data.error ?? TOAST_MESSAGES.ERROR_GENERIC);
@@ -255,7 +254,7 @@ export default function Users() {
           <div>
             <h2 className="text-2xl font-semibold text-foreground">Team Members</h2>
             <p className="text-sm text-muted-foreground mt-0.5">
-              {members.length} {members.length === 1 ? 'member' : 'members'}
+              {members.length} {members.length === 1 ? "member" : "members"}
               {isOwner && invitations.length > 0 && ` · ${invitations.length} pending`}
             </p>
           </div>
@@ -309,27 +308,21 @@ export default function Users() {
                         <th className="text-left font-medium px-4 py-3">Email</th>
                         <th className="text-left font-medium px-4 py-3">Role</th>
                         <th className="text-left font-medium px-4 py-3">Status</th>
-                        {isOwner && (
-                          <th className="text-right font-medium px-4 py-3">Actions</th>
-                        )}
+                        {isOwner && <th className="text-right font-medium px-4 py-3">Actions</th>}
                       </tr>
                     </thead>
                     <tbody>
                       {members.map((member, idx) => (
                         <tr
                           key={member.userId}
-                          className={
-                            idx % 2 === 0 ? 'bg-background' : 'bg-table-zebra'
-                          }
+                          className={idx % 2 === 0 ? "bg-background" : "bg-table-zebra"}
                         >
                           <td className="px-4 py-3 font-medium text-foreground">
                             {member.firstName} {member.lastName}
                           </td>
-                          <td className="px-4 py-3 text-muted-foreground">
-                            {member.email}
-                          </td>
+                          <td className="px-4 py-3 text-muted-foreground">{member.email}</td>
                           <td className="px-4 py-3">
-                            {isOwner && member.role !== 'owner' ? (
+                            {isOwner && member.role !== "owner" ? (
                               <Select
                                 value={member.role}
                                 onValueChange={(val) =>
@@ -341,7 +334,7 @@ export default function Users() {
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {ASSIGNABLE_ROLES.filter((r) => r !== 'owner').map((r) => (
+                                  {ASSIGNABLE_ROLES.filter((r) => r !== "owner").map((r) => (
                                     <SelectItem key={r} value={r} className="text-xs">
                                       {ROLE_LABELS[r]}
                                     </SelectItem>
@@ -357,7 +350,7 @@ export default function Users() {
                           </td>
                           {isOwner && (
                             <td className="px-4 py-3 text-right">
-                              {member.role !== 'owner' && (
+                              {member.role !== "owner" && (
                                 <MemberActionsMenu
                                   member={member}
                                   loading={actionLoading === member.userId}
@@ -385,11 +378,9 @@ export default function Users() {
                           <p className="font-medium text-foreground">
                             {member.firstName} {member.lastName}
                           </p>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {member.email}
-                          </p>
+                          <p className="text-xs text-muted-foreground mt-0.5">{member.email}</p>
                         </div>
-                        {isOwner && member.role !== 'owner' && (
+                        {isOwner && member.role !== "owner" && (
                           <MemberActionsMenu
                             member={member}
                             loading={actionLoading === member.userId}
@@ -399,7 +390,7 @@ export default function Users() {
                         )}
                       </div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        {isOwner && member.role !== 'owner' ? (
+                        {isOwner && member.role !== "owner" ? (
                           <Select
                             value={member.role}
                             onValueChange={(val) =>
@@ -411,7 +402,7 @@ export default function Users() {
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              {ASSIGNABLE_ROLES.filter((r) => r !== 'owner').map((r) => (
+                              {ASSIGNABLE_ROLES.filter((r) => r !== "owner").map((r) => (
                                 <SelectItem key={r} value={r} className="text-xs">
                                   {ROLE_LABELS[r]}
                                 </SelectItem>
@@ -470,7 +461,7 @@ export default function Users() {
                         {invitations.map((inv, idx) => (
                           <tr
                             key={inv.id}
-                            className={idx % 2 === 0 ? 'bg-background' : 'bg-table-zebra'}
+                            className={idx % 2 === 0 ? "bg-background" : "bg-table-zebra"}
                           >
                             <td className="px-4 py-3 text-foreground">{inv.inviteeEmail}</td>
                             <td className="px-4 py-3">
@@ -553,7 +544,9 @@ export default function Users() {
       {/* Remove confirmation dialog */}
       <AlertDialog
         open={!!removeTarget}
-        onOpenChange={(open) => { if (!open) setRemoveTarget(null); }}
+        onOpenChange={(open) => {
+          if (!open) setRemoveTarget(null);
+        }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -561,8 +554,10 @@ export default function Users() {
             <AlertDialogDescription>
               {removeTarget && (
                 <>
-                  <strong>{removeTarget.firstName} {removeTarget.lastName}</strong> will
-                  lose access to this company immediately. This cannot be undone without
+                  <strong>
+                    {removeTarget.firstName} {removeTarget.lastName}
+                  </strong>{" "}
+                  will lose access to this company immediately. This cannot be undone without
                   re-inviting them.
                 </>
               )}
@@ -593,21 +588,11 @@ interface MemberActionsMenuProps {
   onRemove: () => void;
 }
 
-function MemberActionsMenu({
-  member,
-  loading,
-  onStatusToggle,
-  onRemove,
-}: MemberActionsMenuProps) {
+function MemberActionsMenu({ member, loading, onStatusToggle, onRemove }: MemberActionsMenuProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          disabled={loading}
-          aria-label="Member actions"
-        >
+        <Button variant="ghost" size="icon" disabled={loading} aria-label="Member actions">
           {loading ? (
             <RefreshCw className="h-4 w-4 animate-spin" />
           ) : (
@@ -616,7 +601,7 @@ function MemberActionsMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        {member.status === 'active' ? (
+        {member.status === "active" ? (
           <DropdownMenuItem onClick={onStatusToggle} className="gap-2">
             <UserX className="h-4 w-4" />
             Suspend

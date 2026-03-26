@@ -12,6 +12,8 @@ import { supabase } from "../supabase/client/browser";
 import { DEFAULT_COMPANY_ADDRESS, DEFAULT_COMPANY_NAME } from "../constants";
 import { downloadBlob } from "../export/download";
 
+const logoDataUrlCache = new Map<string, string | null>();
+
 async function blobToDataUrl(blob: Blob): Promise<string> {
   return await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -49,13 +51,22 @@ async function fetchLogoFromStoragePath(path: string): Promise<string | null> {
 async function resolveCompanyLogoDataUrl(logoUrl?: string | null): Promise<string | null> {
   if (!logoUrl) return null;
 
+  if (logoDataUrlCache.has(logoUrl)) {
+    return logoDataUrlCache.get(logoUrl) ?? null;
+  }
+
   const logoPath = getStorageObjectPathFromPublicUrl(logoUrl, COMPANY_LOGOS_BUCKET);
   if (logoPath) {
     const storageDataUrl = await fetchLogoFromStoragePath(logoPath);
-    if (storageDataUrl) return storageDataUrl;
+    if (storageDataUrl) {
+      logoDataUrlCache.set(logoUrl, storageDataUrl);
+      return storageDataUrl;
+    }
   }
 
-  return await fetchImageAsBase64(logoUrl);
+  const externalDataUrl = await fetchImageAsBase64(logoUrl);
+  logoDataUrlCache.set(logoUrl, externalDataUrl);
+  return externalDataUrl;
 }
 
 /**

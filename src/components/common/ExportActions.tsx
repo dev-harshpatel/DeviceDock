@@ -22,10 +22,10 @@ export function ExportActions({
   companyName,
 }: ExportActionsProps) {
   const [isExporting, setIsExporting] = useState(false);
+  const yieldToBrowser = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
   const getExportData = async (): Promise<InventoryItem[] | null> => {
     if (onFetchAllData) {
-      setIsExporting(true);
       try {
         const allData = await onFetchAllData();
         if (allData.length === 0) {
@@ -40,8 +40,6 @@ export function ExportActions({
           description: "Failed to fetch data for export",
         });
         return null;
-      } finally {
-        setIsExporting(false);
       }
     }
 
@@ -55,36 +53,44 @@ export function ExportActions({
   };
 
   const handleExportExcel = async () => {
-    const exportData = await getExportData();
-    if (!exportData) return;
-
+    setIsExporting(true);
     try {
+      const exportData = await getExportData();
+      if (!exportData) return;
+
+      await yieldToBrowser();
       const { exportToExcel } = await import("@/lib/export/excel");
       exportToExcel(exportData, filename, companyName);
       toast.success(TOAST_MESSAGES.EXPORT_SUCCESS, {
         description: "Your Excel file has been downloaded",
       });
-    } catch (error) {
+    } catch {
       toast.error("Export failed", {
         description: "There was an error exporting to Excel",
       });
+    } finally {
+      setIsExporting(false);
     }
   };
 
   const handleExportPDF = async () => {
-    const exportData = await getExportData();
-    if (!exportData) return;
-
+    setIsExporting(true);
     try {
+      const exportData = await getExportData();
+      if (!exportData) return;
+
+      await yieldToBrowser();
       const { exportToPDF } = await import("@/lib/export/pdf");
       exportToPDF(exportData, filename, companyName);
       toast.success(TOAST_MESSAGES.EXPORT_SUCCESS, {
         description: "Your PDF file has been downloaded",
       });
-    } catch (error) {
+    } catch {
       toast.error("Export failed", {
         description: "There was an error exporting to PDF",
       });
+    } finally {
+      setIsExporting(false);
     }
   };
 

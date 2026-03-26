@@ -39,7 +39,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getStatusColor, getStatusLabel } from "@/lib/utils/status";
 
 interface OrderDetailsModalProps {
@@ -271,6 +271,12 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
   const hasInvoice = !!order.invoiceNumber;
   const canDownloadInvoice = hasInvoice && isAdmin;
   const canCreateEditInvoice = isAdmin && order.status === "approved";
+  const invoiceRoute = `/${companySlug}/orders/${order.id}/invoice`;
+
+  const handlePrefetchInvoice = useCallback(() => {
+    if (!canCreateEditInvoice) return;
+    router.prefetch(invoiceRoute);
+  }, [canCreateEditInvoice, invoiceRoute, router]);
 
   const handleDownloadInvoice = async () => {
     if (!order) return;
@@ -292,7 +298,7 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
     }
 
     startNavigation();
-    router.push(`/${companySlug}/orders/${order.id}/invoice`);
+    router.push(invoiceRoute);
     onOpenChange(false);
   };
 
@@ -876,6 +882,8 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
                 <Button
                   variant="outline"
                   onClick={handleCreateEditInvoice}
+                  onMouseEnter={handlePrefetchInvoice}
+                  onFocus={handlePrefetchInvoice}
                   disabled={isApproving || isRejecting}
                 >
                   <FileText className="mr-2 h-4 w-4" />

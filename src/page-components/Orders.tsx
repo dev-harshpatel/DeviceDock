@@ -203,6 +203,50 @@ export default function Orders() {
   };
 
   const hasActiveFilters = statusFilter !== "all" || searchQuery.trim() !== "";
+  const orderRows = useMemo(
+    () =>
+      filteredOrders.map((order) => ({
+        order,
+        brands:
+          Array.isArray(order.items) && order.items.length > 0
+            ? Array.from(new Set(order.items.map((item) => item.item?.brand).filter(Boolean))).join(
+                ", ",
+              )
+            : "N/A",
+        customerLabel: order.isManualSale
+          ? order.manualCustomerName || "Walk-in Customer"
+          : userEmails[order.userId] || `${order.userId.slice(0, 8)}...`,
+        itemCount: Array.isArray(order.items) ? order.items.length : 0,
+      })),
+    [filteredOrders, userEmails],
+  );
+
+  const deletedOrderRows = useMemo(
+    () =>
+      deletedOrders.map((order) => ({
+        order,
+        customerLabel: order.isManualSale
+          ? order.manualCustomerName || "Walk-in Customer"
+          : `${order.userId.slice(0, 8)}...`,
+      })),
+    [deletedOrders],
+  );
+
+  const handleSearchChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(event.target.value);
+  }, []);
+
+  const handleStatusFilterChange = useCallback((value: string) => {
+    setStatusFilter(value as OrderStatus | "all");
+  }, []);
+
+  const handleTabChange = useCallback((value: string) => {
+    setActiveTab(value as "orders" | "deleted");
+  }, []);
+
+  const handleOpenManualSale = useCallback(() => {
+    setManualSaleOpen(true);
+  }, []);
 
   if (isLoading && activeTab === "orders") {
     return <Loader text="Loading orders..." />;
@@ -210,11 +254,7 @@ export default function Orders() {
 
   return (
     <>
-      <Tabs
-        value={activeTab}
-        onValueChange={(v) => setActiveTab(v as "orders" | "deleted")}
-        className="flex flex-col h-full"
-      >
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="flex flex-col h-full">
         {/* Sticky Header Section */}
         <div className="sticky top-0 z-10 bg-background border-b border-border mb-4 -mx-4 lg:-mx-6 px-4 lg:px-6 pt-3 lg:pt-4 pb-3">
           {/* Title row — compact, inline subtitle */}
@@ -256,14 +296,11 @@ export default function Orders() {
                   <Input
                     placeholder="Search by order ID, status..."
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onChange={handleSearchChange}
                     className="pl-9 bg-background border-border"
                   />
                 </div>
-                <Select
-                  value={statusFilter}
-                  onValueChange={(value) => setStatusFilter(value as OrderStatus | "all")}
-                >
+                <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
                   <SelectTrigger className="w-36 bg-background border-border">
                     <SelectValue placeholder="Filter by Status" />
                   </SelectTrigger>
@@ -275,7 +312,7 @@ export default function Orders() {
                     <SelectItem value="completed">Completed</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button onClick={() => setManualSaleOpen(true)} className="gap-2 shrink-0">
+                <Button onClick={handleOpenManualSale} className="gap-2 shrink-0">
                   <ShoppingBag className="h-4 w-4" />
                   <span className="hidden sm:inline">Record Sale</span>
                   <span className="sm:hidden">Sale</span>
@@ -340,7 +377,7 @@ export default function Orders() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
-                      {filteredOrders.map((order, index) => (
+                      {orderRows.map(({ order, brands, customerLabel, itemCount }, index) => (
                         <tr
                           key={order.id}
                           className={cn(
@@ -363,22 +400,10 @@ export default function Orders() {
                               )}
                             </div>
                           </td>
-                          <td className="px-4 py-4 text-sm text-foreground">
-                            {order.isManualSale
-                              ? order.manualCustomerName || "Walk-in Customer"
-                              : userEmails[order.userId] || order.userId.slice(0, 8) + "..."}
-                          </td>
-                          <td className="px-4 py-4 text-sm text-foreground">
-                            {Array.isArray(order.items) && order.items.length > 0
-                              ? Array.from(
-                                  new Set(
-                                    order.items.map((item) => item.item?.brand).filter(Boolean),
-                                  ),
-                                ).join(", ")
-                              : "N/A"}
-                          </td>
+                          <td className="px-4 py-4 text-sm text-foreground">{customerLabel}</td>
+                          <td className="px-4 py-4 text-sm text-foreground">{brands}</td>
                           <td className="px-4 py-4 text-center text-sm text-foreground">
-                            {Array.isArray(order.items) ? order.items.length : 0} item(s)
+                            {itemCount} item(s)
                           </td>
                           <td className="px-4 py-4 text-right">
                             <span className="font-semibold text-foreground">
@@ -463,7 +488,7 @@ export default function Orders() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
-                      {deletedOrders.map((order, index) => (
+                      {deletedOrderRows.map(({ order, customerLabel }, index) => (
                         <tr
                           key={order.id}
                           className={cn(
@@ -486,11 +511,7 @@ export default function Orders() {
                               )}
                             </div>
                           </td>
-                          <td className="px-4 py-4 text-sm text-foreground">
-                            {order.isManualSale
-                              ? order.manualCustomerName || "Walk-in Customer"
-                              : order.userId.slice(0, 8) + "..."}
-                          </td>
+                          <td className="px-4 py-4 text-sm text-foreground">{customerLabel}</td>
                           <td className="px-4 py-4 text-right">
                             <span className="font-semibold text-foreground">
                               {formatPrice(order.totalPrice)}

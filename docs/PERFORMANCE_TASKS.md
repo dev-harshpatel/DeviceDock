@@ -16,6 +16,7 @@ Use this file as the “menu” of work. Tell me **exactly one task ID** (exampl
 
 ### P0.1 — Create a repeatable perf baseline
 
+- **Status**: ✅ Done (baseline doc added)
 - **Goal**: make “fast/slow” measurable in this repo.
 - **Work**:
   - Document how to capture before/after (build output, Web Vitals routes).
@@ -25,6 +26,7 @@ Use this file as the “menu” of work. Tell me **exactly one task ID** (exampl
 
 ### P0.2 — Add bundle inspection workflow (no behavior change)
 
+- **Status**: ✅ Done (bundle analyzer workflow added)
 - **Goal**: quickly verify heavy libs aren’t in shared chunks.
 - **Work**:
   - Add an optional bundle inspection script/workflow (dev-only) so we can see chunk composition.
@@ -37,6 +39,7 @@ Use this file as the “menu” of work. Tell me **exactly one task ID** (exampl
 
 ### P1.1 — Lazy-load inventory PDF export (jsPDF) at click time
 
+- **Status**: ✅ Done (dynamic import on export click)
 - **Goal**: `jspdf` + `jspdf-autotable` are not shipped to users unless they export.
 - **Likely files**:
   - `src/lib/export/pdf.ts`
@@ -50,6 +53,7 @@ Use this file as the “menu” of work. Tell me **exactly one task ID** (exampl
 
 ### P1.2 — Lazy-load inventory Excel export (xlsx) at click time
 
+- **Status**: ✅ Done (dynamic import on export click)
 - **Goal**: `xlsx` is not shipped to users unless they export.
 - **Likely files**:
   - `src/lib/export/excel.ts`
@@ -63,6 +67,7 @@ Use this file as the “menu” of work. Tell me **exactly one task ID** (exampl
 
 ### P1.3 — Isolate invoice PDF generation to invoice-only routes
 
+- **Status**: ✅ Done (invoice generator is dynamically imported)
 - **Goal**: `@react-pdf/renderer` is only loaded on invoice routes, not across admin pages.
 - **Likely files**:
   - `src/lib/invoice/pdf.tsx`
@@ -80,6 +85,7 @@ Use this file as the “menu” of work. Tell me **exactly one task ID** (exampl
 
 ### P2.1 — Add non-blocking “Generating…” UX to exports (same flow)
 
+- **Status**: ✅ Done
 - **Goal**: prevent perceived freezes and improve INP.
 - **Likely files**:
   - Export action components (e.g. `src/components/common/ExportActions.tsx`)
@@ -92,6 +98,7 @@ Use this file as the “menu” of work. Tell me **exactly one task ID** (exampl
 
 ### P2.2 — Cache invoice logo data-url per session
 
+- **Status**: ✅ Done
 - **Goal**: avoid refetching/converting the same logo for every invoice generation.
 - **Likely files**:
   - `src/lib/invoice/pdf.tsx`
@@ -103,6 +110,7 @@ Use this file as the “menu” of work. Tell me **exactly one task ID** (exampl
 
 ### P2.3 — (Optional) Web Worker for `xlsx` export on very large datasets
 
+- **Status**: ⏸️ Pending (optional; not required for current flow)
 - **Goal**: keep main thread responsive when exporting huge inventories.
 - **Work**:
   - Move heavy XLSX generation to a Worker.
@@ -116,6 +124,7 @@ Use this file as the “menu” of work. Tell me **exactly one task ID** (exampl
 
 ### P3.1 — Stabilize props/handlers in biggest admin pages
 
+- **Status**: ✅ Done (Inventory + Orders optimized)
 - **Goal**: reduce rerenders caused by unstable props and inline objects/functions.
 - **Candidate pages**:
   - `/admin/inventory`, `/admin/orders`, `/admin/users` (and the tenant-scoped equivalents)
@@ -128,6 +137,7 @@ Use this file as the “menu” of work. Tell me **exactly one task ID** (exampl
 
 ### P3.2 — Paginate or virtualize large tables (pick the safest approach per screen)
 
+- **Status**: ✅ Done (pagination already in place and retained)
 - **Goal**: avoid rendering hundreds/thousands of rows at once.
 - **Work**:
   - Pagination preferred; virtualization if “must show all”.
@@ -140,6 +150,7 @@ Use this file as the “menu” of work. Tell me **exactly one task ID** (exampl
 
 ### P4.1 — Remove `select("*")` in list views (fetch only needed columns)
 
+- **Status**: ✅ Done
 - **Goal**: reduce payload size and speed up list screens.
 - **Likely files**:
   - `src/lib/supabase/queries/*.ts`
@@ -151,6 +162,7 @@ Use this file as the “menu” of work. Tell me **exactly one task ID** (exampl
 
 ### P4.2 — React Query tuning (staleTime/gcTime/refetch storms)
 
+- **Status**: ✅ Done
 - **Goal**: fewer redundant refetches while preserving correctness.
 - **Work**:
   - Set sensible `staleTime` per query type.
@@ -161,6 +173,7 @@ Use this file as the “menu” of work. Tell me **exactly one task ID** (exampl
 
 ### P4.3 — Prefetch on navigation intent for order/inventory details
 
+- **Status**: ✅ Done
 - **Goal**: details pages open faster without changing flow.
 - **Work**:
   - Prefetch queries on hover / on row focus / on click before route push.
@@ -173,6 +186,7 @@ Use this file as the “menu” of work. Tell me **exactly one task ID** (exampl
 
 ### P5.1 — Add/verify indexes for hot filters
 
+- **Status**: ✅ Done
 - **Goal**: speed up the slowest queries (especially admin lists).
 - **Work**:
   - Identify slow queries first.

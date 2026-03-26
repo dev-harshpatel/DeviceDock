@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import {
@@ -33,12 +33,18 @@ export default function Inventory() {
 
   const debouncedSearch = useDebounce(filters.search);
 
-  const serverFilters = buildServerFilters(debouncedSearch, filters);
+  const serverFilters = useMemo(
+    () => buildServerFilters(debouncedSearch, filters),
+    [debouncedSearch, filters],
+  );
 
   const [currentPage, setCurrentPage] = usePageParam();
-  const queryKey = queryKeys.inventoryPage(currentPage, serverFilters);
+  const queryKey = useMemo(
+    () => queryKeys.inventoryPage(currentPage, serverFilters),
+    [currentPage, serverFilters],
+  );
 
-  const filtersKey = JSON.stringify(serverFilters);
+  const filtersKey = useMemo(() => JSON.stringify(serverFilters), [serverFilters]);
 
   const { data, totalCount, totalPages, isLoading, rangeText } =
     usePaginatedReactQuery<InventoryItem>({
@@ -53,9 +59,35 @@ export default function Inventory() {
       filtersKey,
     });
 
-  const handleResetFilters = () => {
+  const handleResetFilters = useCallback(() => {
     setFilters(defaultFilters);
-  };
+  }, []);
+
+  const handleOpenAddProduct = useCallback(() => {
+    setAddProductOpen(true);
+  }, []);
+
+  const handleFetchAllData = useCallback(async () => {
+    return await fetchAllFilteredInventory(serverFilters, {
+      includeAdminFields: true,
+      companyId,
+    });
+  }, [companyId, serverFilters]);
+
+  const handleAddProductSuccess = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: queryKeys.inventory });
+  }, [queryClient]);
+
+  const hasActiveFilters = useMemo(
+    () =>
+      serverFilters.search !== "" ||
+      serverFilters.brand !== "all" ||
+      serverFilters.grade !== "all" ||
+      serverFilters.storage !== "all" ||
+      serverFilters.priceRange !== "all" ||
+      serverFilters.stockStatus !== "all",
+    [serverFilters],
+  );
 
   if (isLoading) {
     return <Loader size="lg" text="Loading inventory..." />;
@@ -74,17 +106,12 @@ export default function Inventory() {
             </span>
           </h2>
           <div className="flex items-center gap-2">
-            <Button size="sm" onClick={() => setAddProductOpen(true)} className="gap-1.5">
+            <Button size="sm" onClick={handleOpenAddProduct} className="gap-1.5">
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">Add Product</span>
             </Button>
             <ExportActions
-              onFetchAllData={() =>
-                fetchAllFilteredInventory(serverFilters, {
-                  includeAdminFields: true,
-                  companyId,
-                })
-              }
+              onFetchAllData={handleFetchAllData}
               filename="inventory"
               companyName={companyName}
             />
@@ -107,14 +134,7 @@ export default function Inventory() {
           items={data}
           className="h-full"
           showColorBreakdown
-          hasActiveFilters={
-            serverFilters.search !== "" ||
-            serverFilters.brand !== "all" ||
-            serverFilters.grade !== "all" ||
-            serverFilters.storage !== "all" ||
-            serverFilters.priceRange !== "all" ||
-            serverFilters.stockStatus !== "all"
-          }
+          hasActiveFilters={hasActiveFilters}
         />
       </div>
 
@@ -131,7 +151,7 @@ export default function Inventory() {
       <AddProductModal
         open={addProductOpen}
         onOpenChange={setAddProductOpen}
-        onSuccess={() => queryClient.invalidateQueries({ queryKey: queryKeys.inventory })}
+        onSuccess={handleAddProductSuccess}
       />
     </div>
   );

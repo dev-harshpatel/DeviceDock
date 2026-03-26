@@ -20,6 +20,8 @@ export interface UsePaginatedReactQueryOptions<T> {
   enabled?: boolean;
   filtersKey?: string;
   refetchOnWindowFocus?: boolean;
+  staleTime?: number;
+  gcTime?: number;
 }
 
 export interface UsePaginatedReactQueryReturn<T> {
@@ -42,7 +44,9 @@ export function usePaginatedReactQuery<T>(
     pageSize = PAGE_SIZE,
     enabled = true,
     filtersKey,
-    refetchOnWindowFocus,
+    refetchOnWindowFocus = false,
+    staleTime = 30_000,
+    gcTime = 10 * 60_000,
   } = options;
 
   const from = (currentPage - 1) * pageSize;
@@ -54,6 +58,8 @@ export function usePaginatedReactQuery<T>(
     enabled,
     placeholderData: keepPreviousData,
     refetchOnWindowFocus,
+    staleTime,
+    gcTime,
   });
 
   if (query.isError) {

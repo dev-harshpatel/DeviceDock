@@ -1,9 +1,41 @@
 import { supabase } from "../client/browser";
-import type { Wish, WishStatus, WishWithInventory, AdminWish, AdminWishWithInventory } from "@/types/wish";
+import type {
+  Wish,
+  WishStatus,
+  WishWithInventory,
+  AdminWish,
+  AdminWishWithInventory,
+} from "@/types/wish";
 import type { Database } from "@/lib/database.types";
 import { dbRowToInventoryItem } from "./mappers";
 
 type WishRow = Database["public"]["Tables"]["wishes"]["Row"];
+
+const ADMIN_WISH_FIELDS = [
+  "id",
+  "user_id",
+  "model",
+  "grade",
+  "storage",
+  "qty_wanted",
+  "max_price_per_unit",
+  "status",
+  "offer_price_per_unit",
+  "offer_qty",
+  "offer_inventory_item_id",
+  "offer_created_at",
+  "admin_notes",
+  "created_at",
+  "updated_at",
+].join(", ");
+
+const ADMIN_WISH_WITH_INVENTORY_SELECT = `
+  ${ADMIN_WISH_FIELDS},
+  inventory:offer_inventory_item_id (
+    id, device_name, brand, grade, storage, quantity, selling_price,
+    purchase_price, hst, price_per_unit, is_active, last_updated
+  )
+` as const;
 
 // Columns fetched for the user — admin-only fields (admin_notes,
 // offer_inventory_item_id) are intentionally excluded so they never
@@ -90,10 +122,7 @@ export interface CreateWishInput {
   maxPricePerUnit?: number | null;
 }
 
-export async function createWish(
-  userId: string,
-  input: CreateWishInput
-): Promise<Wish> {
+export async function createWish(userId: string, input: CreateWishInput): Promise<Wish> {
   const payload: Database["public"]["Tables"]["wishes"]["Insert"] = {
     user_id: userId,
     model: input.model.trim(),
@@ -106,7 +135,9 @@ export async function createWish(
   const { data, error } = await (supabase as any)
     .from("wishes")
     .insert(payload)
-    .select("id, user_id, model, grade, storage, qty_wanted, max_price_per_unit, status, offer_price_per_unit, offer_qty, offer_created_at, created_at, updated_at")
+    .select(
+      "id, user_id, model, grade, storage, qty_wanted, max_price_per_unit, status, offer_price_per_unit, offer_qty, offer_created_at, created_at, updated_at",
+    )
     .single();
 
   if (error || !data) {
@@ -122,22 +153,20 @@ export interface UpdateWishInput {
   qtyWanted?: number;
 }
 
-export async function updateWish(
-  id: string,
-  input: UpdateWishInput
-): Promise<Wish> {
+export async function updateWish(id: string, input: UpdateWishInput): Promise<Wish> {
   const update: Database["public"]["Tables"]["wishes"]["Update"] = {};
 
   if (input.status) update.status = input.status;
-  if (input.maxPricePerUnit != null)
-    update.max_price_per_unit = input.maxPricePerUnit;
+  if (input.maxPricePerUnit != null) update.max_price_per_unit = input.maxPricePerUnit;
   if (input.qtyWanted != null) update.qty_wanted = input.qtyWanted;
 
   const { data, error } = await (supabase as any)
     .from("wishes")
     .update(update)
     .eq("id", id)
-    .select("id, user_id, model, grade, storage, qty_wanted, max_price_per_unit, status, offer_price_per_unit, offer_qty, offer_created_at, created_at, updated_at")
+    .select(
+      "id, user_id, model, grade, storage, qty_wanted, max_price_per_unit, status, offer_price_per_unit, offer_qty, offer_created_at, created_at, updated_at",
+    )
     .single();
 
   if (error || !data) {
@@ -155,16 +184,12 @@ export interface AdminOfferInput {
   adminNotes?: string | null;
 }
 
-export async function setAdminOffer(
-  id: string,
-  input: AdminOfferInput
-): Promise<AdminWish> {
+export async function setAdminOffer(id: string, input: AdminOfferInput): Promise<AdminWish> {
   const update: Database["public"]["Tables"]["wishes"]["Update"] = {
     status: input.status,
   };
 
-  if (input.offerPricePerUnit !== undefined)
-    update.offer_price_per_unit = input.offerPricePerUnit;
+  if (input.offerPricePerUnit !== undefined) update.offer_price_per_unit = input.offerPricePerUnit;
   if (input.offerQty !== undefined) update.offer_qty = input.offerQty;
   if (input.offerInventoryItemId !== undefined)
     update.offer_inventory_item_id = input.offerInventoryItemId;
@@ -178,7 +203,7 @@ export async function setAdminOffer(
     .from("wishes")
     .update(update)
     .eq("id", id)
-    .select("*")
+    .select(ADMIN_WISH_FIELDS)
     .single();
 
   if (error || !data) {
@@ -194,10 +219,7 @@ export async function fetchAllWishesForAdmin(): Promise<AdminWishWithInventory[]
   // via /api/users/emails (same pattern as Orders.tsx).
   const { data, error } = await supabase
     .from("wishes")
-    .select(
-      `*,
-       inventory:offer_inventory_item_id (id, device_name, brand, grade, storage, quantity, selling_price, purchase_price, hst, price_per_unit, is_active, last_updated)`
-    )
+    .select(ADMIN_WISH_WITH_INVENTORY_SELECT)
     .order("created_at", { ascending: false });
 
   if (error || !data) {
@@ -219,19 +241,13 @@ export async function fetchModelSuggestions(): Promise<string[]> {
   if (error || !data) return [];
 
   return Array.from(
-    new Set(
-      (data as Array<{ device_name: string | null }>).map(
-        (row) => row.device_name
-      )
-    )
+    new Set((data as Array<{ device_name: string | null }>).map((row) => row.device_name)),
   )
     .filter(Boolean)
     .sort() as string[];
 }
 
-export async function fetchStorageOptionsByModel(
-  model: string
-): Promise<string[]> {
+export async function fetchStorageOptionsByModel(model: string): Promise<string[]> {
   const { data, error } = await supabase
     .from("inventory")
     .select("storage")
@@ -240,11 +256,7 @@ export async function fetchStorageOptionsByModel(
 
   if (error || !data) return [];
 
-  return Array.from(
-    new Set(
-      (data as Array<{ storage: string | null }>).map((row) => row.storage)
-    )
-  )
+  return Array.from(new Set((data as Array<{ storage: string | null }>).map((row) => row.storage)))
     .filter(Boolean)
     .sort() as string[];
 }
