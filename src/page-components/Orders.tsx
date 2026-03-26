@@ -216,55 +216,55 @@ export default function Orders() {
         className="flex flex-col h-full"
       >
         {/* Sticky Header Section */}
-        <div className="sticky top-0 z-10 bg-background pb-4 space-y-4 border-b border-border mb-4 -mx-4 lg:-mx-6 px-4 lg:px-6 pt-4 lg:pt-6">
-          {/* Page Header */}
-          <div>
+        <div className="sticky top-0 z-10 bg-background border-b border-border mb-4 -mx-4 lg:-mx-6 px-4 lg:px-6 pt-3 lg:pt-4 pb-3">
+          {/* Title row — compact, inline subtitle */}
+          <div className="flex items-baseline gap-3 mb-3">
             <h2 className="text-2xl font-semibold text-foreground">Orders</h2>
-            <p className="text-sm text-muted-foreground mt-1">
+            <p className="text-sm text-muted-foreground">
               {activeTab === "orders"
                 ? `${totalCount} ${hasActiveFilters ? "filtered" : "total"} orders`
                 : `${deletedTotal} deleted order${deletedTotal === 1 ? "" : "s"}`}
             </p>
           </div>
 
-          {/* Tab Switcher */}
-          <TabsList className="bg-muted/60 w-full sm:w-auto">
-            <TabsTrigger value="orders" className="gap-2 flex-1 sm:flex-none">
-              <ShoppingBag className="h-3.5 w-3.5" />
-              Orders
-            </TabsTrigger>
-            <TabsTrigger value="deleted" className="gap-2 flex-1 sm:flex-none">
-              <Archive className="h-3.5 w-3.5" />
-              Deleted Orders
-              {deletedTotal > 0 && (
-                <Badge
-                  variant="secondary"
-                  className="ml-1 h-5 min-w-[20px] px-1 flex items-center justify-center text-[11px] font-semibold rounded-full"
-                >
-                  {deletedTotal > 99 ? "99+" : deletedTotal}
-                </Badge>
-              )}
-            </TabsTrigger>
-          </TabsList>
+          {/* Tabs + controls on one row */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            <TabsList className="bg-muted/60 shrink-0 w-full sm:w-auto">
+              <TabsTrigger value="orders" className="gap-2 flex-1 sm:flex-none">
+                <ShoppingBag className="h-3.5 w-3.5" />
+                Orders
+              </TabsTrigger>
+              <TabsTrigger value="deleted" className="gap-2 flex-1 sm:flex-none">
+                <Archive className="h-3.5 w-3.5" />
+                Deleted Orders
+                {deletedTotal > 0 && (
+                  <Badge
+                    variant="secondary"
+                    className="ml-1 h-5 min-w-[20px] px-1 flex items-center justify-center text-[11px] font-semibold rounded-full"
+                  >
+                    {deletedTotal > 99 ? "99+" : deletedTotal}
+                  </Badge>
+                )}
+              </TabsTrigger>
+            </TabsList>
 
-          {/* Orders filters (orders tab only) */}
-          {activeTab === "orders" && (
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-              <div className="relative flex-1 w-full sm:max-w-sm">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search by order ID, status..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 bg-background border-border"
-                />
-              </div>
-              <div className="flex items-center gap-2 w-full sm:w-auto">
+            {/* Orders filters — pushed to the right on desktop */}
+            {activeTab === "orders" && (
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <div className="relative flex-1 min-w-0 max-w-sm">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search by order ID, status..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9 bg-background border-border"
+                  />
+                </div>
                 <Select
                   value={statusFilter}
                   onValueChange={(value) => setStatusFilter(value as OrderStatus | "all")}
                 >
-                  <SelectTrigger className="w-40 bg-background border-border">
+                  <SelectTrigger className="w-36 bg-background border-border">
                     <SelectValue placeholder="Filter by Status" />
                   </SelectTrigger>
                   <SelectContent className="bg-card border-border">
@@ -275,27 +275,25 @@ export default function Orders() {
                     <SelectItem value="completed">Completed</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button
-                  onClick={() => setManualSaleOpen(true)}
-                  className="gap-2 shrink-0 flex-1 sm:flex-none"
-                >
+                <Button onClick={() => setManualSaleOpen(true)} className="gap-2 shrink-0">
                   <ShoppingBag className="h-4 w-4" />
-                  Record Sale
+                  <span className="hidden sm:inline">Record Sale</span>
+                  <span className="sm:hidden">Sale</span>
                 </Button>
                 {hasActiveFilters && (
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={handleResetFilter}
-                    className="border-border"
+                    className="border-border shrink-0"
                   >
                     <RotateCcw className="h-4 w-4 mr-2" />
                     Reset
                   </Button>
                 )}
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Scrollable Content */}

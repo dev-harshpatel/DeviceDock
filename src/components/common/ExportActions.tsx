@@ -11,6 +11,7 @@ interface ExportActionsProps {
   onFetchAllData?: () => Promise<InventoryItem[]>;
   filename?: string;
   className?: string;
+  companyName?: string;
 }
 
 export function ExportActions({
@@ -18,6 +19,7 @@ export function ExportActions({
   onFetchAllData,
   filename = "inventory",
   className,
+  companyName,
 }: ExportActionsProps) {
   const [isExporting, setIsExporting] = useState(false);
 
@@ -58,7 +60,7 @@ export function ExportActions({
 
     try {
       const { exportToExcel } = await import("@/lib/export/excel");
-      exportToExcel(exportData, filename);
+      exportToExcel(exportData, filename, companyName);
       toast.success(TOAST_MESSAGES.EXPORT_SUCCESS, {
         description: "Your Excel file has been downloaded",
       });
@@ -75,7 +77,7 @@ export function ExportActions({
 
     try {
       const { exportToPDF } = await import("@/lib/export/pdf");
-      exportToPDF(exportData, filename);
+      exportToPDF(exportData, filename, companyName);
       toast.success(TOAST_MESSAGES.EXPORT_SUCCESS, {
         description: "Your PDF file has been downloaded",
       });

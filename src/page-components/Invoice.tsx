@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useOrders } from "@/contexts/OrdersContext";
 import { useCompany } from "@/contexts/CompanyContext";
+import { supabase } from "@/lib/supabase/client";
 import { toast } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,13 +30,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { formatPrice } from "@/data/inventory";
 import { GRADE_LABELS } from "@/lib/constants/grades";
-import {
-  generateInvoiceNumber,
-  generatePONumber,
-  calculateDueDate,
-} from "@/lib/invoice/utils";
-import { InvoiceConfirmationDialog } from "@/components/modals/InvoiceConfirmationDialog";
-import { Loader2, ArrowLeft, Save, Download, CheckCircle2 } from "lucide-react";
+import { generateInvoiceNumber, generatePONumber, calculateDueDate } from "@/lib/invoice/utils";
+import { Loader2, ArrowLeft, Save, Download } from "lucide-react";
 import { getUserProfile } from "@/lib/supabase/utils";
 import { useCompanyRoute } from "@/hooks/useCompanyRoute";
 
@@ -74,20 +70,13 @@ export default function Invoice() {
   const router = useRouter();
   const { companyRoute } = useCompanyRoute();
   const orderId = params.orderId as string;
-  const {
-    getOrderById,
-    updateInvoice,
-    confirmInvoice,
-    downloadInvoicePDF,
-    isLoading: ordersLoading,
-  } = useOrders();
-  const { canWrite: isAdmin } = useCompany();
-  const [order, setOrder] =
-    useState<ReturnType<typeof getOrderById>>(undefined);
+  const { getOrderById, updateInvoice, downloadInvoicePDF, isLoading: ordersLoading } = useOrders();
+  const { canWrite: isAdmin, companyId } = useCompany();
+  const [companyHstNumber, setCompanyHstNumber] = useState("");
+  const [order, setOrder] = useState<ReturnType<typeof getOrderById>>(undefined);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
-  const [confirmationDialogOpen, setConfirmationDialogOpen] = useState(false);
   const [imeiNumbers, setImeiNumbers] = useState<Record<string, string>>({});
   const [customerInfo, setCustomerInfo] = useState<{
     businessName?: string | null;
@@ -102,7 +91,7 @@ export default function Invoice() {
       poNumber: "",
       paymentTerms: "CHQ",
       dueDate: "",
-      hstNumber: "797155074RT0001",
+      hstNumber: "",
       invoiceNotes: "",
       invoiceTerms: DEFAULT_TERMS_AND_CONDITIONS,
       discountType: "cad",
@@ -116,8 +105,7 @@ export default function Invoice() {
     const saved = order?.imeiNumbers ?? {};
     const keys = new Set([...Object.keys(imeiNumbers), ...Object.keys(saved)]);
     for (const key of keys) {
-      if ((imeiNumbers[key] ?? "").trim() !== (saved[key] ?? "").trim())
-        return true;
+      if ((imeiNumbers[key] ?? "").trim() !== (saved[key] ?? "").trim()) return true;
     }
     return false;
   })();
@@ -159,6 +147,15 @@ export default function Invoice() {
 
         setOrder(currentOrder);
 
+        // Fetch company HST number from settings (single source of truth)
+        const { data: settingsRow } = await (supabase as any)
+          .from("company_settings")
+          .select("hst_number")
+          .eq("company_id", companyId)
+          .maybeSingle();
+        const fetchedHstNumber: string = settingsRow?.hst_number || "";
+        setCompanyHstNumber(fetchedHstNumber);
+
         // Initialize IMEI numbers from saved order data
         if (currentOrder.imeiNumbers) {
           setImeiNumbers(currentOrder.imeiNumbers);
@@ -169,10 +166,7 @@ export default function Invoice() {
           setCustomerInfo({
             businessName: currentOrder.manualCustomerName || "Walk-in Customer",
             businessAddress:
-              [
-                currentOrder.manualCustomerEmail,
-                currentOrder.manualCustomerPhone,
-              ]
+              [currentOrder.manualCustomerEmail, currentOrder.manualCustomerPhone]
                 .filter(Boolean)
                 .join(" | ") || null,
           });
@@ -186,11 +180,9 @@ export default function Invoice() {
 
         // Pre-fill form with existing invoice data or defaults
         const orderDate = new Date(currentOrder.createdAt);
-        const invoiceDate =
-          currentOrder.invoiceDate || currentOrder.createdAt.split("T")[0];
+        const invoiceDate = currentOrder.invoiceDate || currentOrder.createdAt.split("T")[0];
         const paymentTerms = currentOrder.paymentTerms || "CHQ";
-        const dueDate =
-          currentOrder.dueDate || calculateDueDate(invoiceDate, paymentTerms);
+        const dueDate = currentOrder.dueDate || calculateDueDate(invoiceDate, paymentTerms);
 
         if (currentOrder.invoiceNumber) {
           const storedDiscountType = currentOrder.discountType || "cad";
@@ -199,8 +191,7 @@ export default function Invoice() {
 
           if (currentOrder.discountAmount && currentOrder.discountAmount > 0) {
             if (storedDiscountType === "percentage") {
-              const percentage =
-                (currentOrder.discountAmount / currentOrder.subtotal) * 100;
+              const percentage = (currentOrder.discountAmount / currentOrder.subtotal) * 100;
               discountAmountValue = percentage.toFixed(2);
               discountTypeValue = "percentage";
             } else {
@@ -215,10 +206,9 @@ export default function Invoice() {
             poNumber: currentOrder.poNumber || "",
             paymentTerms: paymentTerms,
             dueDate: dueDate,
-            hstNumber: currentOrder.hstNumber || "797155074RT0001",
+            hstNumber: currentOrder.hstNumber || fetchedHstNumber,
             invoiceNotes: currentOrder.invoiceNotes || "",
-            invoiceTerms:
-              currentOrder.invoiceTerms || DEFAULT_TERMS_AND_CONDITIONS,
+            invoiceTerms: currentOrder.invoiceTerms || DEFAULT_TERMS_AND_CONDITIONS,
             discountType: discountTypeValue,
             discountAmount: discountAmountValue,
             shippingAmount: currentOrder.shippingAmount
@@ -236,7 +226,7 @@ export default function Invoice() {
             poNumber,
             paymentTerms: paymentTerms,
             dueDate: dueDate,
-            hstNumber: "797155074RT0001",
+            hstNumber: fetchedHstNumber,
             invoiceNotes: "",
             invoiceTerms: DEFAULT_TERMS_AND_CONDITIONS,
             discountType: "cad",
@@ -320,8 +310,6 @@ export default function Invoice() {
         discountType: discountType as "percentage" | "cad",
         shippingAmount: shippingAmount,
         imeiNumbers: imeiNumbers,
-        invoiceConfirmed: false,
-        invoiceConfirmedAt: null,
       });
 
       form.reset({
@@ -330,7 +318,7 @@ export default function Invoice() {
         poNumber: data.poNumber,
         paymentTerms: data.paymentTerms,
         dueDate: data.dueDate,
-        hstNumber: data.hstNumber || "797155074RT0001",
+        hstNumber: data.hstNumber || companyHstNumber,
         invoiceNotes: data.invoiceNotes || "",
         invoiceTerms: data.invoiceTerms || "",
         discountType: (data.discountType || "cad") as "percentage" | "cad",
@@ -358,34 +346,6 @@ export default function Invoice() {
       toast.error("Failed to download invoice. Please try again.");
     } finally {
       setIsDownloading(false);
-    }
-  };
-
-  const handleConfirm = async () => {
-    if (!order) return;
-    if (order.invoiceConfirmed) {
-      toast.success("Invoice is already confirmed.");
-      setConfirmationDialogOpen(false);
-      return;
-    }
-
-    try {
-      await confirmInvoice(order.id);
-      setOrder((prev) =>
-        prev
-          ? {
-              ...prev,
-              invoiceConfirmed: true,
-              invoiceConfirmedAt: new Date().toISOString(),
-            }
-          : prev
-      );
-      toast.success(
-        "Invoice has been confirmed. Customer can now download it."
-      );
-      setConfirmationDialogOpen(false);
-    } catch (error) {
-      toast.error("Failed to confirm invoice. Please try again.");
     }
   };
 
@@ -448,14 +408,9 @@ export default function Invoice() {
           {/* Invoice Form */}
           <div className="flex-1 md:overflow-y-auto md:min-h-0 space-y-6">
             <Form {...form}>
-              <form
-                onSubmit={form.handleSubmit(handleSave)}
-                className="space-y-6"
-              >
+              <form onSubmit={form.handleSubmit(handleSave)} className="space-y-6">
                 <div className="bg-card border border-border rounded-lg p-6 space-y-4">
-                  <h2 className="text-lg font-semibold text-foreground">
-                    Invoice Details
-                  </h2>
+                  <h2 className="text-lg font-semibold text-foreground">Invoice Details</h2>
 
                   <div className="grid gap-4 sm:grid-cols-2">
                     <FormField
@@ -506,10 +461,7 @@ export default function Invoice() {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Payment Terms</FormLabel>
-                          <Select
-                            onValueChange={field.onChange}
-                            value={field.value}
-                          >
+                          <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="Select payment terms" />
@@ -549,10 +501,7 @@ export default function Invoice() {
                         <FormItem>
                           <FormLabel>HST Number</FormLabel>
                           <FormControl>
-                            <Input
-                              {...field}
-                              placeholder="e.g., 797155074RT0001"
-                            />
+                            <Input {...field} placeholder="e.g., 797155074RT0001" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -585,11 +534,7 @@ export default function Invoice() {
                       <FormItem>
                         <FormLabel>Terms</FormLabel>
                         <FormControl>
-                          <Textarea
-                            {...field}
-                            placeholder="Terms and conditions..."
-                            rows={3}
-                          />
+                          <Textarea {...field} placeholder="Terms and conditions..." rows={3} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -604,10 +549,7 @@ export default function Invoice() {
                         name="discountType"
                         render={({ field }) => (
                           <FormItem>
-                            <Select
-                              onValueChange={field.onChange}
-                              value={field.value || "cad"}
-                            >
+                            <Select onValueChange={field.onChange} value={field.value || "cad"}>
                               <FormControl>
                                 <SelectTrigger className="w-[120px]">
                                   <SelectValue placeholder="Type" />
@@ -632,9 +574,7 @@ export default function Invoice() {
                                 min="0"
                                 step="0.01"
                                 max={
-                                  form.watch("discountType") === "percentage"
-                                    ? "100"
-                                    : undefined
+                                  form.watch("discountType") === "percentage" ? "100" : undefined
                                 }
                                 placeholder="0.00"
                                 onWheel={(e) => e.currentTarget.blur()}
@@ -670,42 +610,25 @@ export default function Invoice() {
                     )}
                   />
 
-                  <div className="flex gap-2 w-full">
-                    <Button
-                      type="submit"
-                      disabled={
-                        isSaving ||
-                        (!!order.invoiceNumber &&
-                          !form.formState.isDirty &&
-                          !isImeiDirty)
-                      }
-                      className="flex-1"
-                    >
-                      {isSaving ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Saving...
-                        </>
-                      ) : (
-                        <>
-                          <Save className="mr-2 h-4 w-4" />
-                          Save Invoice
-                        </>
-                      )}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={
-                        !order.invoiceNumber || !!order.invoiceConfirmed
-                      }
-                      onClick={() => setConfirmationDialogOpen(true)}
-                      aria-label="Confirm invoice"
-                    >
-                      <CheckCircle2 className="mr-2 h-4 w-4" />
-                      Confirm Invoice
-                    </Button>
-                  </div>
+                  <Button
+                    type="submit"
+                    disabled={
+                      isSaving || (!!order.invoiceNumber && !form.formState.isDirty && !isImeiDirty)
+                    }
+                    className="w-full"
+                  >
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="mr-2 h-4 w-4" />
+                        Save Invoice
+                      </>
+                    )}
+                  </Button>
                 </div>
               </form>
             </Form>
@@ -714,9 +637,7 @@ export default function Invoice() {
           {/* Order Summary + Order Items */}
           <div className="md:w-72 lg:w-80 md:flex-shrink-0 md:min-h-0 md:overflow-y-auto space-y-6">
             <div className="bg-card border border-border rounded-lg p-6 space-y-4 shrink-0">
-              <h2 className="text-lg font-semibold text-foreground">
-                Order Summary
-              </h2>
+              <h2 className="text-lg font-semibold text-foreground">Order Summary</h2>
 
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
@@ -743,45 +664,35 @@ export default function Invoice() {
                 {/* Subtotal */}
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Subtotal:</span>
-                  <span className="font-medium text-foreground">
-                    {formatPrice(order.subtotal)}
-                  </span>
+                  <span className="font-medium text-foreground">{formatPrice(order.subtotal)}</span>
                 </div>
                 {(() => {
                   const discountType = form.watch("discountType") || "cad";
-                  const discountValue =
-                    parseFloat(form.watch("discountAmount") || "0") || 0;
-                  const shippingValue =
-                    parseFloat(form.watch("shippingAmount") || "0") || 0;
+                  const discountValue = parseFloat(form.watch("discountAmount") || "0") || 0;
+                  const shippingValue = parseFloat(form.watch("shippingAmount") || "0") || 0;
                   const currentDiscount = order.discountAmount || 0;
                   const currentShipping = order.shippingAmount || 0;
 
                   let calculatedDiscount = 0;
                   if (discountValue > 0) {
                     if (discountType === "percentage") {
-                      calculatedDiscount =
-                        (order.subtotal * discountValue) / 100;
+                      calculatedDiscount = (order.subtotal * discountValue) / 100;
                     } else {
                       calculatedDiscount = discountValue;
                     }
                   }
 
                   const displayDiscount =
-                    calculatedDiscount > 0
-                      ? calculatedDiscount
-                      : currentDiscount;
-                  const displayShipping =
-                    shippingValue > 0 ? shippingValue : currentShipping;
+                    calculatedDiscount > 0 ? calculatedDiscount : currentDiscount;
+                  const displayShipping = shippingValue > 0 ? shippingValue : currentShipping;
 
-                  const result =
-                    order.subtotal - displayDiscount + displayShipping;
+                  const result = order.subtotal - displayDiscount + displayShipping;
 
                   const taxRate = order.taxRate || 0;
                   const calculatedTax = result * taxRate;
                   const currentTax = order.taxAmount || 0;
                   const displayTax =
-                    (calculatedDiscount > 0 &&
-                      calculatedDiscount !== currentDiscount) ||
+                    (calculatedDiscount > 0 && calculatedDiscount !== currentDiscount) ||
                     (shippingValue > 0 && shippingValue !== currentShipping)
                       ? calculatedTax
                       : currentTax;
@@ -792,25 +703,20 @@ export default function Invoice() {
                     <>
                       {displayDiscount > 0 && (
                         <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">
-                            Discount:
-                          </span>
+                          <span className="text-muted-foreground">Discount:</span>
                           <span className="font-medium text-success">
                             -{formatPrice(displayDiscount)}
-                            {discountValue > 0 &&
-                              discountType === "percentage" && (
-                                <span className="text-xs text-muted-foreground ml-1">
-                                  ({discountValue}%)
-                                </span>
-                              )}
+                            {discountValue > 0 && discountType === "percentage" && (
+                              <span className="text-xs text-muted-foreground ml-1">
+                                ({discountValue}%)
+                              </span>
+                            )}
                           </span>
                         </div>
                       )}
                       {displayShipping > 0 && (
                         <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">
-                            Shipping:
-                          </span>
+                          <span className="text-muted-foreground">Shipping:</span>
                           <span className="font-medium text-foreground">
                             {formatPrice(displayShipping)}
                           </span>
@@ -818,9 +724,7 @@ export default function Invoice() {
                       )}
                       {(displayDiscount > 0 || displayShipping > 0) && (
                         <div className="flex justify-between text-sm pt-1">
-                          <span className="text-muted-foreground font-medium">
-                            Result:
-                          </span>
+                          <span className="text-muted-foreground font-medium">Result:</span>
                           <span className="font-semibold text-foreground">
                             {formatPrice(result)}
                           </span>
@@ -837,17 +741,13 @@ export default function Invoice() {
                         </div>
                       )}
                       <div className="flex justify-between pt-2 border-t border-border">
-                        <span className="font-semibold text-foreground">
-                          Total:
-                        </span>
+                        <span className="font-semibold text-foreground">Total:</span>
                         <span className="text-lg font-bold text-primary">
                           {formatPrice(Math.max(0, calculatedTotal))}
                         </span>
                       </div>
-                      {(calculatedDiscount > 0 &&
-                        calculatedDiscount !== currentDiscount) ||
-                      (shippingValue > 0 &&
-                        shippingValue !== currentShipping) ? (
+                      {(calculatedDiscount > 0 && calculatedDiscount !== currentDiscount) ||
+                      (shippingValue > 0 && shippingValue !== currentShipping) ? (
                         <p className="text-xs text-muted-foreground italic">
                           * Total will update after saving
                         </p>
@@ -860,9 +760,7 @@ export default function Invoice() {
 
             {/* Order Items */}
             <div className="bg-card border border-border rounded-lg p-6 space-y-4 shrink-0">
-              <h2 className="text-lg font-semibold text-foreground">
-                Order Items
-              </h2>
+              <h2 className="text-lg font-semibold text-foreground">Order Items</h2>
               <div className="max-h-[320px] overflow-y-auto -mr-2 pr-2 space-y-0">
                 {Array.isArray(order.items) && order.items.length > 0 ? (
                   order.items.map((orderItem, index) => {
@@ -879,17 +777,13 @@ export default function Invoice() {
                               {orderItem.item.deviceName}
                             </p>
                             <p className="text-xs text-muted-foreground">
-                              {GRADE_LABELS[
-                                orderItem.item.grade as keyof typeof GRADE_LABELS
-                              ] ?? orderItem.item.grade}{" "}
-                              • {orderItem.item.storage} • Qty:{" "}
-                              {orderItem.quantity}
+                              {GRADE_LABELS[orderItem.item.grade as keyof typeof GRADE_LABELS] ??
+                                orderItem.item.grade}{" "}
+                              • {orderItem.item.storage} • Qty: {orderItem.quantity}
                             </p>
                           </div>
                           <p className="font-medium text-foreground text-sm shrink-0">
-                            {formatPrice(
-                              orderItem.item.pricePerUnit * orderItem.quantity
-                            )}
+                            {formatPrice(orderItem.item.pricePerUnit * orderItem.quantity)}
                           </p>
                         </div>
                         <div className="mt-1">
@@ -925,8 +819,7 @@ export default function Invoice() {
                                         : "text-muted-foreground"
                                     }`}
                                   >
-                                    {entered}/{orderItem.quantity} IMEI numbers
-                                    entered
+                                    {entered}/{orderItem.quantity} IMEI numbers entered
                                   </p>
                                 ) : null;
                               })()}
@@ -956,13 +849,6 @@ export default function Invoice() {
           </div>
         </div>
       </div>
-
-      <InvoiceConfirmationDialog
-        open={confirmationDialogOpen}
-        onOpenChange={setConfirmationDialogOpen}
-        onConfirm={handleConfirm}
-        order={order}
-      />
     </div>
   );
 }

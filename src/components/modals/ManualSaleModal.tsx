@@ -1,10 +1,12 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { useInventory } from "@/contexts/InventoryContext";
 import { useOrders } from "@/contexts/OrdersContext";
 import { useAuth } from "@/lib/auth/context";
 import { InventoryItem } from "@/data/inventory";
+import { queryKeys } from "@/lib/query-keys";
 import { OrderItem } from "@/types/order";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -112,6 +114,7 @@ export function ManualSaleModal({ open, onOpenChange }: ManualSaleModalProps) {
   const { inventory, decreaseQuantity } = useInventory();
   const { createManualOrder } = useOrders();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
 
   // Step routing
   const [step, setStep] = useState<Step>(1);
@@ -446,6 +449,9 @@ export function ManualSaleModal({ open, onOpenChange }: ManualSaleModalProps) {
       }
 
       toast.success(`Sale recorded — Order #${order.id.slice(-8).toUpperCase()}`);
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventory });
+      queryClient.invalidateQueries({ queryKey: queryKeys.orders });
+      queryClient.invalidateQueries({ queryKey: ["paginated", "userOrders"] });
       handleClose();
     } catch {
       toast.error("Failed to record sale. Please try again.");

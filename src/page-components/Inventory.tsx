@@ -20,10 +20,7 @@ import { useDebounce } from "@/hooks/use-debounce";
 import { usePaginatedReactQuery } from "@/hooks/use-paginated-react-query";
 import { usePageParam } from "@/hooks/use-page-param";
 import { queryKeys } from "@/lib/query-keys";
-import {
-  fetchPaginatedInventory,
-  fetchAllFilteredInventory,
-} from "@/lib/supabase/queries";
+import { fetchPaginatedInventory, fetchAllFilteredInventory } from "@/lib/supabase/queries";
 import { useFilterOptions } from "@/hooks/use-filter-options";
 import { useCompany } from "@/contexts/CompanyContext";
 
@@ -32,7 +29,7 @@ export default function Inventory() {
   const [addProductOpen, setAddProductOpen] = useState(false);
   const filterOptions = useFilterOptions();
   const queryClient = useQueryClient();
-  const { companyId } = useCompany();
+  const { companyId, companyName } = useCompany();
 
   const debouncedSearch = useDebounce(filters.search);
 
@@ -77,11 +74,7 @@ export default function Inventory() {
             </span>
           </h2>
           <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              onClick={() => setAddProductOpen(true)}
-              className="gap-1.5"
-            >
+            <Button size="sm" onClick={() => setAddProductOpen(true)} className="gap-1.5">
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">Add Product</span>
             </Button>
@@ -93,6 +86,7 @@ export default function Inventory() {
                 })
               }
               filename="inventory"
+              companyName={companyName}
             />
           </div>
         </div>
@@ -137,9 +131,7 @@ export default function Inventory() {
       <AddProductModal
         open={addProductOpen}
         onOpenChange={setAddProductOpen}
-        onSuccess={() =>
-          queryClient.invalidateQueries({ queryKey: queryKeys.inventory })
-        }
+        onSuccess={() => queryClient.invalidateQueries({ queryKey: queryKeys.inventory })}
       />
     </div>
   );
