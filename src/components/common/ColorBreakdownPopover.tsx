@@ -3,11 +3,8 @@
 import { useState } from "react";
 import { Palette, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { supabase } from "@/lib/supabase/client";
 
 interface ColorEntry {
   color: string;
@@ -30,12 +27,13 @@ export function ColorBreakdownPopover({ inventoryId }: ColorBreakdownPopoverProp
       setIsLoading(true);
       setError(null);
       try {
-        const res = await fetch(
-          `/api/admin/inventory-colors?inventory_id=${encodeURIComponent(inventoryId)}`
-        );
-        if (!res.ok) throw new Error("Failed to load");
-        const data = await res.json();
-        setColors(data.colors ?? []);
+        const { data, error } = await (supabase as any)
+          .from("inventory_colors")
+          .select("color, quantity")
+          .eq("inventory_id", inventoryId)
+          .order("color");
+        if (error) throw error;
+        setColors(data ?? []);
       } catch {
         setError("Could not load colour data.");
       } finally {
@@ -69,14 +67,9 @@ export function ColorBreakdownPopover({ inventoryId }: ColorBreakdownPopoverProp
         ) : colors && colors.length > 0 ? (
           <div className="space-y-1.5">
             {colors.map((c) => (
-              <div
-                key={c.color}
-                className="flex items-center justify-between text-sm"
-              >
+              <div key={c.color} className="flex items-center justify-between text-sm">
                 <span className="text-foreground">{c.color}</span>
-                <span className="font-semibold tabular-nums text-foreground">
-                  {c.quantity}
-                </span>
+                <span className="font-semibold tabular-nums text-foreground">{c.quantity}</span>
               </div>
             ))}
           </div>

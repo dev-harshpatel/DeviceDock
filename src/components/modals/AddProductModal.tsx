@@ -1,19 +1,8 @@
 "use client";
 
 import { useState, useMemo, useCallback, useEffect } from "react";
-import {
-  Check,
-  ChevronsUpDown,
-  Plus,
-  Loader2,
-  Package,
-  Info,
-  Palette,
-} from "lucide-react";
-import {
-  ColourBreakdownDialog,
-  type ColourRow,
-} from "@/components/modals/ColourBreakdownDialog";
+import { Check, ChevronsUpDown, Plus, Loader2, Package, Info, Palette } from "lucide-react";
+import { ColourBreakdownDialog, type ColourRow } from "@/components/modals/ColourBreakdownDialog";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { formatPrice } from "@/lib/utils";
@@ -35,11 +24,7 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -51,12 +36,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { useInventory } from "@/contexts/InventoryContext";
-import {
-  type Grade,
-  GRADES,
-  GRADE_BADGE_LABELS,
-  GRADE_LABELS,
-} from "@/lib/constants/grades";
+import { supabase } from "@/lib/supabase/client";
+import { type Grade, GRADES, GRADE_BADGE_LABELS, GRADE_LABELS } from "@/lib/constants/grades";
 
 interface AddProductModalProps {
   open: boolean;
@@ -112,6 +93,23 @@ export function AddProductModal({
   const [comboboxOpen, setComboboxOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [colourDialogOpen, setColourDialogOpen] = useState(false);
+  const [existingColorRows, setExistingColorRows] = useState<ColourRow[]>([]);
+
+  // When restocking, fetch existing colour rows so the dialog pre-populates them
+  // and the total reflects ALL units (existing + new batch).
+  useEffect(() => {
+    if (!colourDialogOpen || !selectedExistingId) return;
+    (supabase as any)
+      .from("inventory_colors")
+      .select("color, quantity")
+      .eq("inventory_id", selectedExistingId)
+      .order("color")
+      .then(({ data }: { data: Array<{ color: string; quantity: number }> | null }) => {
+        setExistingColorRows(
+          (data ?? []).map((r) => ({ color: r.color, quantity: String(r.quantity) })),
+        );
+      });
+  }, [colourDialogOpen, selectedExistingId]);
 
   // Pre-select item when initialItemId is provided (e.g. from Demand restock flow)
   useEffect(() => {
@@ -126,10 +124,8 @@ export function AddProductModal({
 
   const selectedExisting = useMemo(
     () =>
-      selectedExistingId
-        ? (inventory.find((i) => i.id === selectedExistingId) ?? null)
-        : null,
-    [inventory, selectedExistingId]
+      selectedExistingId ? (inventory.find((i) => i.id === selectedExistingId) ?? null) : null,
+    [inventory, selectedExistingId],
   );
 
   const newQuantity = Number(form.quantity) || 0;
@@ -139,12 +135,9 @@ export function AddProductModal({
 
   // Weighted-average merge preview when restocking an existing product.
   const mergePreview = useMemo(() => {
-    if (!selectedExisting || newQuantity <= 0 || newPurchasePrice <= 0)
-      return null;
+    if (!selectedExisting || newQuantity <= 0 || newPurchasePrice <= 0) return null;
     const isOutOfStock = selectedExisting.quantity === 0;
-    const totalQty = isOutOfStock
-      ? newQuantity
-      : selectedExisting.quantity + newQuantity;
+    const totalQty = isOutOfStock ? newQuantity : selectedExisting.quantity + newQuantity;
     const totalPP = isOutOfStock
       ? newPurchasePrice
       : (selectedExisting.purchasePrice ?? 0) + newPurchasePrice;
@@ -187,12 +180,12 @@ export function AddProductModal({
 
   const isFormValid = Boolean(
     form.deviceName.trim() &&
-      form.brand.trim() &&
-      form.grade &&
-      form.storage.trim() &&
-      newQuantity > 0 &&
-      newPurchasePrice > 0 &&
-      sellingPrice > 0
+    form.brand.trim() &&
+    form.grade &&
+    form.storage.trim() &&
+    newQuantity > 0 &&
+    newPurchasePrice > 0 &&
+    sellingPrice > 0,
   );
 
   const handleNextStep = () => {
@@ -216,16 +209,12 @@ export function AddProductModal({
         });
         savedInventoryId = selectedExisting.id;
         toast.success(
-          `${form.deviceName} restocked — ${newQuantity} unit${newQuantity !== 1 ? "s" : ""} added`
+          `${form.deviceName} restocked — ${newQuantity} unit${newQuantity !== 1 ? "s" : ""} added`,
         );
         onRestockComplete?.(selectedExisting.id);
       } else {
         // ── Insert brand-new product ──────────────────────────────────────────
-        const pricePerUnit = calculatePricePerUnit(
-          newPurchasePrice,
-          newQuantity,
-          hstValue
-        );
+        const pricePerUnit = calculatePricePerUnit(newPurchasePrice, newQuantity, hstValue);
         const result = await bulkInsertProducts([
           {
             id: "",
@@ -249,24 +238,47 @@ export function AddProductModal({
       }
 
       // ── Save colour breakdown ───────────────────────────────────────────────
-      if (savedInventoryId) {
-        await fetch("/api/admin/inventory-colors", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            inventory_id: savedInventoryId,
-            colors: colorRows.map((r) => ({
-              color: r.color.trim(),
-              quantity: Number(r.quantity),
-            })),
-          }),
-        });
+      const inventoryId = savedInventoryId; // narrow to string for callbacks
+      if (inventoryId && colorRows.length > 0) {
+        const rows = colorRows
+          .filter((r) => r.color.trim() && Number(r.quantity) > 0)
+          .map((r) => ({
+            inventory_id: inventoryId,
+            color: r.color.trim(),
+            quantity: Number(r.quantity),
+            updated_at: new Date().toISOString(),
+          }));
+
+        if (rows.length > 0) {
+          const { error: upsertError } = await (supabase as any)
+            .from("inventory_colors")
+            .upsert(rows, { onConflict: "inventory_id,color" });
+          if (upsertError) throw new Error(`Colour save failed: ${upsertError.message}`);
+
+          // Remove colours no longer in the breakdown
+          const keptColors = rows.map((r) => r.color);
+          const { data: existing } = await (supabase as any)
+            .from("inventory_colors")
+            .select("color")
+            .eq("inventory_id", inventoryId);
+          const toDelete = (existing ?? [])
+            .map((r: { color: string }) => r.color)
+            .filter((c: string) => !keptColors.includes(c));
+          if (toDelete.length > 0) {
+            const { error: deleteError } = await (supabase as any)
+              .from("inventory_colors")
+              .delete()
+              .eq("inventory_id", inventoryId)
+              .in("color", toDelete);
+            if (deleteError) throw new Error(`Colour cleanup failed: ${deleteError.message}`);
+          }
+        }
       }
 
       handleClose();
       onSuccess();
-    } catch {
-      toast.error("Failed to save product. Please try again.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save product. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -278,6 +290,7 @@ export function AddProductModal({
       setSelectedExistingId(null);
       setComboboxOpen(false);
       setColourDialogOpen(false);
+      setExistingColorRows([]);
       onOpenChange(false);
     }
   };
@@ -293,442 +306,419 @@ export function AddProductModal({
             Add Product to Inventory
           </DialogTitle>
           <DialogDescription className="text-sm text-muted-foreground">
-            Search for an existing product to restock, or fill in the form to add a new one. Purchase prices are automatically averaged.
+            Search for an existing product to restock, or fill in the form to add a new one.
+            Purchase prices are automatically averaged.
           </DialogDescription>
         </DialogHeader>
 
         <div className="overflow-y-auto flex-1 px-1">
           <div className="space-y-5 pt-1">
-              {/* ── Product search combobox ───────────────────────────────────── */}
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">
-                  Search Existing Products
-                </Label>
-                <Popover open={comboboxOpen} onOpenChange={setComboboxOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      role="combobox"
-                      aria-expanded={comboboxOpen}
-                      className="w-full justify-between font-normal h-10"
-                    >
-                      <span
-                        className={cn(
-                          "truncate text-sm",
-                          !form.deviceName && "text-muted-foreground"
-                        )}
-                      >
-                        {form.deviceName || "Search by name, grade, storage…"}
-                      </span>
-                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    className="w-[var(--radix-popover-trigger-width)] p-0"
-                    align="start"
-                    side="bottom"
-                    onWheel={(e) => e.stopPropagation()}
+            {/* ── Product search combobox ───────────────────────────────────── */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Search Existing Products</Label>
+              <Popover open={comboboxOpen} onOpenChange={setComboboxOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={comboboxOpen}
+                    className="w-full justify-between font-normal h-10"
                   >
-                    <Command>
-                      <CommandInput
-                        placeholder="Type to filter…"
-                        className="h-9"
-                      />
-                      <CommandList className="max-h-60">
-                        <CommandEmpty>
-                          <div className="py-5 text-center space-y-1">
-                            <p className="text-sm font-medium text-foreground">
-                              No match found
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              Fill in the form below to add a new product.
-                            </p>
-                          </div>
-                        </CommandEmpty>
-                        <CommandGroup
-                          heading={`${inventory.length} product${inventory.length !== 1 ? "s" : ""} in inventory`}
-                        >
-                          {inventory.map((item) => (
-                            <CommandItem
-                              key={item.id}
-                              value={`${item.deviceName} ${item.grade} ${item.storage} ${item.brand}`}
-                              onSelect={() => handleSelectExisting(item)}
-                              className="py-2 cursor-pointer"
-                            >
-                              <Check
-                                className={cn(
-                                  "mr-2 h-4 w-4 shrink-0 text-primary",
-                                  selectedExistingId === item.id
-                                    ? "opacity-100"
-                                    : "opacity-0"
-                                )}
-                              />
-                              <div className="flex flex-1 items-center justify-between min-w-0 gap-3">
-                                <div className="min-w-0">
-                                  <p className="text-sm font-medium truncate leading-tight">
-                                    {item.deviceName}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground mt-0.5">
-                                    {item.storage} · Qty:{" "}
-                                    <strong className="text-foreground">
-                                      {item.quantity}
-                                    </strong>{" "}
-                                    · {formatPrice(item.sellingPrice)}
-                                  </p>
-                                </div>
-                                <span
-                                  className={cn(
-                                    "shrink-0 inline-flex items-center justify-center text-xs font-bold w-6 h-6 rounded border",
-                                    GRADE_STYLES[item.grade]
-                                  )}
-                                >
-                                  {item.grade}
-                                </span>
-                              </div>
-                            </CommandItem>
-                          ))}
-                        </CommandGroup>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
-
-                {/* Selected product banner */}
-                {selectedExisting && (
-                  <div className="flex items-center gap-2 rounded-md border border-primary/25 bg-primary/5 px-3 py-2">
-                    <Check className="h-3.5 w-3.5 text-primary shrink-0" />
-                    <span className="text-xs text-muted-foreground flex-1 min-w-0">
-                      Restocking{" "}
-                      <strong className="text-foreground">
-                        {selectedExisting.deviceName}
-                      </strong>{" "}
-                      — Grade {selectedExisting.grade},{" "}
-                      {selectedExisting.storage}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={handleClearSelection}
-                      className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors shrink-0"
+                    <span
+                      className={cn(
+                        "truncate text-sm",
+                        !form.deviceName && "text-muted-foreground",
+                      )}
                     >
-                      Clear
-                    </button>
+                      {form.deviceName || "Search by name, grade, storage…"}
+                    </span>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="w-[var(--radix-popover-trigger-width)] p-0"
+                  align="start"
+                  side="bottom"
+                  onWheel={(e) => e.stopPropagation()}
+                >
+                  <Command>
+                    <CommandInput placeholder="Type to filter…" className="h-9" />
+                    <CommandList className="max-h-60">
+                      <CommandEmpty>
+                        <div className="py-5 text-center space-y-1">
+                          <p className="text-sm font-medium text-foreground">No match found</p>
+                          <p className="text-xs text-muted-foreground">
+                            Fill in the form below to add a new product.
+                          </p>
+                        </div>
+                      </CommandEmpty>
+                      <CommandGroup
+                        heading={`${inventory.length} product${inventory.length !== 1 ? "s" : ""} in inventory`}
+                      >
+                        {inventory.map((item) => (
+                          <CommandItem
+                            key={item.id}
+                            value={`${item.deviceName} ${item.grade} ${item.storage} ${item.brand}`}
+                            onSelect={() => handleSelectExisting(item)}
+                            className="py-2 cursor-pointer"
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4 shrink-0 text-primary",
+                                selectedExistingId === item.id ? "opacity-100" : "opacity-0",
+                              )}
+                            />
+                            <div className="flex flex-1 items-center justify-between min-w-0 gap-3">
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium truncate leading-tight">
+                                  {item.deviceName}
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  {item.storage} · Qty:{" "}
+                                  <strong className="text-foreground">{item.quantity}</strong> ·{" "}
+                                  {formatPrice(item.sellingPrice)}
+                                </p>
+                              </div>
+                              <span
+                                className={cn(
+                                  "shrink-0 inline-flex items-center justify-center text-xs font-bold w-6 h-6 rounded border",
+                                  GRADE_STYLES[item.grade],
+                                )}
+                              >
+                                {item.grade}
+                              </span>
+                            </div>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+
+              {/* Selected product banner */}
+              {selectedExisting && (
+                <div className="flex items-center gap-2 rounded-md border border-primary/25 bg-primary/5 px-3 py-2">
+                  <Check className="h-3.5 w-3.5 text-primary shrink-0" />
+                  <span className="text-xs text-muted-foreground flex-1 min-w-0">
+                    Restocking{" "}
+                    <strong className="text-foreground">{selectedExisting.deviceName}</strong> —
+                    Grade {selectedExisting.grade}, {selectedExisting.storage}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleClearSelection}
+                    className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors shrink-0"
+                  >
+                    Clear
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="relative">
+              <Separator />
+              <span className="absolute inset-0 flex items-center justify-center">
+                <span className="bg-background px-2 text-xs text-muted-foreground">
+                  Product Details
+                </span>
+              </span>
+            </div>
+
+            {/* ── Form fields ──────────────────────────────────────────────── */}
+            <div className="grid grid-cols-2 gap-4">
+              {/* Device Name */}
+              <div className="col-span-2 space-y-1.5">
+                <Label htmlFor="ap-device" className="text-sm font-medium">
+                  Device Name
+                </Label>
+                <Input
+                  id="ap-device"
+                  placeholder="e.g. iPhone 12"
+                  value={form.deviceName}
+                  onChange={(e) => handleField("deviceName", e.target.value)}
+                  disabled={!!selectedExisting}
+                  className={
+                    selectedExisting ? "bg-muted/50 text-muted-foreground cursor-not-allowed" : ""
+                  }
+                />
+              </div>
+
+              {/* Brand */}
+              <div className="space-y-1.5">
+                <Label htmlFor="ap-brand" className="text-sm font-medium">
+                  Brand
+                </Label>
+                <Input
+                  id="ap-brand"
+                  placeholder="e.g. Apple"
+                  value={form.brand}
+                  onChange={(e) => handleField("brand", e.target.value)}
+                  disabled={!!selectedExisting}
+                  className={
+                    selectedExisting ? "bg-muted/50 text-muted-foreground cursor-not-allowed" : ""
+                  }
+                />
+              </div>
+
+              {/* Grade */}
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium">Grade</Label>
+                <Select
+                  value={form.grade}
+                  onValueChange={(v) => handleField("grade", v)}
+                  disabled={!!selectedExisting}
+                >
+                  <SelectTrigger
+                    className={
+                      selectedExisting ? "bg-muted/50 text-muted-foreground cursor-not-allowed" : ""
+                    }
+                  >
+                    <SelectValue placeholder="Select grade" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {GRADES.map((g) => (
+                      <SelectItem key={g} value={g}>
+                        <span className="flex items-center gap-2">
+                          <span
+                            className={cn(
+                              "inline-flex items-center justify-center rounded text-xs font-bold border px-1.5 py-0.5 min-w-[1.5rem]",
+                              GRADE_STYLES[g],
+                            )}
+                          >
+                            {GRADE_BADGE_LABELS[g]}
+                          </span>
+                          {GRADE_LABELS[g]}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Storage */}
+              <div className="space-y-1.5">
+                <Label htmlFor="ap-storage" className="text-sm font-medium">
+                  Storage
+                </Label>
+                <Input
+                  id="ap-storage"
+                  placeholder="e.g. 128GB"
+                  value={form.storage}
+                  onChange={(e) => handleField("storage", e.target.value)}
+                  disabled={!!selectedExisting}
+                  className={
+                    selectedExisting ? "bg-muted/50 text-muted-foreground cursor-not-allowed" : ""
+                  }
+                />
+              </div>
+
+              {/* HST */}
+              <div className="space-y-1.5">
+                <Label htmlFor="ap-hst" className="text-sm font-medium">
+                  HST %
+                </Label>
+                <Input
+                  id="ap-hst"
+                  type="number"
+                  placeholder="13"
+                  value={form.hst}
+                  onChange={(e) => handleField("hst", e.target.value)}
+                  min="0"
+                  max="100"
+                />
+              </div>
+
+              {/* Quantity */}
+              <div className="space-y-1.5">
+                <Label htmlFor="ap-qty" className="text-sm font-medium">
+                  {selectedExisting ? "Units to Add" : "Quantity"}
+                </Label>
+                <Input
+                  id="ap-qty"
+                  type="number"
+                  placeholder="0"
+                  value={form.quantity}
+                  onChange={(e) => handleField("quantity", e.target.value)}
+                  min="1"
+                />
+              </div>
+
+              {/* Purchase Price */}
+              <div className="space-y-1.5">
+                <Label htmlFor="ap-pp" className="text-sm font-medium">
+                  {selectedExisting ? "Purchase Price (this batch)" : "Total Purchase Price"}
+                </Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                    $
+                  </span>
+                  <Input
+                    id="ap-pp"
+                    type="number"
+                    placeholder="0.00"
+                    value={form.purchasePrice}
+                    onChange={(e) => handleField("purchasePrice", e.target.value)}
+                    min="0"
+                    step="0.01"
+                    className="pl-6"
+                  />
+                </div>
+              </div>
+
+              {/* Selling Price */}
+              <div className="col-span-2 space-y-1.5">
+                <Label htmlFor="ap-sp" className="text-sm font-medium">
+                  Selling Price (per unit)
+                </Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                    $
+                  </span>
+                  <Input
+                    id="ap-sp"
+                    type="number"
+                    placeholder="0.00"
+                    value={form.sellingPrice}
+                    onChange={(e) => handleField("sellingPrice", e.target.value)}
+                    min="0"
+                    step="0.01"
+                    className="pl-6"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* ── Merge preview for restocking ──────────────────────────────── */}
+            {selectedExisting && mergePreview && (
+              <div className="rounded-lg border border-border overflow-hidden">
+                <div className="px-4 py-2 bg-muted/50 border-b border-border flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    {mergePreview.isOutOfStock ? "Fresh Batch" : "Merge Preview"}
+                  </p>
+                  {mergePreview.isOutOfStock && (
+                    <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+                      Item was out of stock — existing cost not carried forward
+                    </span>
+                  )}
+                </div>
+
+                {mergePreview.isOutOfStock ? (
+                  <div className="p-4 grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">New Qty</p>
+                      <p className="text-sm font-bold tabular-nums">{mergePreview.totalQty}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Batch Cost</p>
+                      <p className="text-sm font-bold tabular-nums">
+                        {formatPrice(mergePreview.totalPP)}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 grid grid-cols-3 gap-3">
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Current Qty</p>
+                      <p className="text-sm font-semibold tabular-nums">
+                        {selectedExisting.quantity}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Adding</p>
+                      <p className="text-sm font-semibold text-primary tabular-nums">
+                        +{newQuantity}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">New Total</p>
+                      <p className="text-sm font-bold tabular-nums">{mergePreview.totalQty}</p>
+                    </div>
+
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Existing Cost</p>
+                      <p className="text-sm font-semibold tabular-nums">
+                        {formatPrice(selectedExisting.purchasePrice ?? 0)}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Batch Cost</p>
+                      <p className="text-sm font-semibold text-primary tabular-nums">
+                        +{formatPrice(newPurchasePrice)}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Total Cost</p>
+                      <p className="text-sm font-bold tabular-nums">
+                        {formatPrice(mergePreview.totalPP)}
+                      </p>
+                    </div>
                   </div>
                 )}
-              </div>
 
-              <div className="relative">
-                <Separator />
-                <span className="absolute inset-0 flex items-center justify-center">
-                  <span className="bg-background px-2 text-xs text-muted-foreground">
-                    Product Details
+                <div className="flex items-center justify-between px-4 py-2.5 bg-muted/30 border-t border-border">
+                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Info className="h-3.5 w-3.5" />
+                    {mergePreview.isOutOfStock
+                      ? "Price / Unit (incl. HST)"
+                      : "Avg. Price / Unit (incl. HST)"}
                   </span>
-                </span>
-              </div>
-
-              {/* ── Form fields ──────────────────────────────────────────────── */}
-              <div className="grid grid-cols-2 gap-4">
-                {/* Device Name */}
-                <div className="col-span-2 space-y-1.5">
-                  <Label htmlFor="ap-device" className="text-sm font-medium">
-                    Device Name
-                  </Label>
-                  <Input
-                    id="ap-device"
-                    placeholder="e.g. iPhone 12"
-                    value={form.deviceName}
-                    onChange={(e) => handleField("deviceName", e.target.value)}
-                    disabled={!!selectedExisting}
-                    className={
-                      selectedExisting
-                        ? "bg-muted/50 text-muted-foreground cursor-not-allowed"
-                        : ""
-                    }
-                  />
-                </div>
-
-                {/* Brand */}
-                <div className="space-y-1.5">
-                  <Label htmlFor="ap-brand" className="text-sm font-medium">
-                    Brand
-                  </Label>
-                  <Input
-                    id="ap-brand"
-                    placeholder="e.g. Apple"
-                    value={form.brand}
-                    onChange={(e) => handleField("brand", e.target.value)}
-                    disabled={!!selectedExisting}
-                    className={
-                      selectedExisting
-                        ? "bg-muted/50 text-muted-foreground cursor-not-allowed"
-                        : ""
-                    }
-                  />
-                </div>
-
-                {/* Grade */}
-                <div className="space-y-1.5">
-                  <Label className="text-sm font-medium">Grade</Label>
-                  <Select
-                    value={form.grade}
-                    onValueChange={(v) => handleField("grade", v)}
-                    disabled={!!selectedExisting}
-                  >
-                    <SelectTrigger
-                      className={
-                        selectedExisting
-                          ? "bg-muted/50 text-muted-foreground cursor-not-allowed"
-                          : ""
-                      }
-                    >
-                      <SelectValue placeholder="Select grade" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {GRADES.map((g) => (
-                        <SelectItem key={g} value={g}>
-                          <span className="flex items-center gap-2">
-                            <span
-                              className={cn(
-                                "inline-flex items-center justify-center rounded text-xs font-bold border px-1.5 py-0.5 min-w-[1.5rem]",
-                                GRADE_STYLES[g]
-                              )}
-                            >
-                              {GRADE_BADGE_LABELS[g]}
-                            </span>
-                            {GRADE_LABELS[g]}
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Storage */}
-                <div className="space-y-1.5">
-                  <Label htmlFor="ap-storage" className="text-sm font-medium">
-                    Storage
-                  </Label>
-                  <Input
-                    id="ap-storage"
-                    placeholder="e.g. 128GB"
-                    value={form.storage}
-                    onChange={(e) => handleField("storage", e.target.value)}
-                    disabled={!!selectedExisting}
-                    className={
-                      selectedExisting
-                        ? "bg-muted/50 text-muted-foreground cursor-not-allowed"
-                        : ""
-                    }
-                  />
-                </div>
-
-                {/* HST */}
-                <div className="space-y-1.5">
-                  <Label htmlFor="ap-hst" className="text-sm font-medium">
-                    HST %
-                  </Label>
-                  <Input
-                    id="ap-hst"
-                    type="number"
-                    placeholder="13"
-                    value={form.hst}
-                    onChange={(e) => handleField("hst", e.target.value)}
-                    min="0"
-                    max="100"
-                  />
-                </div>
-
-                {/* Quantity */}
-                <div className="space-y-1.5">
-                  <Label htmlFor="ap-qty" className="text-sm font-medium">
-                    {selectedExisting ? "Units to Add" : "Quantity"}
-                  </Label>
-                  <Input
-                    id="ap-qty"
-                    type="number"
-                    placeholder="0"
-                    value={form.quantity}
-                    onChange={(e) => handleField("quantity", e.target.value)}
-                    min="1"
-                  />
-                </div>
-
-                {/* Purchase Price */}
-                <div className="space-y-1.5">
-                  <Label htmlFor="ap-pp" className="text-sm font-medium">
-                    {selectedExisting
-                      ? "Purchase Price (this batch)"
-                      : "Total Purchase Price"}
-                  </Label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                      $
-                    </span>
-                    <Input
-                      id="ap-pp"
-                      type="number"
-                      placeholder="0.00"
-                      value={form.purchasePrice}
-                      onChange={(e) => handleField("purchasePrice", e.target.value)}
-                      min="0"
-                      step="0.01"
-                      className="pl-6"
-                    />
-                  </div>
-                </div>
-
-                {/* Selling Price */}
-                <div className="col-span-2 space-y-1.5">
-                  <Label htmlFor="ap-sp" className="text-sm font-medium">
-                    Selling Price (per unit)
-                  </Label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                      $
-                    </span>
-                    <Input
-                      id="ap-sp"
-                      type="number"
-                      placeholder="0.00"
-                      value={form.sellingPrice}
-                      onChange={(e) => handleField("sellingPrice", e.target.value)}
-                      min="0"
-                      step="0.01"
-                      className="pl-6"
-                    />
-                  </div>
+                  <span className="text-sm font-bold tabular-nums text-foreground">
+                    {formatPrice(mergePreview.avgPricePerUnit)}
+                  </span>
                 </div>
               </div>
+            )}
 
-              {/* ── Merge preview for restocking ──────────────────────────────── */}
-              {selectedExisting && mergePreview && (
-                <div className="rounded-lg border border-border overflow-hidden">
-                  <div className="px-4 py-2 bg-muted/50 border-b border-border flex items-center justify-between">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      {mergePreview.isOutOfStock ? "Fresh Batch" : "Merge Preview"}
-                    </p>
-                    {mergePreview.isOutOfStock && (
-                      <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">
-                        Item was out of stock — existing cost not carried forward
-                      </span>
-                    )}
-                  </div>
-
-                  {mergePreview.isOutOfStock ? (
-                    <div className="p-4 grid grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                        <p className="text-xs text-muted-foreground">New Qty</p>
-                        <p className="text-sm font-bold tabular-nums">
-                          {mergePreview.totalQty}
-                        </p>
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-xs text-muted-foreground">Batch Cost</p>
-                        <p className="text-sm font-bold tabular-nums">
-                          {formatPrice(mergePreview.totalPP)}
-                        </p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="p-4 grid grid-cols-3 gap-3">
-                      <div className="space-y-1">
-                        <p className="text-xs text-muted-foreground">Current Qty</p>
-                        <p className="text-sm font-semibold tabular-nums">
-                          {selectedExisting.quantity}
-                        </p>
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-xs text-muted-foreground">Adding</p>
-                        <p className="text-sm font-semibold text-primary tabular-nums">
-                          +{newQuantity}
-                        </p>
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-xs text-muted-foreground">New Total</p>
-                        <p className="text-sm font-bold tabular-nums">
-                          {mergePreview.totalQty}
-                        </p>
-                      </div>
-
-                      <div className="space-y-1">
-                        <p className="text-xs text-muted-foreground">Existing Cost</p>
-                        <p className="text-sm font-semibold tabular-nums">
-                          {formatPrice(selectedExisting.purchasePrice ?? 0)}
-                        </p>
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-xs text-muted-foreground">Batch Cost</p>
-                        <p className="text-sm font-semibold text-primary tabular-nums">
-                          +{formatPrice(newPurchasePrice)}
-                        </p>
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-xs text-muted-foreground">Total Cost</p>
-                        <p className="text-sm font-bold tabular-nums">
-                          {formatPrice(mergePreview.totalPP)}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between px-4 py-2.5 bg-muted/30 border-t border-border">
-                    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Info className="h-3.5 w-3.5" />
-                      {mergePreview.isOutOfStock
-                        ? "Price / Unit (incl. HST)"
-                        : "Avg. Price / Unit (incl. HST)"}
-                    </span>
-                    <span className="text-sm font-bold tabular-nums text-foreground">
-                      {formatPrice(mergePreview.avgPricePerUnit)}
-                    </span>
-                  </div>
+            {/* ── Price/unit preview for new product ───────────────────────── */}
+            {!selectedExisting &&
+              computedPricePerUnit !== null &&
+              newQuantity > 0 &&
+              newPurchasePrice > 0 && (
+                <div className="flex items-center justify-between rounded-lg border border-border bg-muted/20 px-4 py-3">
+                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Info className="h-3.5 w-3.5" />
+                    Calculated Price / Unit (incl. HST)
+                  </span>
+                  <span className="text-sm font-bold tabular-nums text-foreground">
+                    {formatPrice(computedPricePerUnit)}
+                  </span>
                 </div>
               )}
 
-              {/* ── Price/unit preview for new product ───────────────────────── */}
-              {!selectedExisting &&
-                computedPricePerUnit !== null &&
-                newQuantity > 0 &&
-                newPurchasePrice > 0 && (
-                  <div className="flex items-center justify-between rounded-lg border border-border bg-muted/20 px-4 py-3">
-                    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Info className="h-3.5 w-3.5" />
-                      Calculated Price / Unit (incl. HST)
-                    </span>
-                    <span className="text-sm font-bold tabular-nums text-foreground">
-                      {formatPrice(computedPricePerUnit)}
-                    </span>
-                  </div>
-                )}
-
-              {/* ── Actions ──────────────────────────────────────────────────── */}
-              <div className="flex gap-3 pt-1 pb-1">
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={handleClose}
-                  disabled={isSubmitting}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  className="flex-1"
-                  onClick={handleNextStep}
-                  disabled={!isFormValid}
-                >
-                  <Palette className="h-4 w-4 mr-2" />
-                  Next: Colour Breakdown
-                </Button>
-              </div>
+            {/* ── Actions ──────────────────────────────────────────────────── */}
+            <div className="flex gap-3 pt-1 pb-1">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={handleClose}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button className="flex-1" onClick={handleNextStep} disabled={!isFormValid}>
+                <Palette className="h-4 w-4 mr-2" />
+                Next: Colour Breakdown
+              </Button>
             </div>
+          </div>
         </div>
       </DialogContent>
 
       {/* Colour breakdown opens as a separate dialog on top */}
       <ColourBreakdownDialog
         open={colourDialogOpen}
-        onOpenChange={(open) => { if (!open && !isSubmitting) setColourDialogOpen(false); }}
+        onOpenChange={(open) => {
+          if (!open && !isSubmitting) setColourDialogOpen(false);
+        }}
         productName={form.deviceName || "this product"}
-        totalQuantity={newQuantity}
+        totalQuantity={selectedExisting && mergePreview ? mergePreview.totalQty : newQuantity}
+        initialColors={selectedExisting ? existingColorRows : undefined}
+        note={
+          selectedExisting && mergePreview
+            ? `Covers all ${mergePreview.totalQty} units — ${selectedExisting.quantity} existing + ${newQuantity} new batch. Previously assigned colours are pre-filled.`
+            : undefined
+        }
         onConfirm={handleSubmit}
         isSaving={isSubmitting}
         confirmLabel={selectedExisting ? "Update Inventory" : "Add to Inventory"}

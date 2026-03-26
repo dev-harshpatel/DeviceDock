@@ -3,15 +3,7 @@
  * Beautiful, professional invoice design with logo support
  */
 
-import {
-  Document,
-  Font,
-  Image,
-  Page,
-  StyleSheet,
-  Text,
-  View,
-} from "@react-pdf/renderer";
+import { Document, Font, Image, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 import { InvoiceData } from "@/types/invoice";
 import { Order } from "@/types/order";
 import { GRADE_LABELS } from "@/lib/constants/grades";
@@ -41,7 +33,7 @@ const styles = StyleSheet.create({
   page: {
     backgroundColor: "#FFFFFF",
     fontFamily: "Helvetica",
-    fontSize: 10,
+    fontSize: 9,
     padding: 30,
   },
   // Header Section
@@ -67,13 +59,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   companyName: {
-    fontSize: 16,
+    fontSize: 12,
     fontFamily: "Helvetica-Bold",
     color: "#1a1a1a",
     marginBottom: 2,
   },
   companyAddress: {
-    fontSize: 9,
+    fontSize: 8,
     color: "#666666",
     lineHeight: 1.4,
   },
@@ -81,18 +73,18 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
   },
   invoiceTitle: {
-    fontSize: 26,
+    fontSize: 16,
     fontFamily: "Helvetica-Bold",
-    color: "#2563eb",
+    color: "#1e3a8a",
     marginBottom: 5,
   },
   invoiceDetails: {
-    fontSize: 9,
+    fontSize: 8,
     color: "#4b5563",
     marginBottom: 2,
   },
   invoiceDetailsBold: {
-    fontSize: 9,
+    fontSize: 8,
     fontFamily: "Helvetica-Bold",
     color: "#1f2937",
     marginBottom: 2,
@@ -110,9 +102,9 @@ const styles = StyleSheet.create({
     paddingBottom: 6,
     paddingLeft: 10,
     paddingRight: 10,
-    backgroundColor: "#f9fafb",
+    backgroundColor: "#f8fbff",
     borderRadius: 4,
-    border: "1 solid #e5e7eb",
+    border: "1 solid #dbeafe",
   },
   addressTitle: {
     fontSize: 7,
@@ -121,13 +113,13 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   addressName: {
-    fontSize: 9,
+    fontSize: 8.5,
     fontFamily: "Helvetica-Bold",
     color: "#1f2937",
     marginBottom: 1,
   },
   addressText: {
-    fontSize: 9,
+    fontSize: 8,
     color: "#6b7280",
     lineHeight: 1.4,
   },
@@ -138,35 +130,36 @@ const styles = StyleSheet.create({
   },
   tableHeader: {
     flexDirection: "row",
-    backgroundColor: "#1f2937",
-    padding: 10,
+    backgroundColor: "#eff6ff",
+    padding: 8,
     borderTopLeftRadius: 4,
     borderTopRightRadius: 4,
+    borderBottom: "1 solid #dbeafe",
   },
   tableHeaderCell: {
-    fontSize: 10,
+    fontSize: 8,
     fontFamily: "Helvetica-Bold",
-    color: "#ffffff",
+    color: "#1e3a8a",
   },
   tableRow: {
     flexDirection: "row",
-    borderBottom: "1 solid #e5e7eb",
-    padding: 10,
-    minHeight: 35,
+    borderBottom: "1 solid #e2e8f0",
+    padding: 8,
+    minHeight: 28,
   },
   tableRowAlt: {
     flexDirection: "row",
-    borderBottom: "1 solid #e5e7eb",
-    backgroundColor: "#fafafa",
-    padding: 10,
-    minHeight: 35,
+    borderBottom: "1 solid #e2e8f0",
+    backgroundColor: "#f8fbff",
+    padding: 8,
+    minHeight: 28,
   },
   tableCell: {
-    fontSize: 9,
+    fontSize: 8,
     color: "#374151",
   },
   tableCellBold: {
-    fontSize: 9,
+    fontSize: 8,
     fontFamily: "Helvetica-Bold",
     color: "#1f2937",
   },
@@ -201,7 +194,7 @@ const styles = StyleSheet.create({
   },
   summaryBox: {
     width: 250,
-    border: "1 solid #e5e7eb",
+    border: "1 solid #dbeafe",
     borderRadius: 4,
   },
   summaryRow: {
@@ -222,52 +215,53 @@ const styles = StyleSheet.create({
     paddingRight: 10,
   },
   summaryLabel: {
-    fontSize: 10,
+    fontSize: 8.5,
     color: "#4b5563",
   },
   summaryValue: {
-    fontSize: 10,
+    fontSize: 8.5,
     color: "#1f2937",
   },
   summaryLabelBold: {
-    fontSize: 11,
+    fontSize: 9,
     fontFamily: "Helvetica-Bold",
     color: "#1f2937",
   },
   summaryValueBold: {
-    fontSize: 11,
+    fontSize: 9,
     fontFamily: "Helvetica-Bold",
     color: "#1f2937",
   },
   totalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    backgroundColor: "#2563eb",
-    paddingTop: 8,
-    paddingBottom: 8,
+    backgroundColor: "#eff6ff",
+    paddingTop: 7,
+    paddingBottom: 7,
     paddingLeft: 10,
     paddingRight: 10,
     borderBottomLeftRadius: 4,
     borderBottomRightRadius: 4,
+    borderTop: "1 solid #dbeafe",
   },
   totalLabel: {
-    fontSize: 12,
+    fontSize: 9,
     fontFamily: "Helvetica-Bold",
-    color: "#ffffff",
+    color: "#1e3a8a",
   },
   totalValue: {
-    fontSize: 14,
+    fontSize: 10,
     fontFamily: "Helvetica-Bold",
-    color: "#ffffff",
+    color: "#1e3a8a",
   },
   // Balance Due Box
   balanceDueBox: {
     width: 250,
-    backgroundColor: "#fef3c7",
-    border: "2 solid #fbbf24",
+    backgroundColor: "#f8fbff",
+    border: "1 solid #bfdbfe",
     borderRadius: 4,
-    paddingTop: 8,
-    paddingBottom: 8,
+    paddingTop: 7,
+    paddingBottom: 7,
     paddingLeft: 10,
     paddingRight: 10,
     marginTop: 8,
@@ -276,14 +270,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   balanceDueLabel: {
-    fontSize: 13,
+    fontSize: 9,
     fontFamily: "Helvetica-Bold",
-    color: "#78350f",
+    color: "#1e3a8a",
   },
   balanceDueValue: {
-    fontSize: 16,
+    fontSize: 11,
     fontFamily: "Helvetica-Bold",
-    color: "#78350f",
+    color: "#1e3a8a",
   },
   // Footer Section
   footer: {
@@ -293,18 +287,18 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   footerTitle: {
-    fontSize: 10,
+    fontSize: 9,
     fontFamily: "Helvetica-Bold",
     color: "#374151",
     marginBottom: 6,
   },
   footerText: {
-    fontSize: 9,
+    fontSize: 8,
     color: "#6b7280",
     lineHeight: 1.5,
   },
   hstText: {
-    fontSize: 9,
+    fontSize: 8,
     fontFamily: "Helvetica-Bold",
     color: "#374151",
     marginTop: 10,
@@ -349,17 +343,18 @@ export const InvoicePDFDocument = ({
     ? order.items.map((orderItem, index) => {
         if (orderItem?.item) {
           const gradeLabel =
-            GRADE_LABELS[orderItem.item.grade as keyof typeof GRADE_LABELS] ??
-            orderItem.item.grade;
+            GRADE_LABELS[orderItem.item.grade as keyof typeof GRADE_LABELS] ?? orderItem.item.grade;
           const itemName = `${orderItem.item.deviceName} (${gradeLabel}) ${orderItem.item.storage}`;
           const quantity = orderItem.quantity;
-          const itemPrice =
-            orderItem.item.sellingPrice ?? orderItem.item.pricePerUnit;
+          const itemPrice = orderItem.item.sellingPrice ?? orderItem.item.pricePerUnit;
           const rate = itemPrice;
           const amount = itemPrice * orderItem.quantity;
           const rawImei = order.imeiNumbers?.[String(index)]?.trim() || "";
           const imeiList = rawImei
-            ? rawImei.split(",").map((s) => s.trim()).filter(Boolean)
+            ? rawImei
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean)
             : [];
           return { itemName, quantity, rate, amount, imeiList };
         }
@@ -388,9 +383,7 @@ export const InvoicePDFDocument = ({
         {/* Header Section */}
         <View style={styles.header}>
           <View style={styles.logoRow}>
-            {companyInfo.logoUrl && (
-              <Image style={styles.logo} src={companyInfo.logoUrl} />
-            )}
+            {companyInfo.logoUrl && <Image style={styles.logo} src={companyInfo.logoUrl} />}
             <View style={styles.companyInfo}>
               <Text style={styles.companyName}>{companyInfo.name}</Text>
               <Text style={styles.companyAddress}>{companyInfo.address}</Text>
@@ -398,21 +391,11 @@ export const InvoicePDFDocument = ({
           </View>
           <View style={styles.headerRight}>
             <Text style={styles.invoiceTitle}>INVOICE</Text>
-            <Text style={styles.invoiceDetailsBold}>
-              # {invoiceData.invoiceNumber}
-            </Text>
-            <Text style={styles.invoiceDetails}>
-              Date: {formatDate(invoiceData.invoiceDate)}
-            </Text>
-            <Text style={styles.invoiceDetails}>
-              Payment Terms: {invoiceData.paymentTerms}
-            </Text>
-            <Text style={styles.invoiceDetails}>
-              Due Date: {formatDate(invoiceData.dueDate)}
-            </Text>
-            <Text style={styles.invoiceDetails}>
-              PO Number: {invoiceData.poNumber}
-            </Text>
+            <Text style={styles.invoiceDetailsBold}># {invoiceData.invoiceNumber}</Text>
+            <Text style={styles.invoiceDetails}>Date: {formatDate(invoiceData.invoiceDate)}</Text>
+            <Text style={styles.invoiceDetails}>Payment Terms: {invoiceData.paymentTerms}</Text>
+            <Text style={styles.invoiceDetails}>Due Date: {formatDate(invoiceData.dueDate)}</Text>
+            <Text style={styles.invoiceDetails}>PO Number: {invoiceData.poNumber}</Text>
           </View>
         </View>
 
@@ -420,13 +403,9 @@ export const InvoicePDFDocument = ({
         <View style={styles.addressSection}>
           <View style={styles.addressBox}>
             <Text style={styles.addressTitle}>BILL TO:</Text>
-            <Text style={styles.addressName}>
-              {customerInfo.businessName || "Customer"}
-            </Text>
+            <Text style={styles.addressName}>{customerInfo.businessName || "Customer"}</Text>
             {customerInfo.businessAddress && (
-              <Text style={styles.addressText}>
-                {customerInfo.businessAddress}
-              </Text>
+              <Text style={styles.addressText}>{customerInfo.businessAddress}</Text>
             )}
             {customerInfo.billingAddress && (
               <Text style={[styles.addressText, { marginTop: 3 }]}>
@@ -436,13 +415,9 @@ export const InvoicePDFDocument = ({
           </View>
           <View style={styles.addressBox}>
             <Text style={styles.addressTitle}>SHIP TO:</Text>
-            <Text style={styles.addressName}>
-              {customerInfo.businessName || "Customer"}
-            </Text>
+            <Text style={styles.addressName}>{customerInfo.businessName || "Customer"}</Text>
             {customerInfo.businessAddress && (
-              <Text style={styles.addressText}>
-                {customerInfo.businessAddress}
-              </Text>
+              <Text style={styles.addressText}>{customerInfo.businessAddress}</Text>
             )}
             {customerInfo.shippingAddress && (
               <Text style={[styles.addressText, { marginTop: 3 }]}>
@@ -457,28 +432,17 @@ export const InvoicePDFDocument = ({
           {/* Table Header */}
           <View style={styles.tableHeader}>
             <Text style={[styles.tableHeaderCell, styles.colItem]}>Item</Text>
-            <Text style={[styles.tableHeaderCell, styles.colQuantity]}>
-              Qty
-            </Text>
+            <Text style={[styles.tableHeaderCell, styles.colQuantity]}>Qty</Text>
             <Text style={[styles.tableHeaderCell, styles.colImei]}>IMEI</Text>
             <Text style={[styles.tableHeaderCell, styles.colRate]}>Rate</Text>
-            <Text style={[styles.tableHeaderCell, styles.colAmount]}>
-              Amount
-            </Text>
+            <Text style={[styles.tableHeaderCell, styles.colAmount]}>Amount</Text>
           </View>
 
           {/* Table Rows */}
           {validRows.map((row, index) => (
-            <View
-              key={index}
-              style={index % 2 === 0 ? styles.tableRow : styles.tableRowAlt}
-            >
-              <Text style={[styles.tableCellBold, styles.colItem]}>
-                {row.itemName}
-              </Text>
-              <Text style={[styles.tableCell, styles.colQuantity]}>
-                {row.quantity}
-              </Text>
+            <View key={index} style={index % 2 === 0 ? styles.tableRow : styles.tableRowAlt}>
+              <Text style={[styles.tableCellBold, styles.colItem]}>{row.itemName}</Text>
+              <Text style={[styles.tableCell, styles.colQuantity]}>{row.quantity}</Text>
               <View style={styles.colImei}>
                 {row.imeiList.length > 0 ? (
                   row.imeiList.map((imei, i) => (
@@ -497,9 +461,7 @@ export const InvoicePDFDocument = ({
                   <Text style={styles.tableCell}>—</Text>
                 )}
               </View>
-              <Text style={[styles.tableCell, styles.colRate]}>
-                {formatPrice(row.rate)}
-              </Text>
+              <Text style={[styles.tableCell, styles.colRate]}>{formatPrice(row.rate)}</Text>
               <Text style={[styles.tableCellBold, styles.colAmount]}>
                 {formatPrice(row.amount)}
               </Text>
@@ -513,18 +475,14 @@ export const InvoicePDFDocument = ({
             {/* Subtotal */}
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Subtotal:</Text>
-              <Text style={styles.summaryValue}>
-                {formatPrice(order.subtotal)}
-              </Text>
+              <Text style={styles.summaryValue}>{formatPrice(order.subtotal)}</Text>
             </View>
 
             {/* Discount */}
             {discount > 0 && (
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Discount:</Text>
-                <Text style={styles.summaryValue}>
-                  -{formatPrice(discount)}
-                </Text>
+                <Text style={styles.summaryValue}>-{formatPrice(discount)}</Text>
               </View>
             )}
 
@@ -545,12 +503,8 @@ export const InvoicePDFDocument = ({
             {/* Tax */}
             {order.taxAmount && order.taxRate && (
               <View style={styles.summaryRowLast}>
-                <Text style={styles.summaryLabel}>
-                  Tax ({(order.taxRate * 100).toFixed(2)}%):
-                </Text>
-                <Text style={styles.summaryValue}>
-                  {formatPrice(order.taxAmount)}
-                </Text>
+                <Text style={styles.summaryLabel}>Tax ({(order.taxRate * 100).toFixed(2)}%):</Text>
+                <Text style={styles.summaryValue}>{formatPrice(order.taxAmount)}</Text>
               </View>
             )}
           </View>
@@ -566,24 +520,19 @@ export const InvoicePDFDocument = ({
           {/* Balance Due */}
           <View style={styles.balanceDueBox}>
             <Text style={styles.balanceDueLabel}>Balance Due:</Text>
-            <Text style={styles.balanceDueValue}>
-              {formatPrice(finalTotal)}
-            </Text>
+            <Text style={styles.balanceDueValue}>{formatPrice(finalTotal)}</Text>
           </View>
         </View>
 
         {/* Footer: Notes and Terms */}
         <View style={styles.footer}>
           {/* Notes Section */}
-          {invoiceData.invoiceNotes &&
-            invoiceData.invoiceNotes.trim().length > 0 && (
-              <View style={styles.footerSection}>
-                <Text style={styles.footerTitle}>Notes:</Text>
-                <Text style={styles.footerText}>
-                  {invoiceData.invoiceNotes.trim()}
-                </Text>
-              </View>
-            )}
+          {invoiceData.invoiceNotes && invoiceData.invoiceNotes.trim().length > 0 && (
+            <View style={styles.footerSection}>
+              <Text style={styles.footerTitle}>Notes:</Text>
+              <Text style={styles.footerText}>{invoiceData.invoiceNotes.trim()}</Text>
+            </View>
+          )}
 
           {/* Terms Section */}
           {invoiceData.invoiceTerms && (
@@ -595,9 +544,7 @@ export const InvoicePDFDocument = ({
 
           {/* HST Number */}
           {invoiceData.hstNumber && (
-            <Text style={styles.hstText}>
-              HST #: {invoiceData.hstNumber}
-            </Text>
+            <Text style={styles.hstText}>HST #: {invoiceData.hstNumber}</Text>
           )}
         </View>
       </Page>

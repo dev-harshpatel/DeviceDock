@@ -21,21 +21,15 @@ import { useDebounce } from "@/hooks/use-debounce";
 import { usePaginatedReactQuery } from "@/hooks/use-paginated-react-query";
 import { usePageParam } from "@/hooks/use-page-param";
 import { queryKeys } from "@/lib/query-keys";
-import {
-  InventoryItem,
-  calculatePricePerUnit,
-  formatPrice,
-} from "@/data/inventory";
+import { InventoryItem, calculatePricePerUnit, formatPrice } from "@/data/inventory";
 import { fetchPaginatedInventory } from "@/lib/supabase/queries";
+import { supabase } from "@/lib/supabase/client";
 import { useFilterOptions } from "@/hooks/use-filter-options";
 import { cn } from "@/lib/utils";
 import { Loader2, Palette, RotateCcw, Save } from "lucide-react";
 import { useState, useCallback } from "react";
 import { toast } from "sonner";
-import {
-  ColourBreakdownDialog,
-  type ColourRow,
-} from "@/components/modals/ColourBreakdownDialog";
+import { ColourBreakdownDialog, type ColourRow } from "@/components/modals/ColourBreakdownDialog";
 import { GRADES } from "@/lib/constants/grades";
 import { TOAST_MESSAGES } from "@/lib/constants/toast-messages";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -54,15 +48,9 @@ export default function ProductManagement() {
   const { updateProduct, resetInventory } = useInventory();
 
   // ── Product field edits ───────────────────────────────────────────────────
-  const [editedProducts, setEditedProducts] = useState<
-    Record<string, Partial<InventoryItem>>
-  >({});
-  const [pendingToggles, setPendingToggles] = useState<Record<string, boolean>>(
-    {},
-  );
-  const [togglingProducts, setTogglingProducts] = useState<Set<string>>(
-    new Set(),
-  );
+  const [editedProducts, setEditedProducts] = useState<Record<string, Partial<InventoryItem>>>({});
+  const [pendingToggles, setPendingToggles] = useState<Record<string, boolean>>({});
+  const [togglingProducts, setTogglingProducts] = useState<Set<string>>(new Set());
 
   // ── Colour dialog state ───────────────────────────────────────────────────
   const [colourDialog, setColourDialog] = useState<{
@@ -71,13 +59,9 @@ export default function ProductManagement() {
     isSaving: boolean;
   }>({ open: false, productId: null, isSaving: false });
   // loadedColors: colours as fetched from DB (used to detect unsaved changes)
-  const [loadedColors, setLoadedColors] = useState<Record<string, ColourRow[]>>(
-    {},
-  );
+  const [loadedColors, setLoadedColors] = useState<Record<string, ColourRow[]>>({});
   // editedColors: live colour rows per product (may differ from loadedColors)
-  const [editedColors, setEditedColors] = useState<Record<string, ColourRow[]>>(
-    {},
-  );
+  const [editedColors, setEditedColors] = useState<Record<string, ColourRow[]>>({});
   // loadingColors: products whose colour data is currently being fetched
   const [loadingColors, setLoadingColors] = useState<Set<string>>(new Set());
 
@@ -110,21 +94,14 @@ export default function ProductManagement() {
   });
 
   // ── Product field handlers ────────────────────────────────────────────────
-  const handleFieldChange = (
-    id: string,
-    field: keyof InventoryItem,
-    value: string | number,
-  ) => {
+  const handleFieldChange = (id: string, field: keyof InventoryItem, value: string | number) => {
     setEditedProducts((prev) => ({
       ...prev,
       [id]: { ...prev[id], [field]: value },
     }));
   };
 
-  const getFieldValue = (
-    product: InventoryItem,
-    field: keyof InventoryItem,
-  ) => {
+  const getFieldValue = (product: InventoryItem, field: keyof InventoryItem) => {
     if (editedProducts[product.id]?.[field] !== undefined) {
       return editedProducts[product.id][field];
     }
@@ -137,16 +114,15 @@ export default function ProductManagement() {
       if (loadedColors[productId] !== undefined) return; // already loaded
       setLoadingColors((prev) => new Set(prev).add(productId));
       try {
-        const res = await fetch(
-          `/api/admin/inventory-colors?inventory_id=${encodeURIComponent(productId)}`,
-        );
-        const data = res.ok ? await res.json() : { colors: [] };
-        const rows: ColourRow[] = (data.colors ?? []).map(
-          (c: { color: string; quantity: number }) => ({
-            color: c.color,
-            quantity: String(c.quantity),
-          }),
-        );
+        const { data } = await (supabase as any)
+          .from("inventory_colors")
+          .select("color, quantity")
+          .eq("inventory_id", productId)
+          .order("color");
+        const rows: ColourRow[] = (data ?? []).map((c: { color: string; quantity: number }) => ({
+          color: c.color,
+          quantity: String(c.quantity),
+        }));
         setLoadedColors((prev) => ({ ...prev, [productId]: rows }));
         setEditedColors((prev) => ({ ...prev, [productId]: rows }));
       } catch {
@@ -181,9 +157,7 @@ export default function ProductManagement() {
 
     try {
       const qty = (fieldUpdates.quantity ?? product.quantity) as number;
-      const pp = (fieldUpdates.purchasePrice ??
-        product.purchasePrice ??
-        0) as number;
+      const pp = (fieldUpdates.purchasePrice ?? product.purchasePrice ?? 0) as number;
       const h = (fieldUpdates.hst ?? product.hst ?? 0) as number;
       fieldUpdates.pricePerUnit = calculatePricePerUnit(pp, qty, h);
       await updateProduct(id, fieldUpdates);
@@ -196,11 +170,7 @@ export default function ProductManagement() {
         description: "Changes have been saved to inventory.",
       });
     } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : "Failed to save changes. Please try again.",
-      );
+      toast.error(err instanceof Error ? err.message : "Failed to save changes. Please try again.");
     }
   };
 
@@ -211,21 +181,41 @@ export default function ProductManagement() {
 
     setColourDialog((prev) => ({ ...prev, isSaving: true }));
     try {
-      const res = await fetch("/api/admin/inventory-colors", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const validRows = rows
+        .filter((r) => r.color.trim() && Number(r.quantity) > 0)
+        .map((r) => ({
           inventory_id: id,
-          colors: rows.map((r) => ({
-            color: r.color.trim(),
-            quantity: Number(r.quantity),
-          })),
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || "Failed to save colours");
+          color: r.color.trim(),
+          quantity: Number(r.quantity),
+          updated_at: new Date().toISOString(),
+        }));
+
+      if (validRows.length > 0) {
+        const { error: upsertError } = await (supabase as any)
+          .from("inventory_colors")
+          .upsert(validRows, { onConflict: "inventory_id,color" });
+        if (upsertError) throw upsertError;
+
+        const keptColors = validRows.map((r) => r.color);
+        const { data: existing } = await (supabase as any)
+          .from("inventory_colors")
+          .select("color")
+          .eq("inventory_id", id);
+        const toDelete = (existing ?? [])
+          .map((r: { color: string }) => r.color)
+          .filter((c: string) => !keptColors.includes(c));
+        if (toDelete.length > 0) {
+          await (supabase as any)
+            .from("inventory_colors")
+            .delete()
+            .eq("inventory_id", id)
+            .in("color", toDelete);
+        }
+      } else {
+        // All rows cleared — delete everything for this item
+        await (supabase as any).from("inventory_colors").delete().eq("inventory_id", id);
       }
+
       setLoadedColors((prev) => ({ ...prev, [id]: rows }));
       setEditedColors((prev) => ({ ...prev, [id]: rows }));
       toast.success("Colours saved", {
@@ -233,11 +223,7 @@ export default function ProductManagement() {
       });
       closeColourDialog();
     } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : "Failed to save colours. Please try again.",
-      );
+      toast.error(err instanceof Error ? err.message : "Failed to save colours. Please try again.");
       setColourDialog((prev) => ({ ...prev, isSaving: false }));
     }
   };
@@ -251,21 +237,17 @@ export default function ProductManagement() {
   };
 
   const handleToggleActive = async (product: InventoryItem) => {
-    const currentIsActive =
-      pendingToggles[product.id] ?? product.isActive ?? true;
+    const currentIsActive = pendingToggles[product.id] ?? product.isActive ?? true;
     const newIsActive = !currentIsActive;
     setPendingToggles((prev) => ({ ...prev, [product.id]: newIsActive }));
     setTogglingProducts((prev) => new Set(prev).add(product.id));
     try {
       await updateProduct(product.id, { isActive: newIsActive });
-      toast.success(
-        newIsActive ? "Product is now listed" : "Product has been unlisted",
-        {
-          description: newIsActive
-            ? "Users can see and order this product."
-            : "Users can no longer see or order this product.",
-        },
-      );
+      toast.success(newIsActive ? "Product is now listed" : "Product has been unlisted", {
+        description: newIsActive
+          ? "Users can see and order this product."
+          : "Users can no longer see or order this product.",
+      });
     } catch {
       setPendingToggles((prev) => {
         const next = { ...prev };
@@ -285,8 +267,7 @@ export default function ProductManagement() {
   const handleResetFilters = () => setFilters(defaultFilters);
 
   const hasChanges = Object.keys(editedProducts).length > 0;
-  const shouldShowSkeleton =
-    (isLoading || isFetching) && filteredItems.length === 0;
+  const shouldShowSkeleton = (isLoading || isFetching) && filteredItems.length === 0;
 
   // The product whose colour dialog is open (for passing to the dialog)
   const colourDialogProduct = colourDialog.productId
@@ -306,12 +287,7 @@ export default function ProductManagement() {
           </h2>
           <div className="flex gap-2 shrink-0">
             {hasChanges && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleReset}
-                className="gap-2"
-              >
+              <Button variant="outline" size="sm" onClick={handleReset} className="gap-2">
                 <RotateCcw className="h-4 w-4" />
                 Reset All
               </Button>
@@ -357,26 +333,15 @@ export default function ProductManagement() {
               </thead>
               <tbody className="divide-y divide-border">
                 {Array.from({ length: 10 }).map((_, index) => (
-                  <tr
-                    key={index}
-                    className={cn(
-                      "animate-pulse",
-                      index % 2 === 1 && "bg-muted/20",
-                    )}
-                  >
-                    {[240, 140, 120, 100, 96, 112, 80, 96, 112, 96].map(
-                      (w, ci) => (
-                        <td key={ci} className="px-3 py-2">
-                          <div
-                            className={cn(
-                              "h-9 rounded-md bg-muted",
-                              ci === 0 ? "" : "mx-auto",
-                            )}
-                            style={{ width: w }}
-                          />
-                        </td>
-                      ),
-                    )}
+                  <tr key={index} className={cn("animate-pulse", index % 2 === 1 && "bg-muted/20")}>
+                    {[240, 140, 120, 100, 96, 112, 80, 96, 112, 96].map((w, ci) => (
+                      <td key={ci} className="px-3 py-2">
+                        <div
+                          className={cn("h-9 rounded-md bg-muted", ci === 0 ? "" : "mx-auto")}
+                          style={{ width: w }}
+                        />
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>
@@ -386,9 +351,7 @@ export default function ProductManagement() {
 
         {!shouldShowSkeleton && filteredItems.length > 0 && (
           <div className="relative rounded-lg border border-border bg-card overflow-x-auto">
-            {isFetching && (
-              <TableLoadingOverlay label="Searching products..." />
-            )}
+            {isFetching && <TableLoadingOverlay label="Searching products..." />}
             <table className="w-full">
               <thead className="sticky top-0 z-10">
                 <tr className="border-b border-border bg-muted">
@@ -428,33 +391,22 @@ export default function ProductManagement() {
                 {filteredItems.map((product, index) => {
                   const hasEdits = !!editedProducts[product.id];
                   const isColorLoading = loadingColors.has(product.id);
-                  const hasColours =
-                    (loadedColors[product.id]?.length ?? 0) > 0;
+                  const hasColours = (loadedColors[product.id]?.length ?? 0) > 0;
 
-                  const deviceName = getFieldValue(
-                    product,
-                    "deviceName",
-                  ) as string;
+                  const deviceName = getFieldValue(product, "deviceName") as string;
                   const brand = getFieldValue(product, "brand") as string;
                   const grade = getFieldValue(product, "grade") as string;
                   const storage = getFieldValue(product, "storage") as string;
                   const quantity = getFieldValue(product, "quantity") as number;
-                  const purchasePrice = (getFieldValue(
-                    product,
-                    "purchasePrice",
-                  ) ?? 0) as number;
+                  const purchasePrice = (getFieldValue(product, "purchasePrice") ?? 0) as number;
                   const hst = (getFieldValue(product, "hst") ?? 0) as number;
-                  const sellingPrice = getFieldValue(
-                    product,
-                    "sellingPrice",
-                  ) as number;
+                  const sellingPrice = getFieldValue(product, "sellingPrice") as number;
                   const calculatedPricePerUnit = calculatePricePerUnit(
                     purchasePrice,
                     quantity,
                     hst,
                   );
-                  const isActive =
-                    pendingToggles[product.id] ?? product.isActive ?? true;
+                  const isActive = pendingToggles[product.id] ?? product.isActive ?? true;
                   const isToggling = togglingProducts.has(product.id);
 
                   return (
@@ -473,11 +425,7 @@ export default function ProductManagement() {
                           <Input
                             value={deviceName}
                             onChange={(e) =>
-                              handleFieldChange(
-                                product.id,
-                                "deviceName",
-                                e.target.value,
-                              )
+                              handleFieldChange(product.id, "deviceName", e.target.value)
                             }
                             className="min-w-[200px] text-sm"
                           />
@@ -485,22 +433,14 @@ export default function ProductManagement() {
                         <td className="px-3 py-2">
                           <Input
                             value={brand}
-                            onChange={(e) =>
-                              handleFieldChange(
-                                product.id,
-                                "brand",
-                                e.target.value,
-                              )
-                            }
+                            onChange={(e) => handleFieldChange(product.id, "brand", e.target.value)}
                             className="min-w-[120px] text-sm"
                           />
                         </td>
                         <td className="px-3 py-2">
                           <Select
                             value={grade}
-                            onValueChange={(v) =>
-                              handleFieldChange(product.id, "grade", v)
-                            }
+                            onValueChange={(v) => handleFieldChange(product.id, "grade", v)}
                           >
                             <SelectTrigger className="min-w-[140px] text-sm">
                               <SelectValue />
@@ -518,11 +458,7 @@ export default function ProductManagement() {
                           <Input
                             value={storage}
                             onChange={(e) =>
-                              handleFieldChange(
-                                product.id,
-                                "storage",
-                                e.target.value,
-                              )
+                              handleFieldChange(product.id, "storage", e.target.value)
                             }
                             className="min-w-[100px] text-sm"
                           />
@@ -549,9 +485,7 @@ export default function ProductManagement() {
                         </td>
                         <td className="px-3 py-2">
                           <div className="flex items-center justify-end gap-2">
-                            <span className="text-muted-foreground text-sm">
-                              $
-                            </span>
+                            <span className="text-muted-foreground text-sm">$</span>
                             <Input
                               type="number"
                               value={purchasePrice ?? ""}
@@ -565,11 +499,7 @@ export default function ProductManagement() {
                               }}
                               onBlur={() => {
                                 if (!purchasePrice && purchasePrice !== 0)
-                                  handleFieldChange(
-                                    product.id,
-                                    "purchasePrice",
-                                    0,
-                                  );
+                                  handleFieldChange(product.id, "purchasePrice", 0);
                               }}
                               className="w-28 text-right text-sm"
                               min="0"
@@ -591,8 +521,7 @@ export default function ProductManagement() {
                                 );
                               }}
                               onBlur={() => {
-                                if (!hst && hst !== 0)
-                                  handleFieldChange(product.id, "hst", 0);
+                                if (!hst && hst !== 0) handleFieldChange(product.id, "hst", 0);
                               }}
                               className="w-20 text-right text-sm"
                               min="0"
@@ -603,10 +532,7 @@ export default function ProductManagement() {
                         </td>
                         <td className="px-3 py-2">
                           <span className="text-sm text-muted-foreground font-medium">
-                            {formatPrice(calculatedPricePerUnit).replace(
-                              /\s*CAD$/i,
-                              "",
-                            )}
+                            {formatPrice(calculatedPricePerUnit).replace(/\s*CAD$/i, "")}
                           </span>
                         </td>
                         <td className="px-3 py-2">
@@ -625,11 +551,7 @@ export default function ProductManagement() {
                               }}
                               onBlur={() => {
                                 if (!sellingPrice && sellingPrice !== 0)
-                                  handleFieldChange(
-                                    product.id,
-                                    "sellingPrice",
-                                    0,
-                                  );
+                                  handleFieldChange(product.id, "sellingPrice", 0);
                               }}
                               className="w-28 text-right text-sm"
                               min="0"
@@ -666,13 +588,8 @@ export default function ProductManagement() {
                               variant={hasEdits ? "default" : "ghost"}
                               onClick={() => handleSave(product.id)}
                               disabled={!hasEdits}
-                              className={cn(
-                                "gap-1.5",
-                                !hasEdits && "text-muted-foreground",
-                              )}
-                              title={
-                                hasEdits ? "Save changes" : "No changes to save"
-                              }
+                              className={cn("gap-1.5", !hasEdits && "text-muted-foreground")}
+                              title={hasEdits ? "Save changes" : "No changes to save"}
                             >
                               <Save className="h-3.5 w-3.5" />
                             </Button>
@@ -680,14 +597,10 @@ export default function ProductManagement() {
                             {/* Active toggle */}
                             <Switch
                               checked={isActive}
-                              onCheckedChange={() =>
-                                handleToggleActive(product)
-                              }
+                              onCheckedChange={() => handleToggleActive(product)}
                               disabled={isToggling}
                               title={
-                                isActive
-                                  ? "Listed — click to unlist"
-                                  : "Unlisted — click to list"
+                                isActive ? "Listed — click to unlist" : "Unlisted — click to list"
                               }
                             />
                           </div>
@@ -735,11 +648,7 @@ export default function ProductManagement() {
                 colourDialogProduct?.quantity) as number) ?? 0)
             : 0
         }
-        initialColors={
-          colourDialog.productId
-            ? (editedColors[colourDialog.productId] ?? [])
-            : []
-        }
+        initialColors={colourDialog.productId ? (editedColors[colourDialog.productId] ?? []) : []}
         onConfirm={handleColourDialogConfirm}
         isSaving={colourDialog.isSaving}
         confirmLabel="Save Colours"

@@ -44,9 +44,6 @@ export const TOAST_MESSAGES = {
   // Invoice messages
   INVOICE_DOWNLOADED: "Invoice PDF has been downloaded.",
   INVOICE_DOWNLOAD_FAILED: "Failed to download invoice. Please try again.",
-  INVOICE_CONFIRMED: "Invoice has been confirmed. Customer can now download it.",
-  INVOICE_CONFIRM_FAILED: "Failed to confirm invoice. Please try again.",
-  INVOICE_PREPARING: "Invoice is being prepared. Please check back later.",
 
   // Cart messages
   CART_EMPTY: "Add items to cart before checkout",

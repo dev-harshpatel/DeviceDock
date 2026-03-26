@@ -4,12 +4,24 @@
  */
 
 import { pdf } from "@react-pdf/renderer";
-import { InvoiceData, CompanyInfo } from "@/types/invoice";
 import { InvoicePDFDocument } from "@/components/pdf/InvoicePDFDocument";
 import { Order } from "@/types/order";
+import { CompanyInfo, InvoiceData } from "@/types/invoice";
+import { COMPANY_LOGOS_BUCKET, getStorageObjectPathFromPublicUrl } from "../supabase/storage-path";
 import { supabase } from "../supabase/client/browser";
+import { DEFAULT_COMPANY_ADDRESS, DEFAULT_COMPANY_NAME } from "../constants";
 import { downloadBlob } from "../export/download";
-import { DEFAULT_COMPANY_NAME, DEFAULT_COMPANY_ADDRESS } from "../constants";
+
+const logoDataUrlCache = new Map<string, string | null>();
+
+async function blobToDataUrl(blob: Blob): Promise<string> {
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
 
 /**
  * Fetch an image from a URL and convert it to a base64 data URI.
@@ -20,16 +32,41 @@ async function fetchImageAsBase64(url: string): Promise<string | null> {
   try {
     const response = await fetch(url, { mode: "cors", credentials: "omit" });
     if (!response.ok) return null;
-    const blob = await response.blob();
-    return await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
+    return await blobToDataUrl(await response.blob());
   } catch {
     return null;
   }
+}
+
+async function fetchLogoFromStoragePath(path: string): Promise<string | null> {
+  try {
+    const { data, error } = await supabase.storage.from(COMPANY_LOGOS_BUCKET).download(path);
+    if (error || !data) return null;
+    return await blobToDataUrl(data);
+  } catch {
+    return null;
+  }
+}
+
+async function resolveCompanyLogoDataUrl(logoUrl?: string | null): Promise<string | null> {
+  if (!logoUrl) return null;
+
+  if (logoDataUrlCache.has(logoUrl)) {
+    return logoDataUrlCache.get(logoUrl) ?? null;
+  }
+
+  const logoPath = getStorageObjectPathFromPublicUrl(logoUrl, COMPANY_LOGOS_BUCKET);
+  if (logoPath) {
+    const storageDataUrl = await fetchLogoFromStoragePath(logoPath);
+    if (storageDataUrl) {
+      logoDataUrlCache.set(logoUrl, storageDataUrl);
+      return storageDataUrl;
+    }
+  }
+
+  const externalDataUrl = await fetchImageAsBase64(logoUrl);
+  logoDataUrlCache.set(logoUrl, externalDataUrl);
+  return externalDataUrl;
 }
 
 /**
@@ -95,8 +132,8 @@ export async function generateInvoicePDF(
     const companyInfo = await getCompanyInfo(companyId);
 
     // Pre-fetch logo as base64 so @react-pdf/renderer doesn't hit CORS
-    // when trying to load the Supabase Storage URL at render time
-    const logoDataUrl = companyInfo.logoUrl ? await fetchImageAsBase64(companyInfo.logoUrl) : null;
+    // when trying to load the Supabase Storage URL at render time.
+    const logoDataUrl = await resolveCompanyLogoDataUrl(companyInfo.logoUrl);
 
     // Create PDF document
     const pdfDocument = (

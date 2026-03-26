@@ -29,6 +29,8 @@ interface ColourBreakdownDialogProps {
   totalQuantity: number;
   /** Colour rows to pre-populate when the dialog opens */
   initialColors?: ColourRow[];
+  /** Optional info note shown below the description */
+  note?: string;
   /** Called with the validated colour rows when the user confirms */
   onConfirm: (colors: ColourRow[]) => void | Promise<void>;
   /** While true, the confirm button shows a spinner and is disabled */
@@ -43,13 +45,12 @@ export function ColourBreakdownDialog({
   productName,
   totalQuantity,
   initialColors,
+  note,
   onConfirm,
   isSaving = false,
   confirmLabel = "Save Colours",
 }: ColourBreakdownDialogProps) {
-  const [colorRows, setColorRows] = useState<ColourRow[]>([
-    { color: "", quantity: "" },
-  ]);
+  const [colorRows, setColorRows] = useState<ColourRow[]>([{ color: "", quantity: "" }]);
 
   // Reset rows to initialColors every time the dialog opens
   useEffect(() => {
@@ -62,38 +63,24 @@ export function ColourBreakdownDialog({
   }, [open]); // intentionally not including initialColors to avoid mid-session resets
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
-  const handleAddRow = () =>
-    setColorRows((prev) => [...prev, { color: "", quantity: "" }]);
+  const handleAddRow = () => setColorRows((prev) => [...prev, { color: "", quantity: "" }]);
 
-  const handleRemoveRow = (i: number) =>
-    setColorRows((prev) => prev.filter((_, idx) => idx !== i));
+  const handleRemoveRow = (i: number) => setColorRows((prev) => prev.filter((_, idx) => idx !== i));
 
-  const handleChange = (
-    i: number,
-    field: keyof ColourRow,
-    value: string
-  ) => {
-    setColorRows((prev) =>
-      prev.map((row, idx) => (idx === i ? { ...row, [field]: value } : row))
-    );
+  const handleChange = (i: number, field: keyof ColourRow, value: string) => {
+    setColorRows((prev) => prev.map((row, idx) => (idx === i ? { ...row, [field]: value } : row)));
   };
 
-  const colorTotal = colorRows.reduce(
-    (sum, r) => sum + (Number(r.quantity) || 0),
-    0
-  );
+  const colorTotal = colorRows.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0);
   const remaining = totalQuantity - colorTotal;
   const isValid =
     colorRows.length > 0 &&
     colorRows.every(
       (r) =>
-        r.color.trim() !== "" &&
-        Number.isInteger(Number(r.quantity)) &&
-        Number(r.quantity) > 0
+        r.color.trim() !== "" && Number.isInteger(Number(r.quantity)) && Number(r.quantity) > 0,
     ) &&
     colorTotal === totalQuantity &&
-    new Set(colorRows.map((r) => r.color.trim().toLowerCase())).size ===
-      colorRows.length;
+    new Set(colorRows.map((r) => r.color.trim().toLowerCase())).size === colorRows.length;
 
   const handleConfirm = async () => {
     if (!isValid) return;
@@ -112,19 +99,21 @@ export function ColourBreakdownDialog({
           </DialogTitle>
           <DialogDescription>
             Specify the colour breakdown for{" "}
-            <strong className="text-foreground">{productName}</strong>.{" "}
-            Quantities must add up to exactly{" "}
-            <strong className="text-foreground">{totalQuantity}</strong>.
+            <strong className="text-foreground">{productName}</strong>. Quantities must add up to
+            exactly <strong className="text-foreground">{totalQuantity}</strong>.
           </DialogDescription>
+          {note && (
+            <p className="text-xs text-muted-foreground mt-1 bg-muted/50 rounded-md px-3 py-2">
+              {note}
+            </p>
+          )}
         </DialogHeader>
 
         <div className="overflow-y-auto flex-1 px-1 space-y-2 pt-1 pb-2">
           {/* Colour rows */}
           {colorRows.map((row, i) => {
             const qtyInvalid =
-              row.color.trim() !== "" &&
-              row.quantity !== "" &&
-              Number(row.quantity) <= 0;
+              row.color.trim() !== "" && row.quantity !== "" && Number(row.quantity) <= 0;
             return (
               <div key={i} className="flex gap-2 items-center">
                 <Input
@@ -141,8 +130,7 @@ export function ColourBreakdownDialog({
                   min="1"
                   className={cn(
                     "w-24",
-                    qtyInvalid &&
-                      "border-destructive focus-visible:ring-destructive"
+                    qtyInvalid && "border-destructive focus-visible:ring-destructive",
                   )}
                 />
                 <Button
@@ -176,28 +164,22 @@ export function ColourBreakdownDialog({
               "flex items-center justify-between rounded-lg border px-4 py-3 mt-1",
               colorTotal === totalQuantity
                 ? "border-emerald-500/30 bg-emerald-500/5"
-                : "border-amber-500/30 bg-amber-500/5"
+                : "border-amber-500/30 bg-amber-500/5",
             )}
           >
-            <span className="text-sm text-muted-foreground">
-              Assigned / Required
-            </span>
+            <span className="text-sm text-muted-foreground">Assigned / Required</span>
             <span
               className={cn(
                 "text-sm font-bold tabular-nums",
                 colorTotal === totalQuantity
                   ? "text-emerald-700 dark:text-emerald-400"
-                  : "text-amber-700 dark:text-amber-400"
+                  : "text-amber-700 dark:text-amber-400",
               )}
             >
               {colorTotal} / {totalQuantity}
               {remaining !== 0 && (
                 <span className="ml-1 font-normal text-xs">
-                  (
-                  {remaining > 0
-                    ? `${remaining} remaining`
-                    : `${Math.abs(remaining)} over`}
-                  )
+                  ({remaining > 0 ? `${remaining} remaining` : `${Math.abs(remaining)} over`})
                 </span>
               )}
             </span>
@@ -205,11 +187,7 @@ export function ColourBreakdownDialog({
         </div>
 
         <DialogFooter className="shrink-0 pt-2 border-t border-border">
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={isSaving}
-          >
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
             Cancel
           </Button>
           <Button onClick={handleConfirm} disabled={!isValid || isSaving}>

@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { GradeBadge } from "@/components/common/GradeBadge";
 import { Badge } from "@/components/ui/badge";
 import type { OrderItem } from "@/types/order";
+import { supabase } from "@/lib/supabase/client";
 
 interface ColorRow {
   color: string;
@@ -91,22 +92,22 @@ export function OrderColorFulfillmentDialog({
     Promise.all(
       initial.map(async (item) => {
         try {
-          const res = await fetch(
-            `/api/admin/inventory-colors?inventory_id=${encodeURIComponent(item.inventoryId)}`
-          );
-          if (!res.ok) return { inventoryId: item.inventoryId, colors: [] as AvailableColor[] };
-          const data = await res.json();
-          const colors: AvailableColor[] = (data.colors ?? []).map(
+          const { data } = await (supabase as any)
+            .from("inventory_colors")
+            .select("color, quantity")
+            .eq("inventory_id", item.inventoryId)
+            .order("color");
+          const colors: AvailableColor[] = (data ?? []).map(
             (c: { color: string; quantity: number }) => ({
               color: c.color,
               stock: c.quantity,
-            })
+            }),
           );
           return { inventoryId: item.inventoryId, colors };
         } catch {
           return { inventoryId: item.inventoryId, colors: [] as AvailableColor[] };
         }
-      })
+      }),
     ).then((results) => {
       setItemStates((prev) =>
         prev.map((item) => {
@@ -114,7 +115,7 @@ export function OrderColorFulfillmentDialog({
           if (!found) return item;
           const colorRows: ColorRow[] = [{ color: "", quantity: "" }];
           return { ...item, availableColors: found.colors, colorRows };
-        })
+        }),
       );
       setIsLoading(false);
     });
@@ -129,8 +130,8 @@ export function OrderColorFulfillmentDialog({
       prev.map((item, i) =>
         i === itemIndex
           ? { ...item, colorRows: [...item.colorRows, { color: "", quantity: "" }] }
-          : item
-      )
+          : item,
+      ),
     );
   };
 
@@ -139,8 +140,8 @@ export function OrderColorFulfillmentDialog({
       prev.map((item, i) =>
         i === itemIndex
           ? { ...item, colorRows: item.colorRows.filter((_, ri) => ri !== rowIndex) }
-          : item
-      )
+          : item,
+      ),
     );
   };
 
@@ -151,11 +152,11 @@ export function OrderColorFulfillmentDialog({
           ? {
               ...item,
               colorRows: item.colorRows.map((row, ri) =>
-                ri === rowIndex ? { ...row, color: value } : row
+                ri === rowIndex ? { ...row, color: value } : row,
               ),
             }
-          : item
-      )
+          : item,
+      ),
     );
   };
 
@@ -166,11 +167,11 @@ export function OrderColorFulfillmentDialog({
           ? {
               ...item,
               colorRows: item.colorRows.map((row, ri) =>
-                ri === rowIndex ? { ...row, quantity: value } : row
+                ri === rowIndex ? { ...row, quantity: value } : row,
               ),
             }
-          : item
-      )
+          : item,
+      ),
     );
   };
 
@@ -186,9 +187,7 @@ export function OrderColorFulfillmentDialog({
     // Every row must have a colour selected AND a quantity of at least 1
     return item.colorRows.every(
       (r) =>
-        r.color.trim() !== "" &&
-        Number.isInteger(Number(r.quantity)) &&
-        Number(r.quantity) > 0
+        r.color.trim() !== "" && Number.isInteger(Number(r.quantity)) && Number(r.quantity) > 0,
     );
   };
 
@@ -222,9 +221,7 @@ export function OrderColorFulfillmentDialog({
       await onSuccess();
       onOpenChange(false);
     } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Failed to fulfil order. Please try again."
-      );
+      toast.error(err instanceof Error ? err.message : "Failed to fulfil order. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -241,8 +238,8 @@ export function OrderColorFulfillmentDialog({
             Colour Assignment
           </DialogTitle>
           <DialogDescription>
-            Select the colours being fulfilled for each item. Quantities must
-            match each item&apos;s ordered amount exactly.
+            Select the colours being fulfilled for each item. Quantities must match each item&apos;s
+            ordered amount exactly.
           </DialogDescription>
         </DialogHeader>
 
@@ -264,7 +261,7 @@ export function OrderColorFulfillmentDialog({
 
                 // Build a quick lookup: color name → available stock
                 const stockByColor = Object.fromEntries(
-                  item.availableColors.map((c) => [c.color.toLowerCase(), c.stock])
+                  item.availableColors.map((c) => [c.color.toLowerCase(), c.stock]),
                 );
 
                 return (
@@ -276,13 +273,9 @@ export function OrderColorFulfillmentDialog({
                     <div className="px-4 py-3 bg-muted/40 border-b border-border">
                       <div className="flex items-center justify-between gap-3">
                         <div>
-                          <p className="text-sm font-medium text-foreground">
-                            {item.deviceName}
-                          </p>
+                          <p className="text-sm font-medium text-foreground">{item.deviceName}</p>
                           <div className="flex items-center gap-2 mt-1">
-                            {item.grade && (
-                              <GradeBadge grade={item.grade as any} />
-                            )}
+                            {item.grade && <GradeBadge grade={item.grade as any} />}
                             {item.storage && (
                               <Badge variant="outline" className="text-xs">
                                 {item.storage}
@@ -290,9 +283,7 @@ export function OrderColorFulfillmentDialog({
                             )}
                             <span className="text-xs text-muted-foreground">
                               Ordered:{" "}
-                              <strong className="text-foreground">
-                                {item.orderedQuantity}
-                              </strong>
+                              <strong className="text-foreground">{item.orderedQuantity}</strong>
                             </span>
                           </div>
                         </div>
@@ -301,7 +292,7 @@ export function OrderColorFulfillmentDialog({
                             "text-sm font-bold tabular-nums px-2 py-1 rounded",
                             valid
                               ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-                              : "bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                              : "bg-amber-500/10 text-amber-700 dark:text-amber-400",
                           )}
                         >
                           {total}/{item.orderedQuantity}
@@ -322,102 +313,104 @@ export function OrderColorFulfillmentDialog({
                           ? (stockByColor[row.color.toLowerCase()] ?? null)
                           : null;
                         return (
-                        <div key={rowIndex} className="space-y-1">
-                          <div className="flex gap-2 items-center">
-                          {item.availableColors.length > 0 ? (
-                            /* Dropdown from saved colours */
-                            <Select
-                              value={row.color}
-                              onValueChange={(val) =>
-                                handleColorChange(itemIndex, rowIndex, val)
-                              }
-                            >
-                              <SelectTrigger className="flex-1">
-                                <SelectValue placeholder="Select colour…" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {item.availableColors.map((c) => {
-                                  const isUsedElsewhere =
-                                    usedColors.includes(c.color.toLowerCase()) &&
-                                    row.color.toLowerCase() !== c.color.toLowerCase();
-                                  return (
-                                    <SelectItem
-                                      key={c.color}
-                                      value={c.color}
-                                      disabled={isUsedElsewhere}
-                                    >
-                                      <span className="flex items-center justify-between gap-3 w-full">
-                                        <span>{c.color}</span>
-                                        <span className={cn(
-                                          "text-xs tabular-nums",
-                                          c.stock === 0
-                                            ? "text-destructive"
-                                            : c.stock <= 5
-                                            ? "text-amber-500 dark:text-amber-400"
-                                            : "text-muted-foreground"
-                                        )}>
-                                          {c.stock} left
-                                        </span>
-                                      </span>
-                                    </SelectItem>
-                                  );
-                                })}
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            /* Fallback free-text when no colours are on record */
-                            <Input
-                              placeholder="Colour (e.g. Black)"
-                              value={row.color}
-                              onChange={(e) =>
-                                handleColorChange(itemIndex, rowIndex, e.target.value)
-                              }
-                              className="flex-1"
-                            />
-                          )}
+                          <div key={rowIndex} className="space-y-1">
+                            <div className="flex gap-2 items-center">
+                              {item.availableColors.length > 0 ? (
+                                /* Dropdown from saved colours */
+                                <Select
+                                  value={row.color}
+                                  onValueChange={(val) =>
+                                    handleColorChange(itemIndex, rowIndex, val)
+                                  }
+                                >
+                                  <SelectTrigger className="flex-1">
+                                    <SelectValue placeholder="Select colour…" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {item.availableColors.map((c) => {
+                                      const isUsedElsewhere =
+                                        usedColors.includes(c.color.toLowerCase()) &&
+                                        row.color.toLowerCase() !== c.color.toLowerCase();
+                                      return (
+                                        <SelectItem
+                                          key={c.color}
+                                          value={c.color}
+                                          disabled={isUsedElsewhere}
+                                        >
+                                          <span className="flex items-center justify-between gap-3 w-full">
+                                            <span>{c.color}</span>
+                                            <span
+                                              className={cn(
+                                                "text-xs tabular-nums",
+                                                c.stock === 0
+                                                  ? "text-destructive"
+                                                  : c.stock <= 5
+                                                    ? "text-amber-500 dark:text-amber-400"
+                                                    : "text-muted-foreground",
+                                              )}
+                                            >
+                                              {c.stock} left
+                                            </span>
+                                          </span>
+                                        </SelectItem>
+                                      );
+                                    })}
+                                  </SelectContent>
+                                </Select>
+                              ) : (
+                                /* Fallback free-text when no colours are on record */
+                                <Input
+                                  placeholder="Colour (e.g. Black)"
+                                  value={row.color}
+                                  onChange={(e) =>
+                                    handleColorChange(itemIndex, rowIndex, e.target.value)
+                                  }
+                                  className="flex-1"
+                                />
+                              )}
 
-                          <Input
-                            type="number"
-                            placeholder="Qty"
-                            value={row.quantity}
-                            onChange={(e) =>
-                              handleQuantityChange(itemIndex, rowIndex, e.target.value)
-                            }
-                            min="1"
-                            className={cn(
-                              "w-24",
-                              row.color && row.quantity !== "" && Number(row.quantity) < 1
-                                ? "border-destructive focus-visible:ring-destructive"
-                                : ""
+                              <Input
+                                type="number"
+                                placeholder="Qty"
+                                value={row.quantity}
+                                onChange={(e) =>
+                                  handleQuantityChange(itemIndex, rowIndex, e.target.value)
+                                }
+                                min="1"
+                                className={cn(
+                                  "w-24",
+                                  row.color && row.quantity !== "" && Number(row.quantity) < 1
+                                    ? "border-destructive focus-visible:ring-destructive"
+                                    : "",
+                                )}
+                              />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleRemoveColorRow(itemIndex, rowIndex)}
+                                disabled={item.colorRows.length === 1}
+                                className="shrink-0 text-muted-foreground hover:text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                            {/* Stock hint */}
+                            {rowStock !== null && (
+                              <p
+                                className={cn(
+                                  "text-xs pl-1",
+                                  rowStock === 0
+                                    ? "text-destructive"
+                                    : rowStock <= 5
+                                      ? "text-amber-500 dark:text-amber-400"
+                                      : "text-muted-foreground",
+                                )}
+                              >
+                                {rowStock === 0 ? "Out of stock" : `${rowStock} in stock`}
+                              </p>
                             )}
-                          />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleRemoveColorRow(itemIndex, rowIndex)}
-                            disabled={item.colorRows.length === 1}
-                            className="shrink-0 text-muted-foreground hover:text-destructive"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
                           </div>
-                          {/* Stock hint */}
-                          {rowStock !== null && (
-                            <p className={cn(
-                              "text-xs pl-1",
-                              rowStock === 0
-                                ? "text-destructive"
-                                : rowStock <= 5
-                                ? "text-amber-500 dark:text-amber-400"
-                                : "text-muted-foreground"
-                            )}>
-                              {rowStock === 0
-                                ? "Out of stock"
-                                : `${rowStock} in stock`}
-                            </p>
-                          )}
-                        </div>
                         );
                       })}
 
@@ -438,7 +431,7 @@ export function OrderColorFulfillmentDialog({
                             "text-xs text-center mt-1",
                             remaining > 0
                               ? "text-amber-600 dark:text-amber-400"
-                              : "text-destructive"
+                              : "text-destructive",
                           )}
                         >
                           {remaining > 0
@@ -455,11 +448,7 @@ export function OrderColorFulfillmentDialog({
         </div>
 
         <DialogFooter className="shrink-0 pt-2 border-t border-border">
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={isSubmitting}
-          >
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
             Cancel
           </Button>
           <Button onClick={handleConfirm} disabled={!allValid || isSubmitting}>

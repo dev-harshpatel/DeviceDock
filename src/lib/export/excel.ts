@@ -3,10 +3,12 @@ import { writeFile, utils } from "xlsx";
 
 export const exportToExcel = (
   items: InventoryItem[],
-  filename: string = "inventory"
+  filename: string = "inventory",
+  companyName?: string,
 ) => {
   try {
-    // Prepare data for Excel (excluding Price Change and Last Updated)
+    const title = companyName ? `${companyName} : Inventory Report` : "Inventory Report";
+
     const data = items.map((item) => ({
       "Device Name": item.deviceName,
       Brand: item.brand,
@@ -16,10 +18,12 @@ export const exportToExcel = (
       "Price (CAD)": item.sellingPrice,
     }));
 
-    // Create workbook and worksheet
-    const worksheet = utils.json_to_sheet(data);
+    // Build empty worksheet, inject title in A1, then add data from A2
+    const worksheet = utils.aoa_to_sheet([[title]]);
+    utils.sheet_add_json(worksheet, data, { origin: "A2", skipHeader: false });
+
     const workbook = utils.book_new();
-    utils.book_append_sheet(workbook, worksheet, "Inventory");
+    utils.book_append_sheet(workbook, worksheet, "Inventory Report");
 
     // Set column widths
     const columnWidths = [
@@ -32,7 +36,6 @@ export const exportToExcel = (
     ];
     worksheet["!cols"] = columnWidths;
 
-    // Generate Excel file
     writeFile(workbook, `${filename}.xlsx`);
     return true;
   } catch (error) {
