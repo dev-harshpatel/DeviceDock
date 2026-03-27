@@ -1,6 +1,6 @@
-# Stoq — Complete Project Onboarding Guide
+# Invn — Complete Project Onboarding Guide
 
-> This guide is intended for developers joining the Stoq project for the first time.
+> This guide is intended for developers joining the Invn project for the first time.
 > Read it top to bottom — each section builds on the previous one.
 > Last updated: March 2026
 
@@ -8,7 +8,7 @@
 
 ## Table of Contents
 
-1. [What Is Stoq?](#1-what-is-stoq)
+1. [What Is Invn?](#1-what-is-invn)
 2. [Tech Stack](#2-tech-stack)
 3. [Local Setup](#3-local-setup)
 4. [Project Folder Structure](#4-project-folder-structure)
@@ -31,39 +31,40 @@
 
 ---
 
-## 1. What Is Stoq?
+## 1. What Is Invn?
 
-**Stoq** is a B2B inventory and order management platform for **Hari Om Traders Ltd.** (b2bmobiles.ca), a mobile device supplier based in Brampton, ON.
+**Invn** is a B2B inventory and order management platform for **Hari Om Traders Ltd.** (b2bmobiles.ca), a mobile device supplier based in Brampton, ON.
 
 **What it does:**
+
 - Admin staff manage inventory (phones by brand/grade/storage), process orders, generate invoices, and view analytics
 - Approved business buyers (users) browse inventory, add to cart, place orders, and track their purchases
 - The system handles tax (HST/GST), PDF invoice generation, bulk Excel imports, and demand forecasting
 
 **Live URL:** b2bmobiles.ca
-**Staging URL:** stoq-bice.vercel.app
+**Staging URL:** invn-bice.vercel.app
 **Repository branches:** `main` (production) ← `development` (staging) ← feature branches
 
 ---
 
 ## 2. Tech Stack
 
-| Layer | Technology | Notes |
-|-------|-----------|-------|
-| Framework | Next.js 14 (App Router) + TypeScript | All routing is file-based under `app/` |
-| Styling | Tailwind CSS v4 | Custom color tokens defined in `tailwind.config.ts` |
-| UI Components | shadcn/ui + Radix UI | Components live in `src/components/ui/` |
-| Icons | Lucide React | `import { IconName } from "lucide-react"` |
-| Database | Supabase (PostgreSQL) | Row-Level Security (RLS) enforced |
-| Auth | Supabase Auth (email/password) | Session managed via middleware |
-| Server State | TanStack React Query v5 | Paginated queries, cache invalidation |
-| Client State | React Context | One context per domain (inventory, cart, orders, etc.) |
-| Forms | React Hook Form + Zod | Schema-first validation |
-| Toasts | Sonner | `toast.success()` / `toast.error()` |
-| PDF Export | @react-pdf/renderer + jsPDF | Invoices use react-pdf, reports use jsPDF |
-| Excel | xlsx | Bulk product import/export |
-| Charts | Recharts | Dashboard and reports pages |
-| Hosting | Vercel | Auto-deploys from `main` |
+| Layer         | Technology                           | Notes                                                  |
+| ------------- | ------------------------------------ | ------------------------------------------------------ |
+| Framework     | Next.js 14 (App Router) + TypeScript | All routing is file-based under `app/`                 |
+| Styling       | Tailwind CSS v4                      | Custom color tokens defined in `tailwind.config.ts`    |
+| UI Components | shadcn/ui + Radix UI                 | Components live in `src/components/ui/`                |
+| Icons         | Lucide React                         | `import { IconName } from "lucide-react"`              |
+| Database      | Supabase (PostgreSQL)                | Row-Level Security (RLS) enforced                      |
+| Auth          | Supabase Auth (email/password)       | Session managed via middleware                         |
+| Server State  | TanStack React Query v5              | Paginated queries, cache invalidation                  |
+| Client State  | React Context                        | One context per domain (inventory, cart, orders, etc.) |
+| Forms         | React Hook Form + Zod                | Schema-first validation                                |
+| Toasts        | Sonner                               | `toast.success()` / `toast.error()`                    |
+| PDF Export    | @react-pdf/renderer + jsPDF          | Invoices use react-pdf, reports use jsPDF              |
+| Excel         | xlsx                                 | Bulk product import/export                             |
+| Charts        | Recharts                             | Dashboard and reports pages                            |
+| Hosting       | Vercel                               | Auto-deploys from `main`                               |
 
 ---
 
@@ -79,7 +80,7 @@
 ```bash
 # 1. Clone the repo
 git clone <repo-url>
-cd stoq
+cd invn
 
 # 2. Install dependencies
 npm install
@@ -112,11 +113,11 @@ Open http://localhost:3000
 
 **Test credentials (after seeding):**
 
-| Role | Email | Password |
-|------|-------|----------|
-| Admin | admin@stoq.com | admin123 |
-| User | user1@example.com | user123 |
-| User | user2@example.com | user123 |
+| Role  | Email             | Password |
+| ----- | ----------------- | -------- |
+| Admin | admin@invn.com    | admin123 |
+| User  | user1@example.com | user123  |
+| User  | user2@example.com | user123  |
 
 Admin panel: http://localhost:3000/admin/login
 
@@ -125,7 +126,7 @@ Admin panel: http://localhost:3000/admin/login
 ## 4. Project Folder Structure
 
 ```
-stoq/
+invn/
 ├── app/                        # Next.js App Router (pages & API routes)
 │   ├── layout.tsx              # Root layout — wraps entire app in <Providers>
 │   ├── page.tsx                # Public homepage (product listing)
@@ -256,13 +257,13 @@ stoq/
 
 ## 5. Environment Variables
 
-| Variable | Where used | Notes |
-|----------|-----------|-------|
-| `NEXT_PUBLIC_SUPABASE_URL` | Browser + server | Your Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser + server | Public key, safe to expose |
-| `SUPABASE_SERVICE_ROLE_KEY` | Server only (API routes) | Secret — never expose to browser |
-| `NEXT_PUBLIC_SITE_URL` | Auth redirects | `http://localhost:3000` locally |
-| `DATABASE_URL` | Migration script only | Optional, only needed for `npm run migrate` |
+| Variable                        | Where used               | Notes                                       |
+| ------------------------------- | ------------------------ | ------------------------------------------- |
+| `NEXT_PUBLIC_SUPABASE_URL`      | Browser + server         | Your Supabase project URL                   |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser + server         | Public key, safe to expose                  |
+| `SUPABASE_SERVICE_ROLE_KEY`     | Server only (API routes) | Secret — never expose to browser            |
+| `NEXT_PUBLIC_SITE_URL`          | Auth redirects           | `http://localhost:3000` locally             |
+| `DATABASE_URL`                  | Migration script only    | Optional, only needed for `npm run migrate` |
 
 `NEXT_PUBLIC_*` variables are available in both client and server components. Variables without that prefix are server-only.
 
@@ -364,8 +365,8 @@ const { user, loading, signIn, signUp, signOut, resetPasswordForEmail } = useAut
 
 ```typescript
 // src/types/user.ts
-export type UserRole = 'user' | 'admin';
-export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
+export type UserRole = "user" | "admin";
+export type ApprovalStatus = "pending" | "approved" | "rejected";
 ```
 
 Role and approval status live in `user_profiles`, not in `auth.users`.
@@ -404,14 +405,14 @@ export interface InventoryItem {
   id: string;
   deviceName: string;
   brand: string;
-  grade: Grade;           // "Brand New Sealed" | "Brand New Open Box" | "A" | "B" | "C" | "D"
-  storage: string;        // e.g. "128GB", "256GB"
+  grade: Grade; // "Brand New Sealed" | "Brand New Open Box" | "A" | "B" | "C" | "D"
+  storage: string; // e.g. "128GB", "256GB"
   quantity: number;
-  pricePerUnit: number;   // Admin-only: cost per unit (including HST)
-  purchasePrice?: number | null;  // Admin-only: total purchase cost for the batch
-  hst?: number | null;    // Admin-only: HST % applied when calculating pricePerUnit
-  sellingPrice: number;   // Public: what users see and pay
-  lastUpdated: string;    // ISO date string
+  pricePerUnit: number; // Admin-only: cost per unit (including HST)
+  purchasePrice?: number | null; // Admin-only: total purchase cost for the batch
+  hst?: number | null; // Admin-only: HST % applied when calculating pricePerUnit
+  sellingPrice: number; // Public: what users see and pay
+  lastUpdated: string; // ISO date string
   priceChange?: "up" | "down" | "stable";
   isActive?: boolean;
 }
@@ -422,9 +423,9 @@ export interface InventoryItem {
 ```typescript
 // Price per unit formula:
 export function calculatePricePerUnit(
-  purchasePrice: number,  // total cost for ALL units
+  purchasePrice: number, // total cost for ALL units
   quantity: number,
-  hstPercent: number
+  hstPercent: number,
 ): number {
   return Math.round((purchasePrice / quantity) * (1 + hstPercent / 100) * 100) / 100;
 }
@@ -434,13 +435,9 @@ export function calculatePricePerUnit(
 
 ```typescript
 // src/lib/constants/grades.ts
-export const GRADES = [
-  "Brand New Sealed",
-  "Brand New Open Box",
-  "A", "B", "C", "D"
-] as const;
+export const GRADES = ["Brand New Sealed", "Brand New Open Box", "A", "B", "C", "D"] as const;
 
-export type Grade = typeof GRADES[number];
+export type Grade = (typeof GRADES)[number];
 ```
 
 Badge labels: BNS, BNOB, A, B, C, D
@@ -451,7 +448,7 @@ Badge labels: BNS, BNOB, A, B, C, D
 // src/types/user.ts — 56 fields total, key ones:
 export interface UserProfile {
   id: string;
-  userId: string;           // matches auth.users.id
+  userId: string; // matches auth.users.id
   role: UserRole;
   approvalStatus: ApprovalStatus;
   firstName: string;
@@ -470,14 +467,14 @@ export interface UserProfile {
 export interface Order {
   id: string;
   userId: string;
-  items: OrderItem[];       // [{ item: InventoryItem, quantity: number }]
+  items: OrderItem[]; // [{ item: InventoryItem, quantity: number }]
   subtotal: number;
   taxAmount: number | null;
   totalPrice: number;
-  status: OrderStatus;      // "pending" | "approved" | "rejected" | "completed"
+  status: OrderStatus; // "pending" | "approved" | "rejected" | "completed"
   createdAt: string;
   // ... invoice fields, discount, shipping address, IMEI numbers
-  isManualSale?: boolean;   // true for admin-recorded off-platform sales
+  isManualSale?: boolean; // true for admin-recorded off-platform sales
 }
 ```
 
@@ -487,11 +484,11 @@ export interface Order {
 
 ### Which Client to Use
 
-| Context | Client | Import |
-|---------|--------|--------|
-| Client Components / hooks | `createBrowserClient()` | `@/lib/supabase/client/browser` |
-| Server Components / API routes | `createServerClient()` | `@/lib/supabase/client/server` |
-| Admin operations (bypasses RLS) | `createAdminClient()` | `@/lib/supabase/client/admin` |
+| Context                         | Client                  | Import                          |
+| ------------------------------- | ----------------------- | ------------------------------- |
+| Client Components / hooks       | `createBrowserClient()` | `@/lib/supabase/client/browser` |
+| Server Components / API routes  | `createServerClient()`  | `@/lib/supabase/client/server`  |
+| Admin operations (bypasses RLS) | `createAdminClient()`   | `@/lib/supabase/client/admin`   |
 
 ```typescript
 // In a client component or context:
@@ -530,7 +527,9 @@ DB column names use `snake_case`. TypeScript types use `camelCase`. All conversi
 
 ```typescript
 // mappers.ts
-export function mapInventoryRow(row: Database['public']['Tables']['inventory']['Row']): InventoryItem {
+export function mapInventoryRow(
+  row: Database["public"]["Tables"]["inventory"]["Row"],
+): InventoryItem {
   return {
     id: row.id,
     deviceName: row.device_name,
@@ -651,7 +650,13 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 ```
 
 Never install new UI component libraries without discussion. Extend shadcn/ui components first.
@@ -716,7 +721,11 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>;
 
 // 2. Use in component
-const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormData>({
+const {
+  register,
+  handleSubmit,
+  formState: { errors, isSubmitting },
+} = useForm<FormData>({
   resolver: zodResolver(schema),
 });
 
@@ -740,18 +749,18 @@ Reusable schemas live in `src/lib/validations/`. Create one file per domain (e.g
 
 ### Route Map
 
-| Path | Access | Notes |
-|------|--------|-------|
-| `/` | Public | Product listing for all visitors |
-| `/contact` | Public | |
-| `/user/grades` | Public | Grade guide |
-| `/auth/*` | Public | Callback, reset-password, error |
-| `/admin/login` | Public | Admin-specific login page |
-| `/user/orders` | Authenticated user | |
-| `/user/profile` | Authenticated user | |
-| `/user/wishlist` | Authenticated user | |
-| `/user/wishes` | Authenticated user | |
-| `/admin/*` | Admin only | Except `/admin/login` |
+| Path             | Access             | Notes                            |
+| ---------------- | ------------------ | -------------------------------- |
+| `/`              | Public             | Product listing for all visitors |
+| `/contact`       | Public             |                                  |
+| `/user/grades`   | Public             | Grade guide                      |
+| `/auth/*`        | Public             | Callback, reset-password, error  |
+| `/admin/login`   | Public             | Admin-specific login page        |
+| `/user/orders`   | Authenticated user |                                  |
+| `/user/profile`  | Authenticated user |                                  |
+| `/user/wishlist` | Authenticated user |                                  |
+| `/user/wishes`   | Authenticated user |                                  |
+| `/admin/*`       | Admin only         | Except `/admin/login`            |
 
 ### How Protection Works
 
@@ -817,14 +826,14 @@ Use `createAdminClient()` only when you need to bypass RLS (e.g., creating a use
 
 ### Existing API Routes
 
-| Route | Purpose |
-|-------|---------|
-| `POST /api/auth/check-email` | Pre-signup email check |
-| `POST /api/user-profile/create` | Create user profile (bypasses RLS) |
-| `POST /api/user-profile/update-approval-status` | Admin: approve/reject user |
-| `GET /api/users/emails` | Admin: list all user emails |
-| `POST /api/users/delete` | Admin: delete user |
-| `POST /api/wishes/*` | Wish CRUD operations |
+| Route                                           | Purpose                            |
+| ----------------------------------------------- | ---------------------------------- |
+| `POST /api/auth/check-email`                    | Pre-signup email check             |
+| `POST /api/user-profile/create`                 | Create user profile (bypasses RLS) |
+| `POST /api/user-profile/update-approval-status` | Admin: approve/reject user         |
+| `GET /api/users/emails`                         | Admin: list all user emails        |
+| `POST /api/users/delete`                        | Admin: delete user                 |
+| `POST /api/wishes/*`                            | Wish CRUD operations               |
 
 ---
 
@@ -855,16 +864,16 @@ Use `createAdminClient()` only when you need to bypass RLS (e.g., creating a use
 
 ### Naming Conventions
 
-| Thing | Convention | Example |
-|-------|-----------|---------|
-| Components | PascalCase | `AddProductModal.tsx` |
-| Hooks | camelCase with `use` prefix | `usePaginatedReactQuery` |
-| Context files | PascalCase + Context suffix | `InventoryContext.tsx` |
-| Utility functions | camelCase | `calculatePricePerUnit` |
-| Types/interfaces | PascalCase | `InventoryItem`, `UserRole` |
-| Constants | SCREAMING_SNAKE_CASE | `TOAST_MESSAGES`, `GRADES` |
-| DB columns | snake_case (Supabase) | `device_name`, `selling_price` |
-| TS fields | camelCase | `deviceName`, `sellingPrice` |
+| Thing             | Convention                  | Example                        |
+| ----------------- | --------------------------- | ------------------------------ |
+| Components        | PascalCase                  | `AddProductModal.tsx`          |
+| Hooks             | camelCase with `use` prefix | `usePaginatedReactQuery`       |
+| Context files     | PascalCase + Context suffix | `InventoryContext.tsx`         |
+| Utility functions | camelCase                   | `calculatePricePerUnit`        |
+| Types/interfaces  | PascalCase                  | `InventoryItem`, `UserRole`    |
+| Constants         | SCREAMING_SNAKE_CASE        | `TOAST_MESSAGES`, `GRADES`     |
+| DB columns        | snake_case (Supabase)       | `device_name`, `selling_price` |
+| TS fields         | camelCase                   | `deviceName`, `sellingPrice`   |
 
 ### File Placement Rules
 
@@ -943,10 +952,7 @@ export function mapYourFeatureRow(row: any): YourFeature {
 }
 
 export async function fetchYourFeatures(supabase: SupabaseClient, userId: string) {
-  const { data, error } = await supabase
-    .from("your_feature")
-    .select("*")
-    .eq("user_id", userId);
+  const { data, error } = await supabase.from("your_feature").select("*").eq("user_id", userId);
 
   if (error) throw error;
   return data.map(mapYourFeatureRow);
@@ -960,7 +966,7 @@ Add to `src/lib/query-keys.ts`:
 ```typescript
 export const queryKeys = {
   // ...existing keys...
-  yourFeature: ['your_feature'] as const,
+  yourFeature: ["your_feature"] as const,
   yourFeaturePage: (userId: string) => [...queryKeys.yourFeature, userId] as const,
 };
 ```
@@ -989,7 +995,7 @@ See `docs/BRANCHING_AND_WORKFLOW.md` for the full guide. Summary:
 
 ```
 main          — production (b2bmobiles.ca)
-development   — staging (stoq-bice.vercel.app)
+development   — staging (invn-bice.vercel.app)
 feature/*     — your work
 fix/*         — bug fixes
 ```
@@ -1009,6 +1015,7 @@ gh pr create --base development
 ```
 
 **Never commit:**
+
 - `.env.local` or any file with secrets
 - `node_modules/`
 - Generated `dist/` or `.next/` builds
@@ -1018,8 +1025,9 @@ gh pr create --base development
 ## 18. Deployment
 
 Vercel auto-deploys:
+
 - Push to `main` → deploys to b2bmobiles.ca
-- Push to `development` → deploys to stoq-bice.vercel.app (staging)
+- Push to `development` → deploys to invn-bice.vercel.app (staging)
 
 ### Required Vercel Environment Variables
 
@@ -1078,22 +1086,22 @@ See `docs/PRODUCTION_STANDARDS.md` for the full checklist.
 
 ## 20. Where to Find Things
 
-| I need to... | Look here |
-|-------------|-----------|
-| Add a new page | `app/` (route) + `src/page-components/` (component) |
-| Add a modal/dialog | `src/components/YourModal.tsx` using `Dialog` from `ui/` |
-| Add a DB query | `src/lib/supabase/queries/` |
-| Add a new type | `src/types/` (domain) or `src/lib/types/` (DB-derived) |
-| Add a form | React Hook Form + Zod in component, schema in `src/lib/validations/` |
-| Add a toast message | `src/lib/constants/toast-messages.ts` |
-| Add a query key | `src/lib/query-keys.ts` |
-| Add a constant | `src/lib/constants/index.ts` |
-| Add a utility function | `src/lib/utils/` |
-| Add a custom hook | `src/hooks/` |
-| Understand RLS policies | `docs/RLS_POLICIES_EXPLAINED.md` |
-| Understand auth flow | `docs/AUTH_TROUBLESHOOTING.md` |
-| Understand migration process | `docs/MIGRATION_GUIDE.md` |
-| Understand API field exposure | `docs/API_DATA_MINIMIZATION.md` |
-| Understand git workflow | `docs/BRANCHING_AND_WORKFLOW.md` |
-| Set up environments | `docs/ENVIRONMENTS_AND_SUPABASE.md` |
-| Pre-production checklist | `docs/PRODUCTION_STANDARDS.md` |
+| I need to...                  | Look here                                                            |
+| ----------------------------- | -------------------------------------------------------------------- |
+| Add a new page                | `app/` (route) + `src/page-components/` (component)                  |
+| Add a modal/dialog            | `src/components/YourModal.tsx` using `Dialog` from `ui/`             |
+| Add a DB query                | `src/lib/supabase/queries/`                                          |
+| Add a new type                | `src/types/` (domain) or `src/lib/types/` (DB-derived)               |
+| Add a form                    | React Hook Form + Zod in component, schema in `src/lib/validations/` |
+| Add a toast message           | `src/lib/constants/toast-messages.ts`                                |
+| Add a query key               | `src/lib/query-keys.ts`                                              |
+| Add a constant                | `src/lib/constants/index.ts`                                         |
+| Add a utility function        | `src/lib/utils/`                                                     |
+| Add a custom hook             | `src/hooks/`                                                         |
+| Understand RLS policies       | `docs/RLS_POLICIES_EXPLAINED.md`                                     |
+| Understand auth flow          | `docs/AUTH_TROUBLESHOOTING.md`                                       |
+| Understand migration process  | `docs/MIGRATION_GUIDE.md`                                            |
+| Understand API field exposure | `docs/API_DATA_MINIMIZATION.md`                                      |
+| Understand git workflow       | `docs/BRANCHING_AND_WORKFLOW.md`                                     |
+| Set up environments           | `docs/ENVIRONMENTS_AND_SUPABASE.md`                                  |
+| Pre-production checklist      | `docs/PRODUCTION_STANDARDS.md`                                       |

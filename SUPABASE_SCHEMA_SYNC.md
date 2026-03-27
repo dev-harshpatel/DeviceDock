@@ -1,12 +1,12 @@
 ## Supabase: Sync Dev Schema & RLS From Prod
 
-This guide explains how to **copy all schema + RLS policies** from your Supabase **prod** database (`stoq`) to your **dev** database (`stoq-dev`) using `pg_dump` and `psql` on Windows.
+This guide explains how to **copy all schema + RLS policies** from your Supabase **prod** database (`invn`) to your **dev** database (`invn-dev`) using `pg_dump` and `psql` on Windows.
 
 You will:
 
 - Back up the current **dev** schema (safety).
 - Dump the **prod** schema (includes RLS policies).
-- Apply that schema onto **dev**, so `stoq-dev` matches `stoq`.
+- Apply that schema onto **dev**, so `invn-dev` matches `invn`.
 
 > **Important:** This process affects **only schema and RLS** (tables, views, functions, policies, etc.), not data.  
 > Do **not** commit real connection strings or passwords to git.
@@ -17,8 +17,8 @@ You will:
 
 - You are on **Windows**.
 - You have access to both Supabase projects:
-  - Prod: `stoq`
-  - Dev: `stoq-dev`
+  - Prod: `invn`
+  - Dev: `invn-dev`
 - In the repo root you have an `info.txt` (or similar) with **commented** connection strings:
 
 ```text
@@ -66,7 +66,7 @@ mkdir "D:\supabase-backups" -ErrorAction SilentlyContinue
 
 This will store:
 
-- A **backup** of the current `stoq-dev` schema.
+- A **backup** of the current `invn-dev` schema.
 - The **prod** schema dump.
 
 ---
@@ -88,20 +88,20 @@ postgresql://postgres:...@db.qhzmlezvvyhhxtiytsob.supabase.co:5432/postgres
 & "C:\Program Files\PostgreSQL\16\bin\pg_dump.exe" `
   --schema-only --no-owner --no-privileges `
   "PASTE_DEV_CONNECTION_STRING_HERE" `
-  > "D:\supabase-backups\stoq_dev_schema_before_fix.sql"
+  > "D:\supabase-backups\invn_dev_schema_before_fix.sql"
 ```
 
 Replace `PASTE_DEV_CONNECTION_STRING_HERE` with your actual **dev** URI from `info.txt`.
 
 If the command finishes without an error, you now have:
 
-- `D:\supabase-backups\stoq_dev_schema_before_fix.sql` — backup of the old dev schema.
+- `D:\supabase-backups\invn_dev_schema_before_fix.sql` — backup of the old dev schema.
 
 ---
 
 ## 5. Dump Prod Schema (Includes RLS)
 
-Now dump the schema from **prod** (`stoq`). This includes:
+Now dump the schema from **prod** (`invn`). This includes:
 
 - Tables, views, materialized views.
 - Types, functions, triggers.
@@ -119,20 +119,20 @@ postgresql://postgres:...@db.ezfcguwigdfbhycufgtd.supabase.co:5432/postgres
 & "C:\Program Files\PostgreSQL\16\bin\pg_dump.exe" `
   --schema-only --no-owner --no-privileges `
   "PASTE_PROD_CONNECTION_STRING_HERE" `
-  > "D:\supabase-backups\stoq_prod_schema.sql"
+  > "D:\supabase-backups\invn_prod_schema.sql"
 ```
 
 Again, replace `PASTE_PROD_CONNECTION_STRING_HERE` with your actual **prod** URI.
 
 On success, you get:
 
-- `D:\supabase-backups\stoq_prod_schema.sql` — prod schema + RLS.
+- `D:\supabase-backups\invn_prod_schema.sql` — prod schema + RLS.
 
 ---
 
 ## 6. Apply Prod Schema to Dev
 
-This step **makes `stoq-dev` match `stoq` schema + RLS**.
+This step **makes `invn-dev` match `invn` schema + RLS**.
 
 > **Warning:** This can override existing schema objects in dev (tables, views, functions, policies, etc.). It does **not** change data, but if dev has incompatible custom schema, you may get errors.
 
@@ -141,7 +141,7 @@ This step **makes `stoq-dev` match `stoq` schema + RLS**.
 ```powershell
 & "C:\Program Files\PostgreSQL\16\bin\psql.exe" `
   "PASTE_DEV_CONNECTION_STRING_HERE" `
-  -f "D:\supabase-backups\stoq_prod_schema.sql"
+  -f "D:\supabase-backups\invn_prod_schema.sql"
 ```
 
 Use the **same dev** connection string you used in step 4.
@@ -169,7 +169,7 @@ If you get a specific error, copy just the error text (no connection strings) an
 For this “Option 2” flow (syncing schema into existing dev DB):
 
 - Your `.env` for development **does not need to change**:
-  - It should already be pointing to `stoq-dev`.
+  - It should already be pointing to `invn-dev`.
 - After the schema sync:
   - Restart your dev server (`npm run dev` / `pnpm dev` / `yarn dev`) so it picks up any env changes you might have made earlier (if any).
   - Test key flows to confirm that RLS‑related issues are resolved.
@@ -183,7 +183,7 @@ If you need to restore the **old** dev schema backup:
 ```powershell
 & "C:\Program Files\PostgreSQL\16\bin\psql.exe" `
   "PASTE_DEV_CONNECTION_STRING_HERE" `
-  -f "D:\supabase-backups\stoq_dev_schema_before_fix.sql"
+  -f "D:\supabase-backups\invn_dev_schema_before_fix.sql"
 ```
 
 This attempts to recreate what dev looked like before you applied the prod schema.
@@ -211,13 +211,12 @@ Because you are pasting full Postgres URIs (with passwords) into local files and
 1. Install PostgreSQL client tools (`pg_dump`, `psql`) on Windows.
 2. Create `D:\supabase-backups` (or another backup folder).
 3. Backup dev schema:
-   - `pg_dump --schema-only ... DEV_CONNECTION_STRING > stoq_dev_schema_before_fix.sql`
+   - `pg_dump --schema-only ... DEV_CONNECTION_STRING > invn_dev_schema_before_fix.sql`
 4. Dump prod schema:
-   - `pg_dump --schema-only ... PROD_CONNECTION_STRING > stoq_prod_schema.sql`
+   - `pg_dump --schema-only ... PROD_CONNECTION_STRING > invn_prod_schema.sql`
 5. Apply prod schema to dev:
-   - `psql DEV_CONNECTION_STRING -f stoq_prod_schema.sql`
-6. Test your app against `stoq-dev`.
+   - `psql DEV_CONNECTION_STRING -f invn_prod_schema.sql`
+6. Test your app against `invn-dev`.
 7. Rotate DB passwords and update `.env` / local notes.
 
 Follow these steps whenever you need to **re-sync dev schema + RLS from prod** without touching data.
-

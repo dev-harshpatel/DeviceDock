@@ -105,14 +105,14 @@ After this, when you open a **Pull Request**, Supabase creates a preview branch 
 
 If you prefer not to use Branching, use two independent Supabase projects: one for production, one for development/staging.
 
-**→ Full step-by-step guide:** [OPTION_B_TWO_PROJECTS_SETUP.md](./OPTION_B_TWO_PROJECTS_SETUP.md) — env vars, replicating prod data to dev, clearing production, Vercel per-environment setup, and domains (b2bmobiles.ca = production, stoq-bice.vercel.app = dev/preview).
+**→ Full step-by-step guide:** [OPTION_B_TWO_PROJECTS_SETUP.md](./OPTION_B_TWO_PROJECTS_SETUP.md) — env vars, replicating prod data to dev, clearing production, Vercel per-environment setup, and domains (b2bmobiles.ca = production, invn-bice.vercel.app = dev/preview).
 
 | Environment     | Supabase project                    | Use for                                 |
 | --------------- | ----------------------------------- | --------------------------------------- |
-| **Development** | e.g. "Stoq Dev" or "b2bmobiles-dev" | Local, staging deploy from `dev` branch |
-| **Production**  | e.g. "Stoq Production"              | Live site (b2bmobiles.ca) only          |
+| **Development** | e.g. "Invn Dev" or "b2bmobiles-dev" | Local, staging deploy from `dev` branch |
+| **Production**  | e.g. "Invn Production"              | Live site (b2bmobiles.ca) only          |
 
-- Create a second project in [Supabase Dashboard](https://supabase.com/dashboard) → **New project** (e.g. "Stoq Dev").
+- Create a second project in [Supabase Dashboard](https://supabase.com/dashboard) → **New project** (e.g. "Invn Dev").
 - Run the same migrations in **both** projects (e.g. via SQL Editor or your migrate script with the right env).
 - **Local:** In `.env` / `.env.local`, use the **dev** project’s URL, anon key, and service role key; `NEXT_PUBLIC_SITE_URL` = `http://localhost:3000`.
 - **Vercel Production:** Set `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and `NEXT_PUBLIC_SITE_URL` for **Production** only, using the **production** project and `https://b2bmobiles.ca`.

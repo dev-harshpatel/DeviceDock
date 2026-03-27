@@ -8,10 +8,7 @@ type AuthContextType = {
   user: User | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ user: User | null }>;
-  signUp: (
-    email: string,
-    password: string
-  ) => Promise<{ user: User | null; session: any }>;
+  signUp: (email: string, password: string) => Promise<{ user: User | null; session: any }>;
   signOut: () => Promise<void>;
   resetPasswordForEmail: (email: string) => Promise<void>;
 };
@@ -97,7 +94,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (isInvalidCredentials) {
         throw new Error(
-          "No account found with this email and password. Please check your details or sign up first."
+          "No account found with this email and password. Please check your details or sign up first.",
         );
       }
 
@@ -138,13 +135,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (emailExists) {
-      throw new Error(
-        "An account with this email already exists. Please log in instead."
-      );
+      throw new Error("An account with this email already exists. Please log in instead.");
     }
 
     // Use the actual browser origin so the email link always matches
-    // the domain the user signed up from (works for both b2bmobiles.ca and stoq-bice.vercel.app)
+    // the domain the user signed up from (works for both b2bmobiles.ca and invn-bice.vercel.app)
     const getRedirectUrl = () => {
       if (typeof window !== "undefined") {
         return `${window.location.origin}/auth/confirm`;
@@ -189,9 +184,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         /already registered/i.test(msg) ||
         /already exists/i.test(msg)
       ) {
-        throw new Error(
-          "An account with this email already exists. Please log in instead."
-        );
+        throw new Error("An account with this email already exists. Please log in instead.");
       }
 
       throw error;
@@ -211,8 +204,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       typeof window !== "undefined"
         ? window.location.origin
         : process.env.NEXT_PUBLIC_SITE_URL
-        ? process.env.NEXT_PUBLIC_SITE_URL.replace(/\/+$/, "")
-        : "http://localhost:3000";
+          ? process.env.NEXT_PUBLIC_SITE_URL.replace(/\/+$/, "")
+          : "http://localhost:3000";
 
     // For password recovery, include a custom flow marker so the callback
     // route can distinguish this from normal email confirmation.

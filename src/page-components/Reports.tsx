@@ -24,11 +24,7 @@ import { Download, Calendar, Filter, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AdminReportsSkeleton } from "@/components/skeletons/AdminReportsSkeleton";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import {
   Select,
@@ -40,11 +36,7 @@ import {
 import { format } from "date-fns";
 import { OrderStatus } from "@/types/order";
 import { cn } from "@/lib/utils";
-import {
-  type Grade,
-  GRADES,
-  GRADE_LABELS,
-} from "@/lib/constants/grades";
+import { type Grade, GRADES, GRADE_LABELS } from "@/lib/constants/grades";
 
 // Grade colors for charts
 const GRADE_COLORS: Record<string, string> = {
@@ -111,8 +103,7 @@ export default function Reports() {
     if (filters.dateRange.from || filters.dateRange.to) {
       filtered = filtered.filter((order) => {
         const orderDate = new Date(order.createdAt);
-        if (filters.dateRange.from && orderDate < filters.dateRange.from)
-          return false;
+        if (filters.dateRange.from && orderDate < filters.dateRange.from) return false;
         if (filters.dateRange.to) {
           const toDate = new Date(filters.dateRange.to);
           toDate.setHours(23, 59, 59, 999); // Include entire end date
@@ -124,9 +115,7 @@ export default function Reports() {
 
     // Filter by order status
     if (filters.orderStatus !== "all") {
-      filtered = filtered.filter(
-        (order) => order.status === filters.orderStatus
-      );
+      filtered = filtered.filter((order) => order.status === filters.orderStatus);
     }
 
     return filtered;
@@ -151,10 +140,7 @@ export default function Reports() {
   const trendData = useMemo(() => {
     if (filteredOrders.length === 0) return [];
 
-    const ordersByPeriod = new Map<
-      string,
-      { units: number; value: number; orders: number }
-    >();
+    const ordersByPeriod = new Map<string, { units: number; value: number; orders: number }>();
 
     filteredOrders.forEach((order) => {
       const orderDate = new Date(order.createdAt);
@@ -164,9 +150,8 @@ export default function Reports() {
       const daysDiff =
         filters.dateRange.from && filters.dateRange.to
           ? Math.ceil(
-              (filters.dateRange.to.getTime() -
-                filters.dateRange.from.getTime()) /
-                (1000 * 60 * 60 * 24)
+              (filters.dateRange.to.getTime() - filters.dateRange.from.getTime()) /
+                (1000 * 60 * 60 * 24),
             )
           : 365; // Default to yearly if no range
 
@@ -221,27 +206,40 @@ export default function Reports() {
   const stockByGrade = useMemo(() => {
     return GRADES.map((g) => ({
       name: GRADE_LABELS[g],
-      value: filteredInventory
-        .filter((i) => i.grade === g)
-        .reduce((s, i) => s + i.quantity, 0),
+      value: filteredInventory.filter((i) => i.grade === g).reduce((s, i) => s + i.quantity, 0),
     })).filter((d) => d.value > 0);
   }, [filteredInventory]);
 
   // Stock by Status (filtered)
   const stockByStatus = useMemo(() => {
     const inStock = filteredInventory.filter(
-      (i) => getStockStatus(i.quantity) === "in-stock"
+      (i) => getStockStatus(i.quantity) === "in-stock",
     ).length;
     const lowStock = filteredInventory.filter(
-      (i) => getStockStatus(i.quantity) === "low-stock"
+      (i) => getStockStatus(i.quantity) === "low-stock",
     ).length;
     const critical = filteredInventory.filter(
-      (i) => getStockStatus(i.quantity) === "critical"
+      (i) => getStockStatus(i.quantity) === "critical",
     ).length;
     return [
-      { name: "In Stock", value: inStock, color: "hsl(142, 76%, 36%)", bg: "hsla(142, 76%, 36%, 0.12)" },
-      { name: "Low Stock", value: lowStock, color: "hsl(38, 92%, 50%)", bg: "hsla(38, 92%, 50%, 0.12)" },
-      { name: "Critical", value: critical, color: "hsl(0, 72%, 51%)", bg: "hsla(0, 72%, 51%, 0.12)" },
+      {
+        name: "In Stock",
+        value: inStock,
+        color: "hsl(142, 76%, 36%)",
+        bg: "hsla(142, 76%, 36%, 0.12)",
+      },
+      {
+        name: "Low Stock",
+        value: lowStock,
+        color: "hsl(38, 92%, 50%)",
+        bg: "hsla(38, 92%, 50%, 0.12)",
+      },
+      {
+        name: "Critical",
+        value: critical,
+        color: "hsl(0, 72%, 51%)",
+        bg: "hsla(0, 72%, 51%, 0.12)",
+      },
     ];
   }, [filteredInventory]);
 
@@ -307,9 +305,7 @@ export default function Reports() {
 
     const totalOrders = filteredOrders.length;
     const totalUnits = filteredOrders.reduce((sum, order) => {
-      return (
-        sum + order.items.reduce((itemSum, item) => itemSum + item.quantity, 0)
-      );
+      return sum + order.items.reduce((itemSum, item) => itemSum + item.quantity, 0);
     }, 0);
 
     return {
@@ -325,7 +321,7 @@ export default function Reports() {
     purchasePrice: number | null | undefined,
     quantity: number,
     pricePerUnit: number,
-    hst: number | null | undefined
+    hst: number | null | undefined,
   ): number | null => {
     if (quantity <= 0) return null;
     if (purchasePrice != null) {
@@ -347,13 +343,11 @@ export default function Reports() {
         item.purchasePrice,
         item.quantity,
         item.pricePerUnit,
-        item.hst
+        item.hst,
       );
       if (costPerUnit == null) return;
 
-      const selling = Number.isFinite(item.sellingPrice)
-        ? item.sellingPrice
-        : 0;
+      const selling = Number.isFinite(item.sellingPrice) ? item.sellingPrice : 0;
       const qty = Number.isFinite(item.quantity) ? item.quantity : 0;
 
       const profitDelta = (selling - costPerUnit) * qty;
@@ -383,7 +377,7 @@ export default function Reports() {
   // Per line: (selling - cost) × qty. Cost is per-unit WITHOUT HST.
   const profitFromOrdersStats = useMemo(() => {
     const completedOrders = filteredOrders.filter(
-      (o) => o.status === "approved" || o.status === "completed"
+      (o) => o.status === "approved" || o.status === "completed",
     );
     let totalProfit = 0;
     let orderCount = 0;
@@ -395,18 +389,14 @@ export default function Reports() {
         const item = orderItem.item;
         const qty = Number.isFinite(orderItem.quantity)
           ? orderItem.quantity
-          : orderItem.quantity ?? 0;
-        const selling =
-          (item?.sellingPrice ??
-            item?.pricePerUnit ??
-            0) as number;
-        const batchQty =
-          (Number.isFinite(item?.quantity) ? item?.quantity : 1) ?? 1;
+          : (orderItem.quantity ?? 0);
+        const selling = (item?.sellingPrice ?? item?.pricePerUnit ?? 0) as number;
+        const batchQty = (Number.isFinite(item?.quantity) ? item?.quantity : 1) ?? 1;
         const costPerUnit = getCostPerUnitWithoutHst(
           item?.purchasePrice,
           batchQty,
           item?.pricePerUnit ?? 0,
-          item?.hst
+          item?.hst,
         );
         const costBase = (item?.pricePerUnit ?? 0) as number;
         const cost = costPerUnit ?? costBase;
@@ -418,13 +408,12 @@ export default function Reports() {
       });
     });
 
-    const hasDateRange =
-      filters.dateRange.from != null && filters.dateRange.to != null;
+    const hasDateRange = filters.dateRange.from != null && filters.dateRange.to != null;
     let periodLabel = "Profit";
     if (hasDateRange) {
       const daysDiff = Math.ceil(
         (filters.dateRange.to!.getTime() - filters.dateRange.from!.getTime()) /
-          (1000 * 60 * 60 * 24)
+          (1000 * 60 * 60 * 24),
       );
       if (daysDiff <= 1) periodLabel = "Profit (Day)";
       else if (daysDiff <= 7) periodLabel = "Profit (Week)";
@@ -513,14 +502,12 @@ export default function Reports() {
                   variant="outline"
                   className={cn(
                     "w-full sm:w-[130px] h-9 justify-start text-left text-sm font-normal px-3",
-                    !filters.dateRange.from && "text-muted-foreground"
+                    !filters.dateRange.from && "text-muted-foreground",
                   )}
                 >
                   <Calendar className="mr-1.5 h-3.5 w-3.5 shrink-0" />
                   <span className="truncate">
-                    {filters.dateRange.from
-                      ? format(filters.dateRange.from, "MMM dd, y")
-                      : "From"}
+                    {filters.dateRange.from ? format(filters.dateRange.from, "MMM dd, y") : "From"}
                   </span>
                 </Button>
               </PopoverTrigger>
@@ -553,14 +540,12 @@ export default function Reports() {
                   variant="outline"
                   className={cn(
                     "w-full sm:w-[130px] h-9 justify-start text-left text-sm font-normal px-3",
-                    !filters.dateRange.to && "text-muted-foreground"
+                    !filters.dateRange.to && "text-muted-foreground",
                   )}
                 >
                   <Calendar className="mr-1.5 h-3.5 w-3.5 shrink-0" />
                   <span className="truncate">
-                    {filters.dateRange.to
-                      ? format(filters.dateRange.to, "MMM dd, y")
-                      : "To"}
+                    {filters.dateRange.to ? format(filters.dateRange.to, "MMM dd, y") : "To"}
                   </span>
                 </Button>
               </PopoverTrigger>
@@ -569,11 +554,7 @@ export default function Reports() {
                   initialFocus
                   mode="single"
                   selected={filters.dateRange.to ?? undefined}
-                  disabled={
-                    filters.dateRange.from
-                      ? { before: filters.dateRange.from }
-                      : undefined
-                  }
+                  disabled={filters.dateRange.from ? { before: filters.dateRange.from } : undefined}
                   defaultMonth={filters.dateRange.from ?? undefined}
                   onSelect={(day) =>
                     setFilters((prev) => ({
@@ -633,9 +614,7 @@ export default function Reports() {
             {/* Brand Filter */}
             <Select
               value={filters.brand}
-              onValueChange={(value) =>
-                setFilters((prev) => ({ ...prev, brand: value }))
-              }
+              onValueChange={(value) => setFilters((prev) => ({ ...prev, brand: value }))}
             >
               <SelectTrigger className="w-full sm:w-[140px] h-9 text-sm">
                 <SelectValue placeholder="Brand" />
@@ -661,9 +640,8 @@ export default function Reports() {
             </p>
             <p className="text-xs text-muted-foreground mt-1">
               {
-                filteredOrders.filter(
-                  (o) => o.status === "approved" || o.status === "completed"
-                ).length
+                filteredOrders.filter((o) => o.status === "approved" || o.status === "completed")
+                  .length
               }{" "}
               completed orders
             </p>
@@ -673,9 +651,7 @@ export default function Reports() {
             <p
               className={cn(
                 "text-2xl font-bold mt-1",
-                estimatedProfitStats.totalProfit >= 0
-                  ? "text-success"
-                  : "text-destructive"
+                estimatedProfitStats.totalProfit >= 0 ? "text-success" : "text-destructive",
               )}
             >
               {isEstimatedProfitPending
@@ -688,43 +664,32 @@ export default function Reports() {
             </p>
           </div>
           <div className="bg-card rounded-lg border border-border shadow-soft p-4">
-            <p className="text-sm text-muted-foreground">
-              {profitFromOrdersStats.periodLabel}
-            </p>
+            <p className="text-sm text-muted-foreground">{profitFromOrdersStats.periodLabel}</p>
             <p
               className={cn(
                 "text-2xl font-bold mt-1",
-                profitFromOrdersStats.totalProfit >= 0
-                  ? "text-success"
-                  : "text-destructive"
+                profitFromOrdersStats.totalProfit >= 0 ? "text-success" : "text-destructive",
               )}
             >
               {formatPrice(profitFromOrdersStats.totalProfit)}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
               From {profitFromOrdersStats.orderCount} completed orders
-              {filters.dateRange.from && filters.dateRange.to && (
-                <> in selected range</>
-              )}
+              {filters.dateRange.from && filters.dateRange.to && <> in selected range</>}
             </p>
           </div>
           <div className="bg-card rounded-lg border border-border shadow-soft p-4">
             <p className="text-sm text-muted-foreground">Total Orders</p>
-            <p className="text-2xl font-bold text-foreground mt-1">
-              {summaryStats.totalOrders}
-            </p>
+            <p className="text-2xl font-bold text-foreground mt-1">{summaryStats.totalOrders}</p>
             <p className="text-xs text-muted-foreground mt-1">
               {summaryStats.totalUnits} total units
             </p>
           </div>
           <div className="bg-card rounded-lg border border-border shadow-soft p-4">
             <p className="text-sm text-muted-foreground">Inventory Items</p>
-            <p className="text-2xl font-bold text-foreground mt-1">
-              {filteredInventory.length}
-            </p>
+            <p className="text-2xl font-bold text-foreground mt-1">{filteredInventory.length}</p>
             <p className="text-xs text-muted-foreground mt-1">
-              {filteredInventory.reduce((sum, item) => sum + item.quantity, 0)}{" "}
-              total units
+              {filteredInventory.reduce((sum, item) => sum + item.quantity, 0)} total units
             </p>
           </div>
         </div>
@@ -733,27 +698,14 @@ export default function Reports() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Orders & Revenue Trend */}
           <div className="bg-card rounded-lg border border-border shadow-soft p-6 lg:col-span-2">
-            <h3 className="font-semibold text-foreground mb-4">
-              Orders & Revenue Trend
-            </h3>
+            <h3 className="font-semibold text-foreground mb-4">Orders & Revenue Trend</h3>
             {trendData.length > 0 ? (
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={trendData}>
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      stroke="hsl(var(--border))"
-                    />
-                    <XAxis
-                      dataKey="period"
-                      stroke="hsl(var(--muted-foreground))"
-                      fontSize={12}
-                    />
-                    <YAxis
-                      yAxisId="left"
-                      stroke="hsl(var(--muted-foreground))"
-                      fontSize={12}
-                    />
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="period" stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                    <YAxis yAxisId="left" stroke="hsl(var(--muted-foreground))" fontSize={12} />
                     <YAxis
                       yAxisId="right"
                       orientation="right"
@@ -762,6 +714,11 @@ export default function Reports() {
                       tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
                     />
                     <Tooltip
+                      cursor={{
+                        stroke: "hsl(var(--muted-foreground))",
+                        strokeWidth: 1,
+                        opacity: 0.5,
+                      }}
                       contentStyle={{
                         backgroundColor: "hsl(var(--popover))",
                         border: "1px solid hsl(var(--primary) / 0.4)",
@@ -813,17 +770,12 @@ export default function Reports() {
 
           {/* Value by Device */}
           <div className="bg-card rounded-lg border border-border shadow-soft p-6">
-            <h3 className="font-semibold text-foreground mb-4">
-              Value by Device
-            </h3>
+            <h3 className="font-semibold text-foreground mb-4">Value by Device</h3>
             {valueByDevice.length > 0 ? (
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={valueByDevice} layout="vertical">
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      stroke="hsl(var(--border))"
-                    />
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                     <XAxis
                       type="number"
                       stroke="hsl(var(--muted-foreground))"
@@ -839,6 +791,7 @@ export default function Reports() {
                     />
                     <Tooltip
                       formatter={(value: number) => formatPrice(value)}
+                      cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }}
                       contentStyle={{
                         backgroundColor: "hsl(var(--popover))",
                         border: "1px solid hsl(var(--primary) / 0.4)",
@@ -850,11 +803,7 @@ export default function Reports() {
                       labelStyle={{ color: "hsl(var(--popover-foreground))" }}
                       itemStyle={{ color: "hsl(var(--popover-foreground))" }}
                     />
-                    <Bar
-                      dataKey="value"
-                      fill="hsl(245, 58%, 60%)"
-                      radius={[0, 4, 4, 0]}
-                    />
+                    <Bar dataKey="value" fill="hsl(245, 58%, 60%)" radius={[0, 4, 4, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -867,9 +816,7 @@ export default function Reports() {
 
           {/* Units by Grade */}
           <div className="bg-card rounded-lg border border-border shadow-soft p-6">
-            <h3 className="font-semibold text-foreground mb-4">
-              Units by Grade
-            </h3>
+            <h3 className="font-semibold text-foreground mb-4">Units by Grade</h3>
             {stockByGrade.length > 0 ? (
               <div className="h-64 flex items-center justify-center">
                 <ResponsiveContainer width="100%" height="100%">
@@ -882,18 +829,13 @@ export default function Reports() {
                       outerRadius={90}
                       paddingAngle={2}
                       dataKey="value"
-                      label={({ name, percent }) =>
-                        `${name} (${(percent * 100).toFixed(0)}%)`
-                      }
+                      label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
                       labelLine={false}
                     >
                       {stockByGrade.map((entry, index) => (
                         <Cell
                           key={`cell-${index}`}
-                          fill={
-                            GRADE_COLORS[entry.name] ||
-                            COLORS[index % COLORS.length]
-                          }
+                          fill={GRADE_COLORS[entry.name] || COLORS[index % COLORS.length]}
                         />
                       ))}
                     </Pie>
@@ -921,9 +863,7 @@ export default function Reports() {
 
           {/* Order Status Distribution */}
           <div className="bg-card rounded-lg border border-border shadow-soft p-6">
-            <h3 className="font-semibold text-foreground mb-4">
-              Order Status Distribution
-            </h3>
+            <h3 className="font-semibold text-foreground mb-4">Order Status Distribution</h3>
             {orderStatusDistribution.length > 0 ? (
               <div className="h-64 flex items-center justify-center">
                 <ResponsiveContainer width="100%" height="100%">
@@ -936,16 +876,11 @@ export default function Reports() {
                       outerRadius={90}
                       paddingAngle={2}
                       dataKey="value"
-                      label={({ name, percent }) =>
-                        `${name} (${(percent * 100).toFixed(0)}%)`
-                      }
+                      label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
                       labelLine={false}
                     >
                       {orderStatusDistribution.map((_, index) => (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={COLORS[index % COLORS.length]}
-                        />
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
                     <Tooltip
@@ -972,22 +907,13 @@ export default function Reports() {
 
           {/* Revenue by Status */}
           <div className="bg-card rounded-lg border border-border shadow-soft p-6">
-            <h3 className="font-semibold text-foreground mb-4">
-              Revenue by Status
-            </h3>
+            <h3 className="font-semibold text-foreground mb-4">Revenue by Status</h3>
             {revenueByStatus.length > 0 ? (
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={revenueByStatus}>
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      stroke="hsl(var(--border))"
-                    />
-                    <XAxis
-                      dataKey="name"
-                      stroke="hsl(var(--muted-foreground))"
-                      fontSize={12}
-                    />
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={12} />
                     <YAxis
                       stroke="hsl(var(--muted-foreground))"
                       fontSize={12}
@@ -995,6 +921,7 @@ export default function Reports() {
                     />
                     <Tooltip
                       formatter={(value: number) => formatPrice(value)}
+                      cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }}
                       contentStyle={{
                         backgroundColor: "hsl(var(--popover))",
                         border: "1px solid hsl(var(--primary) / 0.4)",
@@ -1006,11 +933,7 @@ export default function Reports() {
                       labelStyle={{ color: "hsl(var(--popover-foreground))" }}
                       itemStyle={{ color: "hsl(var(--popover-foreground))" }}
                     />
-                    <Bar
-                      dataKey="value"
-                      fill="hsl(142, 76%, 36%)"
-                      radius={[4, 4, 0, 0]}
-                    />
+                    <Bar dataKey="value" fill="hsl(142, 76%, 36%)" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -1023,9 +946,7 @@ export default function Reports() {
 
           {/* Stock Status Distribution */}
           <div className="bg-card rounded-lg border border-border shadow-soft p-6 lg:col-span-2">
-            <h3 className="font-semibold text-foreground mb-4">
-              Stock Status Distribution
-            </h3>
+            <h3 className="font-semibold text-foreground mb-4">Stock Status Distribution</h3>
             <div className="grid grid-cols-3 gap-2 sm:gap-4">
               {stockByStatus.map((status) => (
                 <div
@@ -1033,10 +954,7 @@ export default function Reports() {
                   className="text-center p-2 sm:p-4 rounded-lg"
                   style={{ backgroundColor: status.bg }}
                 >
-                  <p
-                    className="text-2xl sm:text-3xl font-bold"
-                    style={{ color: status.color }}
-                  >
+                  <p className="text-2xl sm:text-3xl font-bold" style={{ color: status.color }}>
                     {status.value}
                   </p>
                   <p className="text-xs sm:text-sm text-muted-foreground mt-1 leading-tight">

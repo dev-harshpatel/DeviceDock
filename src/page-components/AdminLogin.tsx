@@ -85,6 +85,7 @@ export default function AdminLogin() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [showEmailNotConfirmed, setShowEmailNotConfirmed] = useState(false);
   const [isSendingReset, setIsSendingReset] = useState(false);
@@ -173,8 +174,10 @@ export default function AdminLogin() {
         const slug = row?.companies?.slug;
 
         if (slug) {
-          toast.success(TOAST_MESSAGES.LOGIN_SUCCESS);
+          // Keep spinner running through navigation — component unmounts when route loads
+          setIsRedirecting(true);
           router.push(`/${slug}/dashboard`);
+          return;
         } else {
           // No active company membership
           await signOut();
@@ -195,9 +198,10 @@ export default function AdminLogin() {
       } else {
         toast.error(errorMessage);
       }
-    } finally {
-      setIsLoading(false);
     }
+    // Only reached on failure — success path returns early above
+    setIsLoading(false);
+    setIsRedirecting(false);
   };
 
   return (
@@ -372,7 +376,7 @@ export default function AdminLogin() {
                   {isLoading ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Signing in...
+                      {isRedirecting ? "Redirecting..." : "Signing in..."}
                     </>
                   ) : (
                     "Sign In"

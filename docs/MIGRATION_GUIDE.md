@@ -42,11 +42,13 @@ Migrations must be run manually via Supabase Dashboard:
    - Execute the SQL (This ensures admins can see and update all orders)
 
 Alternatively, check pending migrations:
+
 ```bash
 npm run migrate
 ```
 
 To see migration SQL:
+
 ```bash
 npm run migrate:show
 ```
@@ -60,7 +62,8 @@ npm run seed
 ```
 
 This will create:
-- Admin user: `admin@stoq.com` / `admin123`
+
+- Admin user: `admin@invn.com` / `admin123`
 - Sample users: `user1@example.com` / `user123`, `user2@example.com` / `user123`
 - Inventory items from `src/data/inventory.ts`
 - Sample orders
@@ -78,12 +81,14 @@ SUPABASE_SERVICE_ROLE_KEY=your_service_role_key  # For migrations and seeding
 ## User Roles
 
 ### Admin
+
 - Can view/update all orders
 - Can manage inventory
 - Can view all user profiles
 - Access to `/admin/*` routes
 
 ### User
+
 - Can browse inventory (no login required)
 - Can create orders (login required)
 - Can view own orders
@@ -95,7 +100,7 @@ SUPABASE_SERVICE_ROLE_KEY=your_service_role_key  # For migrations and seeding
 2. **Checkout**: When user tries to checkout:
    - If not logged in → Login modal appears
    - After login → Checkout proceeds automatically
-3. **Order Management**: 
+3. **Order Management**:
    - Users see their own orders
    - Admins see all orders and can approve/reject
 
@@ -112,6 +117,7 @@ When you need to change the schema:
 ## Code Structure
 
 ### Contexts
+
 - `UserProfileContext`: Manages user profile and role state
 - `OrdersContext`: Manages orders (no username field)
 - `InventoryContext`: Manages inventory
@@ -119,11 +125,13 @@ When you need to change the schema:
 - `AuthContext`: Manages authentication
 
 ### Utilities
+
 - `src/lib/supabase/utils.ts`: User profile helpers (`getUserProfile`, `isAdmin`, etc.)
 - `src/lib/supabase/client.ts`: Supabase client for browser
 - `src/lib/supabase/server.ts`: Supabase client for server
 
 ### Types
+
 - `src/types/user.ts`: User profile types
 - `src/types/order.ts`: Order types (no username)
 - `src/lib/database.types.ts`: Supabase database types
@@ -140,15 +148,18 @@ When you need to change the schema:
 ## Troubleshooting
 
 ### Migration Issues
+
 - Ensure you're running migrations in order (001, 002, etc.)
 - Check Supabase Dashboard → Table Editor to verify tables exist
 - Verify RLS policies in Supabase Dashboard → Authentication → Policies
 
 ### Authentication Issues
+
 - Check that `user_profiles` are created on signup (handled automatically)
 - Verify RLS policies allow authenticated users to insert their own profile
 
 ### Order Creation Issues
+
 - Ensure user is logged in before checkout
 - Check that `orders` table exists and has correct schema
 - Verify RLS policies allow users to insert their own orders
