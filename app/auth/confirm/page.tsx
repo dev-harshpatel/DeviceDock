@@ -93,6 +93,8 @@ export default function AuthConfirmPage() {
 
         // Handle implicit/hash flow links (#access_token=...).
         if (accessToken && refreshToken) {
+          const hashType = hashParams.get("type");
+
           const { error } = await supabase.auth.setSession({
             access_token: accessToken,
             refresh_token: refreshToken,
@@ -101,7 +103,18 @@ export default function AuthConfirmPage() {
           if (error) {
             console.error("[auth/confirm] setSession error:", error.message);
             if (isMounted) {
-              router.replace("/auth/auth-code-error?reason=otp_expired");
+              const errorQuery =
+                hashType === "recovery" ? "reason=otp_expired&flow=recovery" : "reason=otp_expired";
+              router.replace(`/auth/auth-code-error?${errorQuery}`);
+            }
+            return;
+          }
+
+          // Recovery flow — go to reset-password page so the user can set a new password.
+          if (hashType === "recovery") {
+            if (isMounted) {
+              window.history.replaceState({}, "", "/auth/confirm");
+              router.replace("/auth/reset-password");
             }
             return;
           }

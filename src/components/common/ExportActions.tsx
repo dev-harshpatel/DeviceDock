@@ -21,7 +21,7 @@ export function ExportActions({
   className,
   companyName,
 }: ExportActionsProps) {
-  const [isExporting, setIsExporting] = useState(false);
+  const [activeExportType, setActiveExportType] = useState<"excel" | "pdf" | null>(null);
   const yieldToBrowser = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
   const getExportData = async (): Promise<InventoryItem[] | null> => {
@@ -53,7 +53,8 @@ export function ExportActions({
   };
 
   const handleExportExcel = async () => {
-    setIsExporting(true);
+    if (activeExportType) return;
+    setActiveExportType("excel");
     try {
       const exportData = await getExportData();
       if (!exportData) return;
@@ -69,12 +70,13 @@ export function ExportActions({
         description: "There was an error exporting to Excel",
       });
     } finally {
-      setIsExporting(false);
+      setActiveExportType(null);
     }
   };
 
   const handleExportPDF = async () => {
-    setIsExporting(true);
+    if (activeExportType) return;
+    setActiveExportType("pdf");
     try {
       const exportData = await getExportData();
       if (!exportData) return;
@@ -90,7 +92,7 @@ export function ExportActions({
         description: "There was an error exporting to PDF",
       });
     } finally {
-      setIsExporting(false);
+      setActiveExportType(null);
     }
   };
 
@@ -101,9 +103,9 @@ export function ExportActions({
         size="sm"
         className="border-border"
         onClick={handleExportExcel}
-        disabled={isExporting}
+        disabled={activeExportType !== null}
       >
-        {isExporting ? (
+        {activeExportType === "excel" ? (
           <Loader2 className="h-4 w-4 mr-2 animate-spin" />
         ) : (
           <FileSpreadsheet className="h-4 w-4 mr-2" />
@@ -116,9 +118,9 @@ export function ExportActions({
         size="sm"
         className="border-border"
         onClick={handleExportPDF}
-        disabled={isExporting}
+        disabled={activeExportType !== null}
       >
-        {isExporting ? (
+        {activeExportType === "pdf" ? (
           <Loader2 className="h-4 w-4 mr-2 animate-spin" />
         ) : (
           <FileText className="h-4 w-4 mr-2" />
