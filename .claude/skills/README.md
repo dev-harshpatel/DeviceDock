@@ -1,4 +1,4 @@
-# Stoq Skills (Claude)
+# Invn Skills (Claude)
 
 Use these targeted skills for high-risk, repeatable workflows.
 
@@ -14,4 +14,3 @@ Use these targeted skills for high-risk, repeatable workflows.
 ## Usage Pattern
 
 When a task matches one of these domains, follow the skill checklist first, then implement.
-

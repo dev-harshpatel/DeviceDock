@@ -7,7 +7,7 @@
  * Environment variables required:
  * - NEXT_PUBLIC_SUPABASE_URL
  * - SUPABASE_SERVICE_ROLE_KEY
- * - SEED_ADMIN_EMAIL (optional, defaults to admin@stoq.com)
+ * - SEED_ADMIN_EMAIL (optional, defaults to admin@invn.com)
  * - SEED_ADMIN_PASSWORD (optional, defaults to admin123)
  */
 
@@ -28,7 +28,7 @@ import { inventoryData } from "../../src/data/inventory";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const adminEmail = process.env.SEED_ADMIN_EMAIL || "admin@stoq.com";
+const adminEmail = process.env.SEED_ADMIN_EMAIL || "admin@invn.com";
 const adminPassword = process.env.SEED_ADMIN_PASSWORD || "admin123";
 const seedCompanySlug = process.env.SEED_COMPANY_SLUG ?? null;
 

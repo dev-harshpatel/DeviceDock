@@ -1,4 +1,4 @@
-# Stoq Skills (Cursor)
+# Invn Skills (Cursor)
 
 These skills are practical execution playbooks for Cursor agents.
 
@@ -9,4 +9,3 @@ These skills are practical execution playbooks for Cursor agents.
 3. `admin-ui-responsive.md`
 
 Use the relevant playbook checklist before coding.
-

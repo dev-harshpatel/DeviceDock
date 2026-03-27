@@ -1,6 +1,6 @@
 # Branching Strategy & Workflow
 
-This document defines the Git branching model for **b2bmobiles.ca** (Stoq) so that production stays stable and all changes are tested before going live.
+This document defines the Git branching model for **b2bmobiles.ca** (Invn) so that production stays stable and all changes are tested before going live.
 
 ---
 
@@ -17,17 +17,14 @@ This document defines the Git branching model for **b2bmobiles.ca** (Stoq) so th
 ## Rules
 
 1. **`main` = production**
-
    - Only merge from `dev` after testing.
    - Prefer protected branch + required reviews if you use GitHub/GitLab.
 
 2. **`dev` = integration**
-
    - All feature branches merge into `dev` first.
    - Run tests and manual checks on `dev` (or staging) before promoting to `main`.
 
 3. **Feature branches**
-
    - Create from `dev`: `git checkout dev && git pull && git checkout -b feature/your-feature-name`.
    - Merge back into `dev` only (never directly into `main`).
 

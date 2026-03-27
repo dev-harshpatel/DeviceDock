@@ -1,6 +1,6 @@
 # b2bmobiles — Inventory & Order Management
 
-Stoq is a **Next.js (App Router)** inventory + order management app backed by **Supabase**.  
+Invn is a **Next.js (App Router)** inventory + order management app backed by **Supabase**.  
 It includes a public browsing experience, a user area, and a protected admin panel for managing inventory and orders.
 
 ## Features
@@ -132,7 +132,7 @@ npm run seed
 
 This creates sample users, inventory, and orders, including:
 
-- **Admin**: `admin@stoq.com` / `admin123`
+- **Admin**: `admin@invn.com` / `admin123`
 - **Users**: `user1@example.com` / `user123`, `user2@example.com` / `user123`
 
 ### 5) Start the app
@@ -217,7 +217,7 @@ For a safe, repeatable workflow now that the app is live:
 - **[Production standards](./docs/PRODUCTION_STANDARDS.md)** — Overview, pre-deploy checklist, and what to do if something goes wrong.
 - **[Branching & workflow](./docs/BRANCHING_AND_WORKFLOW.md)** — Use `main` for production, `dev` for integration, and feature branches that merge into `dev` first.
 - **[Environments & Supabase](./docs/ENVIRONMENTS_AND_SUPABASE.md)** — Separate Supabase projects for dev and production; how to manage env vars locally and in Vercel.
-- **[Option B: Two projects setup](./docs/OPTION_B_TWO_PROJECTS_SETUP.md)** — Step-by-step for two Supabase projects, replicating prod → dev, clearing prod, Vercel envs, and domains (b2bmobiles.ca = production, stoq-bice.vercel.app = dev/preview).
+- **[Option B: Two projects setup](./docs/OPTION_B_TWO_PROJECTS_SETUP.md)** — Step-by-step for two Supabase projects, replicating prod → dev, clearing prod, Vercel envs, and domains (b2bmobiles.ca = production, invn-bice.vercel.app = dev/preview).
 
 ## Project structure (quick)
 
