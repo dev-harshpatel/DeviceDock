@@ -129,6 +129,14 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
       .catch(() => setColorAssignments({}));
   }, [open, order, isAdmin]);
 
+  // Invoice route — must be computed before any early return so hooks below stay stable
+  const invoiceRoute = order ? `/${companySlug}/orders/${order.id}/invoice` : "";
+
+  const handlePrefetchInvoice = useCallback(() => {
+    if (!order || !router || !invoiceRoute) return;
+    router.prefetch(invoiceRoute);
+  }, [invoiceRoute, order, router]);
+
   if (!order) return null;
 
   const orderItems = Array.isArray(order.items) ? order.items : [];
@@ -271,12 +279,6 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
   const hasInvoice = !!order.invoiceNumber;
   const canDownloadInvoice = hasInvoice && isAdmin;
   const canCreateEditInvoice = isAdmin && order.status === "approved";
-  const invoiceRoute = `/${companySlug}/orders/${order.id}/invoice`;
-
-  const handlePrefetchInvoice = useCallback(() => {
-    if (!canCreateEditInvoice) return;
-    router.prefetch(invoiceRoute);
-  }, [canCreateEditInvoice, invoiceRoute, router]);
 
   const handleDownloadInvoice = async () => {
     if (!order) return;
