@@ -16,7 +16,7 @@ export const TOAST_MESSAGES = {
   // Password reset
   PASSWORD_RESET_EMAIL_SENT:
     "If an account exists with that email, you'll receive a password reset link shortly.",
-  PASSWORD_RESET_SUCCESS: "Your password has been updated. You can now sign in.",
+  PASSWORD_RESET_SUCCESS: "Password updated! Redirecting you to the dashboard...",
   PASSWORD_RESET_FAILED: "Failed to reset password. Please try again.",
 
   // Signup

@@ -3,13 +3,11 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
-import { useUserProfile } from "@/contexts/UserProfileContext";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Lock } from "lucide-react";
+import { CheckCircle2, Loader2, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { TOAST_MESSAGES } from "@/lib/constants/toast-messages";
 
@@ -19,8 +17,8 @@ export default function ResetPasswordPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [hasValidSession, setHasValidSession] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
   const router = useRouter();
-  const { isAdmin } = useUserProfile();
 
   useEffect(() => {
     const checkSession = async () => {
@@ -50,18 +48,16 @@ export default function ResetPasswordPage() {
       if (error) throw error;
 
       toast.success(TOAST_MESSAGES.PASSWORD_RESET_SUCCESS);
+      setIsRedirecting(true);
 
-      // App is admin-only; send everyone to admin login/dashboard path.
-      if (isAdmin) {
-        router.replace("/admin/dashboard");
-      } else {
-        router.replace("/admin/login");
-      }
-      router.refresh();
+      // Give the toast time to render before navigating
+      setTimeout(() => {
+        router.replace("/login");
+        router.refresh();
+      }, 2500);
     } catch (error) {
       const message = error instanceof Error ? error.message : TOAST_MESSAGES.PASSWORD_RESET_FAILED;
       toast.error(message);
-    } finally {
       setIsLoading(false);
     }
   };
@@ -86,11 +82,28 @@ export default function ResetPasswordPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button onClick={() => router.push("/admin/login")} className="w-full">
-              Go to Admin Login
+            <Button onClick={() => router.push("/login")} className="w-full">
+              Go to Sign In
             </Button>
           </CardContent>
         </Card>
+      </div>
+    );
+  }
+
+  if (isRedirecting) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background px-4">
+        <div className="flex flex-col items-center gap-5 text-center">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
+            <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" />
+          </div>
+          <div className="space-y-1">
+            <h2 className="text-xl font-semibold text-foreground">Password Updated!</h2>
+            <p className="text-sm text-muted-foreground">Redirecting you to the dashboard...</p>
+          </div>
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </div>
       </div>
     );
   }
@@ -104,7 +117,7 @@ export default function ResetPasswordPage() {
           </div>
           <CardTitle className="text-xl">Set New Password</CardTitle>
           <CardDescription>
-            Enter your new password below. Make sure it's at least 8 characters.
+            Enter your new password below. Make sure it&apos;s at least 8 characters.
           </CardDescription>
         </CardHeader>
         <CardContent>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth/context";
@@ -93,6 +93,30 @@ export default function AdminLogin() {
   const { signIn, signOut, resetPasswordForEmail } = useAuth();
   const router = useRouter();
 
+  // When Supabase sends a recovery email and the Site URL points to /login,
+  // the reset link may land here in two formats. Detect both and forward to
+  // the correct handler so the user reaches the reset-password page.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const hash = window.location.hash;
+    const searchParams = new URLSearchParams(window.location.search);
+    const tokenHash = searchParams.get("token_hash");
+    const queryType = searchParams.get("type");
+
+    // Hash-based implicit flow: #access_token=...&type=recovery
+    if (hash.includes("type=recovery") && hash.includes("access_token=")) {
+      router.replace(`/auth/confirm${hash}`);
+      return;
+    }
+
+    // Token-hash query param flow: ?token_hash=xxx&type=recovery
+    // Forward to server-side callback which verifies the OTP and redirects correctly.
+    if (tokenHash && queryType === "recovery") {
+      router.replace(`/auth/callback?${searchParams.toString()}`);
+    }
+  }, [router]);
+
   const handleResendConfirmation = async () => {
     setIsResending(true);
     try {
@@ -119,12 +143,12 @@ export default function AdminLogin() {
     setIsSendingReset(true);
     try {
       await resetPasswordForEmail(email.trim());
+    } catch (error) {
+      // Keep a generic response for forgot-password to avoid account enumeration.
+      console.error("[Forgot Password] reset request error:", error);
+    } finally {
       setResetEmailSent(true);
       toast.success(TOAST_MESSAGES.PASSWORD_RESET_EMAIL_SENT);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : TOAST_MESSAGES.PASSWORD_RESET_FAILED;
-      toast.error(message);
-    } finally {
       setIsSendingReset(false);
     }
   };
@@ -256,9 +280,9 @@ export default function AdminLogin() {
                 {resetEmailSent ? (
                   <div className="space-y-3">
                     <p className="text-sm text-muted-foreground">
-                      We&apos;ve sent a password reset link to{" "}
+                      If an account exists for{" "}
                       <span className="font-medium text-foreground break-all">{email}</span>. Check
-                      your inbox and spam folder.
+                      your inbox and spam folder for a password reset link.
                     </p>
                     <Button
                       variant="outline"

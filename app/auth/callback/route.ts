@@ -96,6 +96,10 @@ export async function GET(request: NextRequest) {
             : undefined;
         const errorUrl = new URL(`${origin}/auth/auth-code-error`);
         if (reason) errorUrl.searchParams.set("reason", reason);
+        // Forward recovery flow so the error page knows to resend a reset link, not a signup email
+        if (type === "recovery" || flow === "recovery") {
+          errorUrl.searchParams.set("flow", "recovery");
+        }
         return NextResponse.redirect(errorUrl.toString());
       }
 
@@ -127,6 +131,14 @@ export async function GET(request: NextRequest) {
 
         if (exchangeError.message?.includes("redirect") || exchangeError.message?.includes("URL")) {
           return NextResponse.redirect(`${origin}/auth/auth-code-error?reason=redirect_mismatch`);
+        }
+
+        // Forward recovery context so the error page shows the right message
+        // and the resend button sends a password reset email, not a signup email.
+        if (flow === "recovery" || type === "recovery") {
+          return NextResponse.redirect(
+            `${origin}/auth/auth-code-error?reason=otp_expired&flow=recovery`,
+          );
         }
 
         return NextResponse.redirect(`${origin}/auth/auth-code-error`);
