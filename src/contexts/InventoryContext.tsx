@@ -19,6 +19,15 @@ interface InventoryContextType {
   refreshInventory: () => Promise<void>;
   bulkInsertProducts: (products: InventoryItem[]) => Promise<BulkInsertResult>;
   getUploadHistory: () => Promise<UploadHistory[]>;
+  /**
+   * Inserts a single unit record into inventory_identifiers.
+   * Call this AFTER the parent inventory row exists (insert or restock).
+   */
+  addInventoryIdentifier: (
+    inventoryId: string,
+    imei: string | null,
+    serialNumber: string | null,
+  ) => Promise<void>;
   isLoading: boolean;
 }
 
@@ -30,6 +39,11 @@ interface InventoryProviderProps {
 
 type InventoryUpdate = Database["public"]["Tables"]["inventory"]["Update"];
 
+const toFiniteNumber = (value: number | null | undefined): number | null => {
+  if (value == null) return null;
+  return Number.isFinite(value) ? value : null;
+};
+
 const toInventoryUpdate = (updates: Partial<InventoryItem>): InventoryUpdate => {
   const updateData: InventoryUpdate = {};
 
@@ -39,22 +53,27 @@ const toInventoryUpdate = (updates: Partial<InventoryItem>): InventoryUpdate => 
   if (updates.lastUpdated !== undefined) updateData.last_updated = updates.lastUpdated;
   if (updates.priceChange !== undefined) updateData.price_change = updates.priceChange ?? null;
   if (updates.pricePerUnit !== undefined) {
-    updateData.price_per_unit = Number(updates.pricePerUnit);
+    const numericValue = toFiniteNumber(Number(updates.pricePerUnit));
+    if (numericValue !== null) {
+      updateData.price_per_unit = numericValue;
+    }
   }
   if (updates.purchasePrice !== undefined) {
     updateData.purchase_price =
-      updates.purchasePrice != null ? Number(updates.purchasePrice) : null;
+      updates.purchasePrice != null ? toFiniteNumber(Number(updates.purchasePrice)) : null;
   }
   if (updates.hst !== undefined) {
-    updateData.hst = updates.hst != null ? Number(updates.hst) : null;
+    updateData.hst = updates.hst != null ? toFiniteNumber(Number(updates.hst)) : null;
   }
   if (updates.sellingPrice !== undefined) {
-    updateData.selling_price = Number(updates.sellingPrice);
+    const numericValue = toFiniteNumber(Number(updates.sellingPrice));
+    if (numericValue !== null) {
+      updateData.selling_price = numericValue;
+    }
   }
   if (updates.quantity !== undefined) updateData.quantity = updates.quantity;
   if (updates.storage !== undefined) updateData.storage = updates.storage;
   if (updates.isActive !== undefined) (updateData as any).is_active = updates.isActive;
-
   return updateData;
 };
 
@@ -74,6 +93,8 @@ function productToInsertRow(product: InventoryItem, companyId: string) {
     price_change: product.priceChange ?? null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
+    // imei / serial_number intentionally omitted — individual units are
+    // tracked in inventory_identifiers, not on the configuration row.
   };
 }
 
@@ -129,23 +150,41 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
     }
   }, [inventoryVersion, loadInventory]);
 
-  const updateProduct = useCallback(async (id: string, updates: Partial<InventoryItem>) => {
-    const updateData: InventoryUpdate = toInventoryUpdate({
-      ...updates,
-      lastUpdated: "Just now",
-    });
-    updateData.updated_at = new Date().toISOString();
+  const updateProduct = useCallback(
+    async (id: string, updates: Partial<InventoryItem>) => {
+      const updateData: InventoryUpdate = toInventoryUpdate({
+        ...updates,
+        lastUpdated: "Just now",
+      });
+      updateData.updated_at = new Date().toISOString();
 
-    const { error } = await (supabase.from("inventory") as any).update(updateData).eq("id", id);
+      let query = (supabase.from("inventory") as any).update(updateData).eq("id", id);
+      if (companyId) {
+        query = query.eq("company_id", companyId);
+      }
 
-    if (error) throw error;
+      const { error } = await query;
 
-    setInventory((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, ...updates, lastUpdated: "Just now" } : item,
-      ),
-    );
-  }, []);
+      if (error) {
+        console.error("[InventoryContext] updateProduct failed:", {
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+          id,
+          message: error.message,
+          updateData,
+        });
+        throw new Error(error.message || "Failed to update product");
+      }
+
+      setInventory((prev) =>
+        prev.map((item) =>
+          item.id === id ? { ...item, ...updates, lastUpdated: "Just now" } : item,
+        ),
+      );
+    },
+    [companyId],
+  );
 
   const decreaseQuantity = useCallback(
     async (id: string, amount: number) => {
@@ -279,6 +318,32 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
     [user?.id, companyId, loadInventory],
   );
 
+  const addInventoryIdentifier = useCallback(
+    async (
+      inventoryId: string,
+      imei: string | null,
+      serialNumber: string | null,
+    ): Promise<void> => {
+      if (!companyId) throw new Error("No active company context");
+      if (!imei && !serialNumber)
+        throw new Error("At least one identifier (IMEI or serial number) is required");
+
+      const { error } = await (supabase.from("inventory_identifiers") as any).insert({
+        inventory_id: inventoryId,
+        company_id: companyId,
+        imei: imei ?? null,
+        serial_number: serialNumber ?? null,
+        status: "in_stock",
+      });
+
+      if (error) {
+        console.error("[InventoryContext] addInventoryIdentifier failed:", error);
+        throw new Error(error.message);
+      }
+    },
+    [companyId],
+  );
+
   const getUploadHistory = useCallback(async (): Promise<UploadHistory[]> => {
     if (!companyId) return [];
 
@@ -329,6 +394,7 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
         resetInventory,
         refreshInventory,
         bulkInsertProducts,
+        addInventoryIdentifier,
         getUploadHistory,
         isLoading,
       }}
