@@ -31,7 +31,8 @@
       "Bash(mkdir -p \"D:\\\\Projects\\\\learning-projects\\\\inventory-managment\\\\devicedock\\\\app\\\\api\\\\company\\\\invitations\\\\[id]\")",
       "Bash(mkdir -p \"D:\\\\Projects\\\\learning-projects\\\\inventory-managment\\\\devicedock\\\\app\\\\invite\\\\[token]\")",
       "Bash(npm install:*)",
-      "Bash(npx eslint:*)"
+      "Bash(npx eslint:*)",
+      "Bash(ls:*)"
     ]
   },
   "statusLine": {

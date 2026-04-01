@@ -25,6 +25,7 @@ import { queryKeys } from "@/lib/query-keys";
 import { fetchPaginatedInventory, fetchAllFilteredInventory } from "@/lib/supabase/queries";
 import { useFilterOptions } from "@/hooks/use-filter-options";
 import { useCompany } from "@/contexts/CompanyContext";
+import { useInventory } from "@/contexts/InventoryContext";
 
 export default function Inventory() {
   const router = useRouter();
@@ -34,6 +35,7 @@ export default function Inventory() {
   const filterOptions = useFilterOptions();
   const queryClient = useQueryClient();
   const { companyId, companyName, slug } = useCompany();
+  const { refreshInventory } = useInventory();
 
   const debouncedSearch = useDebounce(filters.search);
 
@@ -93,8 +95,9 @@ export default function Inventory() {
   }, [companyId, serverFilters]);
 
   const handleAddProductSuccess = useCallback(async () => {
+    await refreshInventory();
     await queryClient.invalidateQueries({ queryKey: queryKeys.inventory });
-  }, [queryClient]);
+  }, [queryClient, refreshInventory]);
 
   const hasActiveFilters = useMemo(
     () =>

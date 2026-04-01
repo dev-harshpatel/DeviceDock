@@ -115,6 +115,8 @@ export function AddProductModal({
   const [colourDialogOpen, setColourDialogOpen] = useState(false);
   const [existingColorRows, setExistingColorRows] = useState<ColourRow[]>([]);
   const [isLoadingExistingColors, setIsLoadingExistingColors] = useState(false);
+  /** Authoritative quantity from DB when restocking — context can lag behind React Query on the inventory page. */
+  const [liveInventoryQuantity, setLiveInventoryQuantity] = useState<number | null>(null);
   const [suggestedColors, setSuggestedColors] = useState<string[]>([]);
 
   const [mode, setMode] = useState<"single" | "bulk">("single");
@@ -201,6 +203,46 @@ export function AddProductModal({
     [inventory, selectedExistingId],
   );
 
+  useEffect(() => {
+    if (!open || !selectedExistingId || !companyId) {
+      setLiveInventoryQuantity(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadLiveQuantity = async () => {
+      const { data, error } = await supabase
+        .from("inventory")
+        .select("quantity")
+        .eq("id", selectedExistingId)
+        .eq("company_id", companyId)
+        .maybeSingle();
+
+      if (cancelled) return;
+
+      if (error) {
+        console.error("[AddProductModal] Live quantity fetch failed:", error);
+        setLiveInventoryQuantity(null);
+        return;
+      }
+
+      setLiveInventoryQuantity(typeof data?.quantity === "number" ? data.quantity : null);
+    };
+
+    void loadLiveQuantity();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, selectedExistingId, companyId]);
+
+  const selectedExistingEffective = useMemo((): InventoryItem | null => {
+    if (!selectedExisting) return null;
+    if (liveInventoryQuantity === null) return selectedExisting;
+    return { ...selectedExisting, quantity: liveInventoryQuantity };
+  }, [selectedExisting, liveInventoryQuantity]);
+
   const isLegacyRestock = Boolean(selectedExisting && !hasIdentifier);
   const newQuantity = hasIdentifier ? 1 : Number(form.quantity) || 0;
   const newPurchasePrice = Number(form.purchasePrice) || 0;
@@ -209,15 +251,15 @@ export function AddProductModal({
 
   // Weighted-average merge preview when restocking an existing product.
   const mergePreview = useMemo(() => {
-    if (!selectedExisting || newQuantity <= 0 || newPurchasePrice <= 0) return null;
-    const isOutOfStock = selectedExisting.quantity === 0;
-    const totalQty = isOutOfStock ? newQuantity : selectedExisting.quantity + newQuantity;
+    if (!selectedExistingEffective || newQuantity <= 0 || newPurchasePrice <= 0) return null;
+    const isOutOfStock = selectedExistingEffective.quantity === 0;
+    const totalQty = isOutOfStock ? newQuantity : selectedExistingEffective.quantity + newQuantity;
     const totalPP = isOutOfStock
       ? newPurchasePrice
-      : (selectedExisting.purchasePrice ?? 0) + newPurchasePrice;
+      : (selectedExistingEffective.purchasePrice ?? 0) + newPurchasePrice;
     const avgPricePerUnit = calculatePricePerUnit(totalPP, totalQty, hstValue);
     return { totalQty, totalPP, avgPricePerUnit, isOutOfStock };
-  }, [selectedExisting, newQuantity, newPurchasePrice, hstValue]);
+  }, [selectedExistingEffective, newQuantity, newPurchasePrice, hstValue]);
 
   // Price/unit preview for a brand-new product
   const computedPricePerUnit = useMemo(() => {
@@ -545,8 +587,20 @@ export function AddProductModal({
       if (selectedExisting && hasIdentifier) {
         // ── Case 1: Scan a new unit of an existing device configuration ──────
         // Increment the shared quantity counter and register the new identifier.
+        let currentQty = selectedExisting.quantity;
+        if (companyId) {
+          const { data: qtyRow, error: qtyErr } = await supabase
+            .from("inventory")
+            .select("quantity")
+            .eq("id", selectedExisting.id)
+            .eq("company_id", companyId)
+            .maybeSingle();
+          if (!qtyErr && typeof qtyRow?.quantity === "number") {
+            currentQty = qtyRow.quantity;
+          }
+        }
         await updateProduct(selectedExisting.id, {
-          quantity: selectedExisting.quantity + 1,
+          quantity: currentQty + 1,
         });
         await addInventoryIdentifier(selectedExisting.id, imeiValue, serialValue);
         savedInventoryId = selectedExisting.id;
@@ -556,10 +610,28 @@ export function AddProductModal({
         onRestockComplete?.(selectedExisting.id);
       } else if (selectedExisting && mergePreview && !hasIdentifier) {
         // ── Case 2: Legacy restock without a scanned identifier ──────────────
+        let currentQty = selectedExisting.quantity;
+        if (companyId) {
+          const { data: qtyRow, error: qtyErr } = await supabase
+            .from("inventory")
+            .select("quantity")
+            .eq("id", selectedExisting.id)
+            .eq("company_id", companyId)
+            .maybeSingle();
+          if (!qtyErr && typeof qtyRow?.quantity === "number") {
+            currentQty = qtyRow.quantity;
+          }
+        }
+        const isOutOfStock = currentQty === 0;
+        const totalQty = isOutOfStock ? newQuantity : currentQty + newQuantity;
+        const totalPP = isOutOfStock
+          ? newPurchasePrice
+          : (selectedExisting.purchasePrice ?? 0) + newPurchasePrice;
+        const avgPricePerUnit = calculatePricePerUnit(totalPP, totalQty, hstValue);
         await updateProduct(selectedExisting.id, {
-          quantity: mergePreview.totalQty,
-          purchasePrice: mergePreview.totalPP,
-          pricePerUnit: mergePreview.avgPricePerUnit,
+          quantity: totalQty,
+          purchasePrice: totalPP,
+          pricePerUnit: avgPricePerUnit,
           sellingPrice,
           hst: hstValue || null,
         });
@@ -1045,7 +1117,7 @@ export function AddProductModal({
                       <div className="space-y-1">
                         <p className="text-xs text-muted-foreground">Current Qty</p>
                         <p className="text-sm font-semibold tabular-nums">
-                          {selectedExisting.quantity}
+                          {selectedExistingEffective?.quantity ?? selectedExisting.quantity}
                         </p>
                       </div>
                       <div className="space-y-1">
@@ -1450,8 +1522,8 @@ export function AddProductModal({
         }}
         productName={form.deviceName || "this product"}
         totalQuantity={
-          selectedExisting && hasIdentifier
-            ? selectedExisting.quantity + 1
+          selectedExistingEffective && hasIdentifier
+            ? selectedExistingEffective.quantity + 1
             : isLegacyRestock && mergePreview
               ? mergePreview.totalQty
               : newQuantity
@@ -1459,10 +1531,10 @@ export function AddProductModal({
         initialColors={selectedExistingId ? existingColorRows : undefined}
         suggestedColors={suggestedColors}
         note={
-          selectedExisting && hasIdentifier
-            ? `Covers all ${selectedExisting.quantity + 1} units — ${selectedExisting.quantity} existing + 1 new. Increment the colour that matches this unit.`
-            : isLegacyRestock && mergePreview
-              ? `Covers all ${mergePreview.totalQty} units — ${selectedExisting.quantity} existing + ${newQuantity} new batch. Previously assigned colours are pre-filled.`
+          selectedExistingEffective && hasIdentifier
+            ? `Covers all ${selectedExistingEffective.quantity + 1} units — ${selectedExistingEffective.quantity} existing + 1 new. Increment the colour that matches this unit.`
+            : isLegacyRestock && mergePreview && selectedExistingEffective
+              ? `Covers all ${mergePreview.totalQty} units — ${selectedExistingEffective.quantity} existing + ${newQuantity} new batch. Previously assigned colours are pre-filled.`
               : undefined
         }
         isLoadingInitialColors={isLoadingExistingColors}

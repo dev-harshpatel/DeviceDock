@@ -74,6 +74,7 @@ export function ColourBreakdownDialog({
   // or when async prefill data arrives after open.
   useEffect(() => {
     if (!open) return;
+    if (isLoadingInitialColors) return;
     if (initialColors && initialColors.length > 0) {
       setColorRows(initialColors.map((r) => ({ ...r })));
       // Pre-populate rows: rows whose color isn't in suggestions → custom mode
@@ -93,7 +94,7 @@ export function ColourBreakdownDialog({
     }
     // suggestedColors is stable array reference per render — safe to include
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialColors, open]);
+  }, [initialColors, open, isLoadingInitialColors]);
 
   const handleAddRow = () => {
     setColorRows((prev) => [...prev, { color: "", quantity: "" }]);
