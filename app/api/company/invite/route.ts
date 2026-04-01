@@ -46,12 +46,11 @@ export async function POST(request: NextRequest) {
   const normalizedEmail = email.toLowerCase().trim();
 
   // Check if the email is already an active member
-  const {
-    data: { users },
-  } = await supabaseAdmin.auth.admin.listUsers({
+  const { data: usersResponse } = await supabaseAdmin.auth.admin.listUsers({
     page: 1,
     perPage: 1000,
   });
+  const users = (usersResponse?.users ?? []) as { email?: string | null; id: string }[];
   const existingUser = users.find((u) => u.email?.toLowerCase() === normalizedEmail);
 
   if (existingUser) {
@@ -159,7 +158,7 @@ export async function POST(request: NextRequest) {
       inviteeEmail: normalizedEmail,
       role,
     },
-  });
+  } as never);
 
   return NextResponse.json(
     { inviteUrl: `/invite/${token}`, invitationId: invitation.id },
