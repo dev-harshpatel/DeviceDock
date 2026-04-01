@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth/context";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useRealtimeContext } from "@/contexts/RealtimeContext";
 import { ReactNode, createContext, useContext, useEffect, useState, useCallback } from "react";
+import type { IdentifierSaleLookup } from "@/types/inventory-identifiers";
 import { UploadHistory, BulkInsertResult } from "@/types/upload";
 import { dbRowToInventoryItem, INVENTORY_ADMIN_FIELDS } from "@/lib/supabase/queries";
 import { BULK_INSERT_BATCH_SIZE, INVENTORY_SORT_ORDER } from "@/lib/constants";
@@ -28,6 +29,12 @@ interface InventoryContextType {
     imei: string | null,
     serialNumber: string | null,
   ) => Promise<void>;
+  /** Exact IMEI or serial match for manual sale (in_stock / reserved only). */
+  lookupIdentifierForSale: (raw: string) => Promise<IdentifierSaleLookup | null>;
+  /** Marks a unit sold after the order is recorded; call before decreaseQuantity for that line. */
+  markInventoryIdentifierSold: (identifierId: string) => Promise<void>;
+  /** Restores identifier to in_stock if quantity decrease failed after mark (best-effort). */
+  revertInventoryIdentifierSold: (identifierId: string) => Promise<void>;
   isLoading: boolean;
 }
 
@@ -344,6 +351,102 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
     [companyId],
   );
 
+  const lookupIdentifierForSale = useCallback(
+    async (raw: string): Promise<IdentifierSaleLookup | null> => {
+      const q = raw.trim();
+      if (!q || !companyId) return null;
+
+      const fetchIdent = async (
+        column: "imei" | "serial_number",
+      ): Promise<Record<string, unknown> | null> => {
+        const { data, error } = await (supabase.from("inventory_identifiers") as any)
+          .select("id, inventory_id, imei, serial_number, status")
+          .eq("company_id", companyId)
+          .eq(column, q)
+          .maybeSingle();
+        if (error) {
+          console.error("[InventoryContext] lookupIdentifierForSale:", error.message);
+          return null;
+        }
+        return data ?? null;
+      };
+
+      let row = (await fetchIdent("imei")) ?? (await fetchIdent("serial_number"));
+      if (!row) return null;
+
+      const status = String(row.status ?? "");
+      if (status === "sold") {
+        throw new Error("This IMEI/serial has already been sold and is no longer available.");
+      }
+      if (status !== "in_stock" && status !== "reserved") {
+        throw new Error(`This unit is not available for sale (status: ${status}).`);
+      }
+
+      const { data: invRow, error: invErr } = await (supabase.from("inventory") as any)
+        .select(INVENTORY_ADMIN_FIELDS)
+        .eq("id", row.inventory_id as string)
+        .eq("company_id", companyId)
+        .maybeSingle();
+
+      if (invErr || !invRow) return null;
+
+      const item = dbRowToInventoryItem(invRow);
+      if (item.isActive === false || item.quantity < 1) return null;
+
+      return {
+        identifierId: row.id as string,
+        imei: (row.imei as string | null) ?? null,
+        serialNumber: (row.serial_number as string | null) ?? null,
+        status,
+        item,
+      };
+    },
+    [companyId],
+  );
+
+  const markInventoryIdentifierSold = useCallback(
+    async (identifierId: string): Promise<void> => {
+      if (!companyId) throw new Error("No active company context");
+      const now = new Date().toISOString();
+      const { data, error } = await (supabase.from("inventory_identifiers") as any)
+        .update({
+          status: "sold",
+          sold_at: now,
+          updated_at: now,
+        })
+        .eq("id", identifierId)
+        .eq("company_id", companyId)
+        .in("status", ["in_stock", "reserved"])
+        .select("id")
+        .maybeSingle();
+
+      if (error) {
+        throw new Error(error.message || "Failed to mark identifier as sold");
+      }
+      if (!data) {
+        throw new Error("That IMEI or serial is already sold or is not available.");
+      }
+    },
+    [companyId],
+  );
+
+  const revertInventoryIdentifierSold = useCallback(
+    async (identifierId: string): Promise<void> => {
+      if (!companyId) return;
+      const now = new Date().toISOString();
+      await (supabase.from("inventory_identifiers") as any)
+        .update({
+          status: "in_stock",
+          sold_at: null,
+          updated_at: now,
+        })
+        .eq("id", identifierId)
+        .eq("company_id", companyId)
+        .eq("status", "sold");
+    },
+    [companyId],
+  );
+
   const getUploadHistory = useCallback(async (): Promise<UploadHistory[]> => {
     if (!companyId) return [];
 
@@ -395,6 +498,9 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
         refreshInventory,
         bulkInsertProducts,
         addInventoryIdentifier,
+        lookupIdentifierForSale,
+        markInventoryIdentifierSold,
+        revertInventoryIdentifierSold,
         getUploadHistory,
         isLoading,
       }}

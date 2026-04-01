@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { formatPrice } from "@/lib/utils";
 import { calculatePricePerUnit } from "@/data/inventory";
 import type { InventoryItem } from "@/data/inventory";
+import { parseIdentifierList } from "@/lib/inventory/parse-identifier-list";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -39,6 +40,8 @@ import { Badge } from "@/components/ui/badge";
 import { useInventory } from "@/contexts/InventoryContext";
 import { useAuth } from "@/lib/auth/context";
 import { useCompany } from "@/contexts/CompanyContext";
+import { createNotificationEvent } from "@/lib/notifications/client";
+import { NOTIFICATION_EVENT_TYPES } from "@/lib/notifications/types";
 import { supabase } from "@/lib/supabase/client";
 import { type Grade, GRADES, GRADE_BADGE_LABELS, GRADE_LABELS } from "@/lib/constants/grades";
 
@@ -130,7 +133,10 @@ export function AddProductModal({
     valid: number;
     invalid: number;
   } | null>(null);
-  const hasIdentifier = Boolean(form.imei?.trim() || form.serialNumber?.trim());
+  const imeiList = useMemo(() => parseIdentifierList(form.imei), [form.imei]);
+  const serialList = useMemo(() => parseIdentifierList(form.serialNumber), [form.serialNumber]);
+  const totalIdentifierCount = imeiList.length + serialList.length;
+  const hasIdentifier = totalIdentifierCount > 0;
 
   // Fetch all unique colors used by same device type (brand + deviceName) for suggestions
   useEffect(() => {
@@ -227,7 +233,8 @@ export function AddProductModal({
         return;
       }
 
-      setLiveInventoryQuantity(typeof data?.quantity === "number" ? data.quantity : null);
+      const quantity = (data as { quantity?: number } | null)?.quantity;
+      setLiveInventoryQuantity(typeof quantity === "number" ? quantity : null);
     };
 
     void loadLiveQuantity();
@@ -244,10 +251,23 @@ export function AddProductModal({
   }, [selectedExisting, liveInventoryQuantity]);
 
   const isLegacyRestock = Boolean(selectedExisting && !hasIdentifier);
-  const newQuantity = hasIdentifier ? 1 : Number(form.quantity) || 0;
+  const newQuantity = Number(form.quantity) || 0;
+  const enteredQuantity = newQuantity;
+  const effectiveQuantity = newQuantity;
   const newPurchasePrice = Number(form.purchasePrice) || 0;
   const hstValue = Number(form.hst) || 0;
   const sellingPrice = Number(form.sellingPrice) || 0;
+  // IMEI/Serial fields appear above Quantity; until quantity is entered, do not treat as a mismatch.
+  const identifierCountMatchesQuantity =
+    !hasIdentifier || enteredQuantity <= 0 || totalIdentifierCount === enteredQuantity;
+  const hasDuplicateIdentifiers = useMemo(() => {
+    const normalized = [...imeiList, ...serialList].map((identifier) => identifier.toLowerCase());
+    return new Set(normalized).size !== normalized.length;
+  }, [imeiList, serialList]);
+
+  /** One physical unit should be identified in one field only; both columns = two units. */
+  const warnBothImeiAndSerialForSingleQuantity =
+    enteredQuantity === 1 && imeiList.length > 0 && serialList.length > 0;
 
   // Weighted-average merge preview when restocking an existing product.
   const mergePreview = useMemo(() => {
@@ -301,10 +321,11 @@ export function AddProductModal({
     form.brand.trim() &&
     form.grade &&
     form.storage.trim() &&
-    newQuantity > 0 &&
+    effectiveQuantity > 0 &&
     newPurchasePrice > 0 &&
     sellingPrice > 0 &&
-    hasIdentifier,
+    identifierCountMatchesQuantity &&
+    !hasDuplicateIdentifiers,
   );
 
   const isBulkConfigValid = Boolean(
@@ -527,20 +548,15 @@ export function AddProductModal({
 
       const result = await bulkInsertProducts(payload);
 
-      if (result.insertedIds?.length && user?.id && companyId) {
-        const logRows = result.insertedIds.map((inventoryId) => ({
-          company_id: companyId,
-          inventory_id: inventoryId,
-          event_type: "inventory_item_created",
-          new_status: "in_stock",
-          performed_by: user.id,
-        }));
-        const { error: logError } = await (supabase as any)
-          .from("inventory_activity_logs")
-          .insert(logRows);
-        if (logError) {
-          console.error("Failed to insert bulk activity logs:", logError);
-        }
+      if (result.success > 0 && companyId) {
+        await createNotificationEvent({
+          actorUserId: user?.id ?? null,
+          companyId,
+          eventType: NOTIFICATION_EVENT_TYPES.inventoryProductAdded,
+          message: `${result.success} unit${result.success !== 1 ? "s" : ""} added via bulk inventory entry.`,
+          metadata: { successCount: result.success },
+          title: "Inventory updated",
+        });
       }
 
       if (result.failed > 0) {
@@ -581,8 +597,29 @@ export function AddProductModal({
     setIsSubmitting(true);
     try {
       let savedInventoryId: string | null = null;
-      const imeiValue = form.imei.trim() || null;
-      const serialValue = form.serialNumber.trim() || null;
+      const enteredImeiList = parseIdentifierList(form.imei);
+      const enteredSerialList = parseIdentifierList(form.serialNumber);
+      const identifiers = [
+        ...enteredImeiList.map((imei) => ({ imei, serialNumber: null as string | null })),
+        ...enteredSerialList.map((serialNumber) => ({ imei: null as string | null, serialNumber })),
+      ];
+      const quantityForSubmit = Number(form.quantity) || 0;
+
+      if (identifiers.length > 0 && identifiers.length !== quantityForSubmit) {
+        throw new Error(
+          `Identifiers mismatch: ${identifiers.length} entered for ${quantityForSubmit} units.`,
+        );
+      }
+
+      const uniqueIdentifierSet = new Set(
+        identifiers
+          .map((row) => row.imei ?? row.serialNumber ?? "")
+          .filter(Boolean)
+          .map((value) => value.toLowerCase()),
+      );
+      if (uniqueIdentifierSet.size !== identifiers.length) {
+        throw new Error("Duplicate IMEI/Serial values detected in this entry.");
+      }
 
       if (selectedExisting && hasIdentifier) {
         // ── Case 1: Scan a new unit of an existing device configuration ──────
@@ -595,17 +632,24 @@ export function AddProductModal({
             .eq("id", selectedExisting.id)
             .eq("company_id", companyId)
             .maybeSingle();
-          if (!qtyErr && typeof qtyRow?.quantity === "number") {
-            currentQty = qtyRow.quantity;
+          const liveQty = (qtyRow as { quantity?: number } | null)?.quantity;
+          if (!qtyErr && typeof liveQty === "number") {
+            currentQty = liveQty;
           }
         }
         await updateProduct(selectedExisting.id, {
-          quantity: currentQty + 1,
+          quantity: currentQty + identifiers.length,
         });
-        await addInventoryIdentifier(selectedExisting.id, imeiValue, serialValue);
+        for (const identifier of identifiers) {
+          await addInventoryIdentifier(
+            selectedExisting.id,
+            identifier.imei,
+            identifier.serialNumber,
+          );
+        }
         savedInventoryId = selectedExisting.id;
         toast.success(
-          `${form.deviceName} — 1 unit added (${imeiValue ? `IMEI: ${imeiValue}` : `S/N: ${serialValue}`})`,
+          `${form.deviceName} — ${identifiers.length} unit${identifiers.length !== 1 ? "s" : ""} added with identifiers`,
         );
         onRestockComplete?.(selectedExisting.id);
       } else if (selectedExisting && mergePreview && !hasIdentifier) {
@@ -618,12 +662,13 @@ export function AddProductModal({
             .eq("id", selectedExisting.id)
             .eq("company_id", companyId)
             .maybeSingle();
-          if (!qtyErr && typeof qtyRow?.quantity === "number") {
-            currentQty = qtyRow.quantity;
+          const liveQty = (qtyRow as { quantity?: number } | null)?.quantity;
+          if (!qtyErr && typeof liveQty === "number") {
+            currentQty = liveQty;
           }
         }
         const isOutOfStock = currentQty === 0;
-        const totalQty = isOutOfStock ? newQuantity : currentQty + newQuantity;
+        const totalQty = isOutOfStock ? effectiveQuantity : currentQty + effectiveQuantity;
         const totalPP = isOutOfStock
           ? newPurchasePrice
           : (selectedExisting.purchasePrice ?? 0) + newPurchasePrice;
@@ -637,12 +682,12 @@ export function AddProductModal({
         });
         savedInventoryId = selectedExisting.id;
         toast.success(
-          `${form.deviceName} restocked — ${newQuantity} unit${newQuantity !== 1 ? "s" : ""} added`,
+          `${form.deviceName} restocked — ${effectiveQuantity} unit${effectiveQuantity !== 1 ? "s" : ""} added`,
         );
         onRestockComplete?.(selectedExisting.id);
       } else {
         // ── Case 3: New product configuration ───────────────────────────────
-        const pricePerUnit = calculatePricePerUnit(newPurchasePrice, newQuantity, hstValue);
+        const pricePerUnit = calculatePricePerUnit(newPurchasePrice, effectiveQuantity, hstValue);
         const result = await bulkInsertProducts([
           {
             id: "",
@@ -650,7 +695,7 @@ export function AddProductModal({
             brand: form.brand.trim(),
             grade: form.grade as Grade,
             storage: form.storage.trim(),
-            quantity: newQuantity,
+            quantity: effectiveQuantity,
             purchasePrice: newPurchasePrice,
             hst: hstValue || null,
             pricePerUnit,
@@ -664,23 +709,34 @@ export function AddProductModal({
         savedInventoryId = result.insertedIds?.[0] ?? null;
 
         // Register the scanned identifier against the new inventory record.
-        if (hasIdentifier && savedInventoryId) {
-          await addInventoryIdentifier(savedInventoryId, imeiValue, serialValue);
+        if (identifiers.length > 0 && savedInventoryId) {
+          for (const identifier of identifiers) {
+            await addInventoryIdentifier(
+              savedInventoryId,
+              identifier.imei,
+              identifier.serialNumber,
+            );
+          }
         }
 
         toast.success(`${form.deviceName} added to inventory`);
       }
 
-      // ── Activity Log ───────────────────────────────────────────────
-      if (savedInventoryId && user?.id && companyId) {
-        const { error: logError } = await (supabase as any).from("inventory_activity_logs").insert({
-          company_id: companyId,
-          inventory_id: savedInventoryId,
-          event_type: "inventory_item_created",
-          new_status: "in_stock",
-          performed_by: user.id,
+      if (savedInventoryId && companyId) {
+        await createNotificationEvent({
+          actorUserId: user?.id ?? null,
+          companyId,
+          entityId: savedInventoryId,
+          entityType: "inventory",
+          eventType: NOTIFICATION_EVENT_TYPES.inventoryProductAdded,
+          message: `${form.brand} ${form.deviceName} (${effectiveQuantity} unit${effectiveQuantity !== 1 ? "s" : ""}) added to inventory.`,
+          metadata: {
+            brand: form.brand.trim(),
+            deviceName: form.deviceName.trim(),
+            quantity: effectiveQuantity,
+          },
+          title: "Inventory updated",
         });
-        if (logError) console.error("Failed to insert activity log:", logError);
       }
 
       // ── Save colour breakdown ───────────────────────────────────────────────
@@ -918,6 +974,42 @@ export function AddProductModal({
                     onChange={(e) => handleField("serialNumber", e.target.value)}
                   />
                 </div>
+                {hasIdentifier && (
+                  <div className="col-span-2 rounded-md border bg-muted/20 px-3 py-2">
+                    <p className="text-xs text-muted-foreground">
+                      IMEI: {imeiList.length} | Serial: {serialList.length} | Total:{" "}
+                      {totalIdentifierCount}
+                      {enteredQuantity > 0 ? (
+                        <> / Required: {enteredQuantity}</>
+                      ) : (
+                        <span className="text-muted-foreground/80">
+                          {" "}
+                          — enter quantity below to match
+                        </span>
+                      )}
+                    </p>
+                    {enteredQuantity > 0 && !identifierCountMatchesQuantity && (
+                      <p className="text-xs text-destructive mt-1">
+                        Total IMEI + Serial must exactly match Quantity.
+                      </p>
+                    )}
+                    {hasDuplicateIdentifiers && (
+                      <p className="text-xs text-destructive mt-1">
+                        Duplicate IMEI/Serial values are not allowed.
+                      </p>
+                    )}
+                    {warnBothImeiAndSerialForSingleQuantity && (
+                      <p
+                        className="text-xs text-amber-700 dark:text-amber-400 mt-2 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5"
+                        role="status"
+                      >
+                        For a single unit, use <span className="font-medium">either</span> IMEI{" "}
+                        <span className="font-medium">or</span> serial—not both. Values in both
+                        fields count as two separate units.
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {/* Device Name */}
                 <div className="col-span-2 space-y-1.5 mt-2">
@@ -1032,11 +1124,9 @@ export function AddProductModal({
                     id="ap-qty"
                     type="number"
                     placeholder="0"
-                    value={hasIdentifier ? "1" : form.quantity}
+                    value={form.quantity}
                     onChange={(e) => handleField("quantity", e.target.value)}
                     min="1"
-                    disabled={hasIdentifier}
-                    className={hasIdentifier ? "bg-muted/50 cursor-not-allowed" : ""}
                   />
                 </div>
 
@@ -1224,15 +1314,15 @@ export function AddProductModal({
                     <dt className="text-muted-foreground text-amber-600 dark:text-amber-500">
                       IMEI
                     </dt>
-                    <dd className="font-medium">{form.imei || "—"}</dd>
+                    <dd className="font-medium">{imeiList.length || "—"}</dd>
                   </div>
                   <div className="space-y-1">
                     <dt className="text-muted-foreground">Serial</dt>
-                    <dd className="font-medium">{form.serialNumber || "—"}</dd>
+                    <dd className="font-medium">{serialList.length || "—"}</dd>
                   </div>
                   <div className="space-y-1">
                     <dt className="text-muted-foreground">Quantity</dt>
-                    <dd className="font-medium">{hasIdentifier ? 1 : form.quantity}</dd>
+                    <dd className="font-medium">{form.quantity}</dd>
                   </div>
                   <div className="space-y-1">
                     <dt className="text-muted-foreground">Purchase Price</dt>
@@ -1243,6 +1333,14 @@ export function AddProductModal({
                     <dd className="font-medium">{formatPrice(Number(form.sellingPrice) || 0)}</dd>
                   </div>
                 </dl>
+                {warnBothImeiAndSerialForSingleQuantity && (
+                  <p
+                    className="text-xs text-amber-700 dark:text-amber-400 rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2"
+                    role="status"
+                  >
+                    For a single unit, use either IMEI or serial—not both fields.
+                  </p>
+                )}
               </div>
               <div className="flex gap-3 pt-2">
                 <Button

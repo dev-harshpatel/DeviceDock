@@ -10,6 +10,7 @@ import {
   Info,
   Layers,
   Loader2,
+  Palette,
   Pencil,
   Plus,
   Trash2,
@@ -37,9 +38,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useInventory } from "@/contexts/InventoryContext";
+import { parseIdentifierList } from "@/lib/inventory/parse-identifier-list";
 import { queryKeys } from "@/lib/query-keys";
+import { createNotificationEvent } from "@/lib/notifications/client";
+import { NOTIFICATION_EVENT_TYPES } from "@/lib/notifications/types";
+import { ColourBreakdownDialog, type ColourRow } from "@/components/modals/ColourBreakdownDialog";
+import { supabase } from "@/lib/supabase/client";
 import { type Grade, GRADES, GRADE_BADGE_LABELS, GRADE_LABELS } from "@/lib/constants/grades";
 import { cn, formatPrice } from "@/lib/utils";
 
@@ -50,11 +57,14 @@ interface BulkProductRowForm {
   deviceName: string;
   grade: Grade | "";
   hst: string;
+  imeiText: string;
   purchasePrice: string;
   quantity: string;
   selectedInventoryId: string | null;
   sellingPrice: string;
+  serialText: string;
   storage: string;
+  colorRows: ColourRow[];
 }
 
 type BulkEditableField = keyof Omit<BulkProductRowForm, "selectedInventoryId">;
@@ -64,11 +74,14 @@ const createEmptyRow = (): BulkProductRowForm => ({
   deviceName: "",
   grade: "",
   hst: "13",
+  imeiText: "",
   purchasePrice: "",
   quantity: "",
   selectedInventoryId: null,
   sellingPrice: "",
+  serialText: "",
   storage: "",
+  colorRows: [],
 });
 
 const GRADE_STYLES: Record<string, string> = {
@@ -86,6 +99,8 @@ const isRowEmpty = (row: BulkProductRowForm): boolean => {
     !row.brand.trim() &&
     !row.grade &&
     !row.storage.trim() &&
+    !row.imeiText.trim() &&
+    !row.serialText.trim() &&
     !row.quantity.trim() &&
     !row.purchasePrice.trim() &&
     !row.hst.trim() &&
@@ -103,11 +118,16 @@ const isRowComplete = (row: BulkProductRowForm): boolean => {
   const pp = Number(row.purchasePrice) || 0;
   const sp = Number(row.sellingPrice) || 0;
   const hst = Number(row.hst) || 0;
+  const imeis = parseIdentifierList(row.imeiText);
+  const serials = parseIdentifierList(row.serialText);
+  const totalIdentifiers = imeis.length + serials.length;
   return Boolean(
     row.deviceName.trim() &&
     row.brand.trim() &&
     row.grade &&
     row.storage.trim() &&
+    totalIdentifiers > 0 &&
+    totalIdentifiers === qty &&
     qty > 0 &&
     pp > 0 &&
     sp > 0 &&
@@ -249,12 +269,18 @@ const BulkRowPricePreview = ({ existingItem, row }: BulkRowPricePreviewProps) =>
 export default function AddMultipleProducts() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { slug } = useCompany();
-  const { bulkInsertProducts, inventory, updateProduct } = useInventory();
+  const { companyId, slug } = useCompany();
+  const { addInventoryIdentifier, bulkInsertProducts, inventory, updateProduct } = useInventory();
   const [rows, setRows] = useState<BulkProductRowForm[]>([createEmptyRow()]);
   const [lineCollapsed, setLineCollapsed] = useState<boolean[]>([false]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [comboboxOpenIndex, setComboboxOpenIndex] = useState<number | null>(null);
+  const [colorDialogState, setColorDialogState] = useState<{
+    open: boolean;
+    rowIndex: number | null;
+    initialRows: ColourRow[];
+  }>({ open: false, rowIndex: null, initialRows: [] });
+  const [isLoadingColorRows, setIsLoadingColorRows] = useState(false);
 
   const inventoryPath = `/${slug}/inventory`;
   const productsPath = `/${slug}/products`;
@@ -304,8 +330,11 @@ export default function AddMultipleProducts() {
               hst: item.hst?.toString() ?? "13",
               sellingPrice: item.sellingPrice.toString(),
               quantity: "",
+              imeiText: "",
               purchasePrice: "",
+              serialText: "",
               selectedInventoryId: item.id,
+              colorRows: [],
             }
           : row,
       ),
@@ -363,6 +392,112 @@ export default function AddMultipleProducts() {
     });
   }, []);
 
+  const saveInventoryColors = useCallback(async (inventoryId: string, rows: ColourRow[]) => {
+    const validRows = rows
+      .filter((row) => row.color.trim() && Number(row.quantity) > 0)
+      .map((row) => ({
+        inventory_id: inventoryId,
+        color: row.color.trim(),
+        quantity: Number(row.quantity),
+        updated_at: new Date().toISOString(),
+      }));
+
+    if (validRows.length > 0) {
+      const { error: upsertError } = await (supabase as any)
+        .from("inventory_colors")
+        .upsert(validRows, { onConflict: "inventory_id,color" });
+      if (upsertError) throw upsertError;
+
+      const keptColors = validRows.map((row) => row.color);
+      const { data: existing, error: existingError } = await (supabase as any)
+        .from("inventory_colors")
+        .select("color")
+        .eq("inventory_id", inventoryId);
+      if (existingError) throw existingError;
+
+      const toDelete = (existing ?? [])
+        .map((row: { color: string }) => row.color)
+        .filter((color: string) => !keptColors.includes(color));
+      if (toDelete.length > 0) {
+        const { error: deleteError } = await (supabase as any)
+          .from("inventory_colors")
+          .delete()
+          .eq("inventory_id", inventoryId)
+          .in("color", toDelete);
+        if (deleteError) throw deleteError;
+      }
+      return;
+    }
+
+    const { error: clearError } = await (supabase as any)
+      .from("inventory_colors")
+      .delete()
+      .eq("inventory_id", inventoryId);
+    if (clearError) throw clearError;
+  }, []);
+
+  const openColorDialog = useCallback(
+    async (rowIndex: number) => {
+      const row = rows[rowIndex];
+      if (!row) return;
+
+      if (row.selectedInventoryId) {
+        setIsLoadingColorRows(true);
+        try {
+          const { data, error } = await (supabase as any)
+            .from("inventory_colors")
+            .select("color, quantity")
+            .eq("inventory_id", row.selectedInventoryId)
+            .order("color");
+          if (error) throw error;
+
+          const existingColors: ColourRow[] = (data ?? []).map(
+            (entry: { color: string; quantity: number }) => ({
+              color: entry.color,
+              quantity: String(entry.quantity),
+            }),
+          );
+
+          setColorDialogState({
+            open: true,
+            rowIndex,
+            initialRows: row.colorRows.length > 0 ? row.colorRows : existingColors,
+          });
+        } catch {
+          setColorDialogState({
+            open: true,
+            rowIndex,
+            initialRows: row.colorRows,
+          });
+          toast.error("Could not load existing colours. You can still assign manually.");
+        } finally {
+          setIsLoadingColorRows(false);
+        }
+        return;
+      }
+
+      setColorDialogState({
+        open: true,
+        rowIndex,
+        initialRows: row.colorRows,
+      });
+    },
+    [rows],
+  );
+
+  const handleColorDialogConfirm = useCallback(
+    (colorRows: ColourRow[]) => {
+      const rowIndex = colorDialogState.rowIndex;
+      if (rowIndex === null) return;
+
+      setRows((prev) =>
+        prev.map((row, index) => (index === rowIndex ? { ...row, colorRows } : row)),
+      );
+      setColorDialogState({ open: false, rowIndex: null, initialRows: [] });
+    },
+    [colorDialogState.rowIndex],
+  );
+
   const preparedRows = useMemo(() => rows.filter((r) => !isRowEmpty(r)), [rows]);
   const hasPartialRow = useMemo(
     () => rows.some((r) => !isRowEmpty(r) && !isRowComplete(r)),
@@ -372,6 +507,12 @@ export default function AddMultipleProducts() {
     () => preparedRows.length > 0 && !hasPartialRow && preparedRows.every(isRowComplete),
     [preparedRows, hasPartialRow],
   );
+  const activeColorDialogRow =
+    colorDialogState.rowIndex !== null ? (rows[colorDialogState.rowIndex] ?? null) : null;
+  const activeColorDialogExisting =
+    activeColorDialogRow?.selectedInventoryId != null
+      ? (inventory.find((item) => item.id === activeColorDialogRow.selectedInventoryId) ?? null)
+      : null;
 
   const handleSubmit = useCallback(async () => {
     if (!canSubmit || isSubmitting) return;
@@ -386,6 +527,35 @@ export default function AddMultipleProducts() {
     if (partial) {
       toast.error("Complete every row or clear unused rows.");
       return;
+    }
+
+    const allIdentifiers = new Set<string>();
+    for (let i = 0; i < toProcess.length; i++) {
+      const row = toProcess[i];
+      const imeis = parseIdentifierList(row.imeiText);
+      const serials = parseIdentifierList(row.serialText);
+      const identifiers = [...imeis, ...serials];
+      const qty = Number(row.quantity) || 0;
+      if (identifiers.length !== qty) {
+        toast.error(
+          `Row ${i + 1}: identifiers count (${identifiers.length}) must match units (${qty}).`,
+        );
+        return;
+      }
+      const lowerSet = new Set<string>();
+      for (const identifier of identifiers) {
+        const key = identifier.toLowerCase();
+        if (lowerSet.has(key)) {
+          toast.error(`Row ${i + 1}: duplicate identifier "${identifier}".`);
+          return;
+        }
+        lowerSet.add(key);
+        if (allIdentifiers.has(key)) {
+          toast.error(`Duplicate identifier across rows: "${identifier}".`);
+          return;
+        }
+        allIdentifiers.add(key);
+      }
     }
 
     setIsSubmitting(true);
@@ -424,6 +594,19 @@ export default function AddMultipleProducts() {
             sellingPrice,
             hst: hstValue || null,
           });
+
+          const imeis = parseIdentifierList(row.imeiText);
+          const serials = parseIdentifierList(row.serialText);
+          for (const imei of imeis) {
+            await addInventoryIdentifier(existing.id, imei, null);
+          }
+          for (const serial of serials) {
+            await addInventoryIdentifier(existing.id, null, serial);
+          }
+          if (row.colorRows.length > 0) {
+            await saveInventoryColors(existing.id, row.colorRows);
+          }
+
           restockOk++;
         } catch {
           restockFail++;
@@ -458,12 +641,49 @@ export default function AddMultipleProducts() {
           ? await bulkInsertProducts(inventoryItems)
           : { success: 0, failed: 0, errors: [] as string[] };
 
+      let newIdentifiersOk = 0;
+      let newIdentifiersFail = 0;
+      const insertedIds = result.insertedIds ?? [];
+      for (let index = 0; index < insertedIds.length; index++) {
+        const inventoryId = insertedIds[index];
+        const sourceRow = newRows[index];
+        if (!inventoryId || !sourceRow) continue;
+        const imeis = parseIdentifierList(sourceRow.imeiText);
+        const serials = parseIdentifierList(sourceRow.serialText);
+        for (const imei of imeis) {
+          try {
+            await addInventoryIdentifier(inventoryId, imei, null);
+            newIdentifiersOk++;
+          } catch {
+            newIdentifiersFail++;
+          }
+        }
+        for (const serial of serials) {
+          try {
+            await addInventoryIdentifier(inventoryId, null, serial);
+            newIdentifiersOk++;
+          } catch {
+            newIdentifiersFail++;
+          }
+        }
+
+        if (sourceRow.colorRows.length > 0) {
+          await saveInventoryColors(inventoryId, sourceRow.colorRows);
+        }
+      }
+
       if (inventoryItems.length > 0 && (result.failed > 0 || result.errors.length > 0)) {
         const detail =
           result.errors.length > 0
             ? result.errors.slice(0, 3).join(" . ")
             : `${result.failed} failed`;
         toast.error(`Some new products could not be added: ${detail}`);
+      }
+
+      if (newIdentifiersFail > 0) {
+        toast.error(
+          `${newIdentifiersFail} identifier${newIdentifiersFail !== 1 ? "s" : ""} could not be saved.`,
+        );
       }
 
       if (restockFail > 0) {
@@ -475,9 +695,26 @@ export default function AddMultipleProducts() {
       const insertOk = result.success;
       const anySuccess = restockOk > 0 || insertOk > 0;
       if (anySuccess) {
+        if (insertOk + restockOk > 0 && companyId) {
+          const totalUnits = toProcess.reduce((sum, row) => sum + (Number(row.quantity) || 0), 0);
+          await createNotificationEvent({
+            companyId,
+            eventType: NOTIFICATION_EVENT_TYPES.inventoryProductAdded,
+            message: `${insertOk} new product row${insertOk !== 1 ? "s" : ""} added and ${restockOk} row${restockOk !== 1 ? "s" : ""} restocked (${totalUnits} total units).`,
+            metadata: {
+              insertedRows: insertOk,
+              restockedRows: restockOk,
+              totalUnits,
+            },
+            title: "Bulk inventory update",
+          });
+        }
         const parts: string[] = [];
         if (restockOk > 0) parts.push(`${restockOk} restocked`);
         if (insertOk > 0) parts.push(`${insertOk} new product${insertOk !== 1 ? "s" : ""} added`);
+        if (newIdentifiersOk > 0) {
+          parts.push(`${newIdentifiersOk} identifier${newIdentifiersOk !== 1 ? "s" : ""} saved`);
+        }
         toast.success(parts.join(" . "));
         await queryClient.invalidateQueries({ queryKey: queryKeys.inventory });
         router.push(inventoryPath);
@@ -501,7 +738,9 @@ export default function AddMultipleProducts() {
     queryClient,
     router,
     rows,
+    saveInventoryColors,
     updateProduct,
+    addInventoryIdentifier,
   ]);
 
   return (
@@ -896,6 +1135,71 @@ export default function AddMultipleProducts() {
                           />
                         </div>
                       </div>
+
+                      <div className="flex items-center justify-between rounded-md border bg-muted/20 px-3 py-2">
+                        <p className="text-xs text-muted-foreground">
+                          Colours assigned:{" "}
+                          {row.colorRows.reduce(
+                            (sum, colorRow) => sum + (Number(colorRow.quantity) || 0),
+                            0,
+                          )}{" "}
+                          / {Number(row.quantity) || 0}
+                        </p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 gap-1.5"
+                          onClick={() => openColorDialog(index)}
+                          disabled={isSubmitting || isLoadingColorRows}
+                        >
+                          <Palette className="h-3.5 w-3.5" />
+                          Assign colors
+                        </Button>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-sm font-medium" htmlFor={`bulk-imei-${index}`}>
+                          IMEI numbers (comma-separated)
+                        </Label>
+                        <Textarea
+                          id={`bulk-imei-${index}`}
+                          placeholder={
+                            "Paste IMEIs separated by commas\nExample: 357890123456789, 357890123456790"
+                          }
+                          value={row.imeiText}
+                          onChange={(event) =>
+                            handleFieldChange(index, "imeiText", event.target.value)
+                          }
+                          disabled={isSubmitting}
+                          className="min-h-[90px] resize-y"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-sm font-medium" htmlFor={`bulk-serial-${index}`}>
+                          Serial numbers (comma-separated)
+                        </Label>
+                        <Textarea
+                          id={`bulk-serial-${index}`}
+                          placeholder={
+                            "Paste serials separated by commas\nExample: SN-ABC-12345, SN-XYZ-99211"
+                          }
+                          value={row.serialText}
+                          onChange={(event) =>
+                            handleFieldChange(index, "serialText", event.target.value)
+                          }
+                          disabled={isSubmitting}
+                          className="min-h-[90px] resize-y"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Use commas between identifiers (new lines also work). IMEI{" "}
+                          {parseIdentifierList(row.imeiText).length} | Serial{" "}
+                          {parseIdentifierList(row.serialText).length} | Total{" "}
+                          {parseIdentifierList(row.imeiText).length +
+                            parseIdentifierList(row.serialText).length}{" "}
+                          / Required {Number(row.quantity) || 0}
+                        </p>
+                      </div>
                     </div>
 
                     <div className="lg:w-[min(100%,380px)] xl:w-[420px] shrink-0 lg:border-l lg:border-border lg:pl-4 xl:pl-6 space-y-1.5">
@@ -934,6 +1238,25 @@ export default function AddMultipleProducts() {
           </Button>
         </div>
       </footer>
+
+      <ColourBreakdownDialog
+        open={colorDialogState.open}
+        onOpenChange={(open) => {
+          if (open) return;
+          setColorDialogState({ open: false, rowIndex: null, initialRows: [] });
+        }}
+        productName={activeColorDialogRow?.deviceName || "this product"}
+        totalQuantity={
+          activeColorDialogRow
+            ? (activeColorDialogExisting?.quantity ?? 0) +
+              (Number(activeColorDialogRow.quantity) || 0)
+            : 0
+        }
+        initialColors={colorDialogState.initialRows}
+        isLoadingInitialColors={isLoadingColorRows}
+        onConfirm={handleColorDialogConfirm}
+        confirmLabel="Save colours"
+      />
     </div>
   );
 }

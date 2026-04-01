@@ -16,9 +16,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { cn } from "@/lib/utils";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useCompanyRoute } from "@/hooks/useCompanyRoute";
-import { useInventory } from "@/contexts/InventoryContext";
 import { useNotificationSettings } from "@/contexts/NotificationSettingsContext";
-import { getStockStatus } from "@/data/inventory";
+import { useNotificationsFeed } from "@/hooks/use-notifications-feed";
 
 interface AppSidebarProps {
   open: boolean;
@@ -93,18 +92,12 @@ const NAV_ITEMS: NavItem[] = [
 export function AppSidebar({ open, collapsed, onClose, onToggleCollapse }: AppSidebarProps) {
   const { role } = useCompany();
   const { companyRoute } = useCompanyRoute();
-  const { inventory } = useInventory();
-  const { pushNotificationsEnabled, lowStockThreshold, criticalStockThreshold, readIds } =
-    useNotificationSettings();
-
-  const alertCount = useMemo(() => {
-    if (!pushNotificationsEnabled) return 0;
-    return inventory.filter(
-      (item) =>
-        getStockStatus(item.quantity, lowStockThreshold, criticalStockThreshold) !== "in-stock" &&
-        !readIds.has(item.id),
-    ).length;
-  }, [inventory, pushNotificationsEnabled, lowStockThreshold, criticalStockThreshold, readIds]);
+  const { pushNotificationsEnabled } = useNotificationSettings();
+  const { unreadCount } = useNotificationsFeed();
+  const alertCount = useMemo(
+    () => (pushNotificationsEnabled ? unreadCount : 0),
+    [pushNotificationsEnabled, unreadCount],
+  );
 
   const visibleItems = NAV_ITEMS.filter(
     (item) => !item.allowedRoles || item.allowedRoles.includes(role),

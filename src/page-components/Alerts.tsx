@@ -1,121 +1,64 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle, Clock, Search } from "lucide-react";
+import { Bell, CheckCircle, Clock, Search } from "lucide-react";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Loader } from "@/components/common/Loader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { useInventory } from "@/contexts/InventoryContext";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useNotificationSettings } from "@/contexts/NotificationSettingsContext";
-import { getStockStatus } from "@/data/inventory";
+import { useNotificationsFeed } from "@/hooks/use-notifications-feed";
+import type { InAppNotificationItem } from "@/lib/notifications/types";
 import { cn } from "@/lib/utils";
 
-type AlertSeverity = "critical" | "warning" | "out-of-stock";
-
-interface StockAlert {
-  id: string;
-  severity: AlertSeverity;
-  title: string;
-  description: string;
-  device: string;
-  read: boolean;
-}
-
-const SEVERITY_ORDER: Record<AlertSeverity, number> = {
-  "out-of-stock": 0,
-  critical: 1,
-  warning: 2,
-};
-
-const alertStyles: Record<AlertSeverity, { bg: string; icon: string; badge: string }> = {
-  "out-of-stock": {
-    bg: "bg-destructive/5 border-destructive/20",
-    icon: "bg-destructive/10 text-destructive",
-    badge: "bg-destructive text-destructive-foreground",
-  },
+const alertStyles: Record<InAppNotificationItem["severity"], { bg: string; icon: string }> = {
   critical: {
     bg: "bg-destructive/5 border-destructive/20",
     icon: "bg-destructive/10 text-destructive",
-    badge: "bg-destructive text-destructive-foreground",
   },
   warning: {
     bg: "bg-warning/5 border-warning/20",
     icon: "bg-warning/10 text-warning",
-    badge: "bg-warning text-warning-foreground",
+  },
+  info: {
+    bg: "bg-primary/5 border-primary/20",
+    icon: "bg-primary/10 text-primary",
   },
 };
 
-const ALERT_LABELS: Record<AlertSeverity, { title: string; description: (qty: number) => string }> =
-  {
-    "out-of-stock": {
-      title: "Out of Stock",
-      description: () => "No units remaining — item is out of stock",
-    },
-    critical: {
-      title: "Critical Stock Level",
-      description: (qty) => `Only ${qty} unit${qty === 1 ? "" : "s"} remaining`,
-    },
-    warning: {
-      title: "Low Stock Warning",
-      description: (qty) => `${qty} units remaining — consider restocking`,
-    },
-  };
-
-function deriveAlerts(
-  inventory: ReturnType<typeof useInventory>["inventory"],
-  lowStockThreshold: number,
-  criticalStockThreshold: number,
-): Omit<StockAlert, "read">[] {
-  const alerts: Omit<StockAlert, "read">[] = [];
-
-  for (const item of inventory) {
-    const status = getStockStatus(item.quantity, lowStockThreshold, criticalStockThreshold);
-    if (status === "in-stock") continue;
-
-    const severity: AlertSeverity =
-      status === "out-of-stock" ? "out-of-stock" : status === "critical" ? "critical" : "warning";
-
-    const label = ALERT_LABELS[severity];
-    alerts.push({
-      id: item.id,
-      severity,
-      title: label.title,
-      description: label.description(item.quantity),
-      device: `${item.brand} ${item.deviceName} — ${item.storage} (${item.grade})`,
-    });
-  }
-
-  return alerts.sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
-}
-
 export default function Alerts() {
-  const { inventory, isLoading } = useInventory();
-  const { lowStockThreshold, criticalStockThreshold, readIds, markAsRead, markAllAsRead } =
-    useNotificationSettings();
+  const { isLoading, notifications } = useNotificationsFeed();
+  const { markAsRead, markAllAsRead, readIds } = useNotificationSettings();
+  const [activeTab, setActiveTab] = useState<
+    "all" | "inventory" | "invitation" | "manual_sale" | "stock"
+  >("all");
   const [showUnreadOnly, setShowUnreadOnly] = useState(false);
   const [search, setSearch] = useState("");
-
   const allAlerts = useMemo(
     () =>
-      deriveAlerts(inventory, lowStockThreshold, criticalStockThreshold).map((alert) => ({
-        ...alert,
-        read: readIds.has(alert.id),
+      notifications.map((notification) => ({
+        ...notification,
+        read: readIds.has(notification.id),
       })),
-    [inventory, lowStockThreshold, criticalStockThreshold, readIds],
+    [notifications, readIds],
   );
-
-  const filteredAlerts = allAlerts.filter((a) => {
-    if (showUnreadOnly && a.read) return false;
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      return a.device.toLowerCase().includes(q) || a.title.toLowerCase().includes(q);
-    }
-    return true;
-  });
-
-  const unreadCount = allAlerts.filter((a) => !a.read).length;
+  const filteredAlerts = useMemo(
+    () =>
+      allAlerts.filter((alert) => {
+        if (showUnreadOnly && alert.read) return false;
+        if (activeTab !== "all" && alert.type !== activeTab) return false;
+        if (!search.trim()) return true;
+        const query = search.trim().toLowerCase();
+        return (
+          alert.title.toLowerCase().includes(query) ||
+          alert.description.toLowerCase().includes(query)
+        );
+      }),
+    [activeTab, allAlerts, search, showUnreadOnly],
+  );
+  const unreadCount = useMemo(() => allAlerts.filter((alert) => !alert.read).length, [allAlerts]);
 
   const handleMarkAllAsRead = () => {
     markAllAsRead(allAlerts.map((a) => a.id));
@@ -135,8 +78,8 @@ export default function Alerts() {
             <h2 className="text-2xl font-semibold text-foreground">Alerts</h2>
             <p className="text-sm text-muted-foreground mt-1">
               {allAlerts.length === 0
-                ? "All items are well-stocked"
-                : `${unreadCount} unread · ${allAlerts.length} total stock alert${allAlerts.length === 1 ? "" : "s"}`}
+                ? "No notifications yet"
+                : `${unreadCount} unread · ${allAlerts.length} total notifications`}
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -153,28 +96,44 @@ export default function Alerts() {
         </div>
 
         {/* Filter bar */}
-        <div className="flex items-center gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-            <Input
-              placeholder="Search by device or alert type…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 bg-card focus-visible:ring-inset focus-visible:ring-offset-0"
-            />
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <Switch
-              checked={showUnreadOnly}
-              onCheckedChange={setShowUnreadOnly}
-              id="unread-filter"
-            />
-            <label
-              htmlFor="unread-filter"
-              className="text-sm text-muted-foreground cursor-pointer select-none whitespace-nowrap"
-            >
-              Unread only
-            </label>
+        <div className="flex flex-col gap-3">
+          <Tabs
+            value={activeTab}
+            onValueChange={(value) =>
+              setActiveTab(value as "all" | "inventory" | "invitation" | "manual_sale" | "stock")
+            }
+          >
+            <TabsList>
+              <TabsTrigger value="all">All</TabsTrigger>
+              <TabsTrigger value="inventory">Inventory</TabsTrigger>
+              <TabsTrigger value="invitation">Invitations</TabsTrigger>
+              <TabsTrigger value="manual_sale">Manual sales</TabsTrigger>
+              <TabsTrigger value="stock">Stock</TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                placeholder="Search notifications..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 bg-card focus-visible:ring-inset focus-visible:ring-offset-0"
+              />
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Switch
+                checked={showUnreadOnly}
+                onCheckedChange={setShowUnreadOnly}
+                id="unread-filter"
+              />
+              <label
+                htmlFor="unread-filter"
+                className="text-sm text-muted-foreground cursor-pointer select-none whitespace-nowrap"
+              >
+                Unread only
+              </label>
+            </div>
           </div>
         </div>
       </div>
@@ -183,9 +142,9 @@ export default function Alerts() {
       <div className="flex-1 min-h-0 overflow-y-auto space-y-3 pr-0.5">
         {filteredAlerts.length === 0 ? (
           <EmptyState
-            title={showUnreadOnly ? "No unread alerts" : "No stock alerts"}
+            title={showUnreadOnly ? "No unread alerts" : "No notifications"}
             description={
-              showUnreadOnly ? "You're all caught up!" : "All inventory items are well-stocked."
+              showUnreadOnly ? "You're all caught up!" : "No notifications match this filter."
             }
           />
         ) : (
@@ -205,7 +164,7 @@ export default function Alerts() {
               >
                 <div className="flex items-center gap-3">
                   <div className={cn("p-1.5 rounded-lg flex-shrink-0", styles.icon)}>
-                    <AlertTriangle className="h-4 w-4" />
+                    <Bell className="h-4 w-4" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
@@ -225,7 +184,7 @@ export default function Alerts() {
                       </div>
                     </div>
                     <p className="text-sm font-medium text-foreground mt-0.5 truncate">
-                      {alert.device}
+                      {alert.description}
                     </p>
                   </div>
                 </div>

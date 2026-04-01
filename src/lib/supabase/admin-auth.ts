@@ -1,37 +1,27 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/client/server";
+import { getAuthUser, getUserMembership } from "@/lib/supabase/auth-helpers";
 
 /**
- * Ensure the current request is made by an authenticated admin user.
+ * Ensure the current request is made by an authenticated company admin.
+ *
+ * Roles that pass: 'owner', 'manager', 'inventory_admin'
+ * Roles live in `company_users` — the old `user_profiles` table is not used.
  *
  * Returns:
- * - `null` when the user is authenticated and has `role = 'admin'`
- * - a `NextResponse` with 401/403 when unauthorized/forbidden
- *
- * This helper is meant to be used only from server-side route handlers.
+ * - `null`         when authorized
+ * - NextResponse   with 401/403 when not
  */
 export async function ensureAdmin(): Promise<NextResponse | null> {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) {
+  const user = await getAuthUser();
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { data: profile, error: profileError } = await supabase
-    .from("user_profiles")
-    .select("role")
-    .eq("user_id", user.id)
-    .single<{ role: string }>();
-
-  if (profileError || !profile || profile.role !== "admin") {
+  const membership = await getUserMembership(user.id);
+  const adminRoles = ["owner", "manager", "inventory_admin"];
+  if (!membership || !adminRoles.includes(membership.membership.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   return null;
 }
-

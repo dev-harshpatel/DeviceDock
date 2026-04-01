@@ -13,7 +13,7 @@ This plan extends `docs/INVENTORY_ADD_AND_SALE_FLOW_PLAN.md` and includes sheet-
 - Reuse existing UI patterns/components (shadcn + Tailwind + current design tokens).
 - Keep imports sorted alphabetically.
 - Use strict TypeScript typing; no `any`/`unknown` unless truly unavoidable.
-- Apply additive-only SQL migrations in `supabase/migrations/`.
+- Apply additive-only SQL migrations (this project often uses `supabase/example-migration/migrations/`; mirror into `supabase/migrations/` if your deploy pipeline requires both).
 - Enforce tenant isolation + RBAC on all privileged reads/writes.
 - Run lint/type checks for touched files before phase completion.
 - Deliver phase with:
@@ -53,6 +53,27 @@ If scope expands and one of the currently not-required skills becomes relevant, 
 
 ---
 
+## Implementation status (living checklist)
+
+Last reviewed against the codebase alongside `docs/imei_phases.md`. Update this section when a phase ships.
+
+| Plan       | Status                            | Evidence / notes                                                                                                                                                                                                                                                                                                                                        |
+| ---------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **PLAN-0** | **Partial**                       | `INVENTORY_ADD_AND_SALE_FLOW_PLAN.md` + this file exist; not all open questions are explicitly closed in one “contract freeze” doc.                                                                                                                                                                                                                     |
+| **PLAN-1** | **Done** (example-migration path) | `supabase/example-migration/migrations/030_imei_inventory_foundation.sql`, `031_inventory_identifiers.sql` — identifiers table + indexes; inventory row is config-level.                                                                                                                                                                                |
+| **PLAN-2** | **Done**                          | `AddProductModal`: single add, review step, IMEI/serial lists vs quantity, `inventory_identifiers` via `addInventoryIdentifier`.                                                                                                                                                                                                                        |
+| **PLAN-3** | **Done** (in modal)               | Bulk scan/review in `AddProductModal`; `AddMultipleProducts` multi-row flow.                                                                                                                                                                                                                                                                            |
+| **PLAN-4** | **Done**                          | `parser.ts` requires **IMEI** and **Serial Number** headers; row validation matches quantity vs IMEI+serial token counts; file-level duplicate detection; `mergeDatabaseIdentifierConflicts` against `inventory_identifiers`; `UploadProducts` inserts inventory then `addInventoryIdentifier` per unit (rollback inventory row on identifier failure). |
+| **PLAN-5** | **Done**                          | `ManualSaleModal`: “Sell by IMEI or serial” search (`lookupIdentifierForSale`), adds lines with `inventoryIdentifierId`; submit calls `markInventoryIdentifierSold` then `decreaseQuantity`, with `revertInventoryIdentifierSold` if quantity update fails. Colour totals merge browse + scanned units per SKU.                                         |
+| **PLAN-6** | **Partial**                       | Company-scoped contexts and API helpers exist; full pass on every mutation path + audit parity not verified as a single phase.                                                                                                                                                                                                                          |
+| **PLAN-7** | **Not done**                      | No dedicated test matrix execution recorded here.                                                                                                                                                                                                                                                                                                       |
+
+**Upload page UX:** Sample Excel includes IMEI/Serial columns; parser and import path persist `inventory_identifiers`.
+
+**Selling:** Manual sale supports browse-by-SKU plus **Sell by IMEI or serial** (exact match, `inventory_identifiers` updated on record sale).
+
+---
+
 ## Phase Overview
 
 - `PLAN-0`: Discovery + contract freeze
@@ -69,6 +90,8 @@ Each phase below includes scope, deliverables, acceptance criteria, and test che
 ---
 
 ## PLAN-0 — Discovery and Contract Freeze
+
+**Status:** Partial (see table above).
 
 ## Goal
 
@@ -97,6 +120,8 @@ Freeze implementation assumptions so all later phases execute in one shot withou
 ---
 
 ## PLAN-1 — Database Foundations (Identifiers, Status, Audit)
+
+**Status:** Done in example-migration (`030`, `031`). Align production DB with those migrations if not already applied.
 
 ## Goal
 
@@ -146,6 +171,8 @@ Prepare safe, additive schema to support single add, bulk add, sheet upload vali
 
 ## PLAN-2 — Add Product Mode Selector + Single Product Flow
 
+**Status:** Done (`AddProductModal`, review step, identifiers).
+
 ## Goal
 
 Introduce mode selection and complete single-product add with overview confirmation.
@@ -185,6 +212,8 @@ Introduce mode selection and complete single-product add with overview confirmat
 
 ## PLAN-3 — Bulk Product Scan Flow
 
+**Status:** Done in product modal / add-multiple flows (see implementation status table).
+
 ## Goal
 
 Support high-speed batch scanning for same-config devices with row-level validation and summary.
@@ -219,6 +248,8 @@ Support high-speed batch scanning for same-config devices with row-level validat
 ---
 
 ## PLAN-4 — Sheet Upload Hardening (Same Flow, Mandatory Identifiers)
+
+**Status:** Done — see `parser.ts`, `upload-identifier-validation.ts`, `UploadProducts.tsx`, `parse-identifier-list.ts`.
 
 ## Goal
 
@@ -268,6 +299,8 @@ Keep existing sheet-upload UX flow unchanged while enforcing complete identifier
 
 ## PLAN-5 — Sale Recording by Scan/Search
 
+**Status:** Done — see `InventoryContext` (`lookupIdentifierForSale`, `markInventoryIdentifierSold`, `revertInventoryIdentifierSold`) and `ManualSaleModal`.
+
 ## Goal
 
 Allow admin to scan/type identifier, find item quickly, and mark as sold with robust guardrails.
@@ -300,6 +333,8 @@ Allow admin to scan/type identifier, find item quickly, and mark as sold with ro
 
 ## PLAN-6 — Security, RBAC, Tenancy, and Reliability Hardening
 
+**Status:** Partial — ongoing; full audit of all IMEI paths not complete.
+
 ## Goal
 
 Guarantee no cross-tenant leakage and only authorized roles can mutate inventory/sales.
@@ -328,6 +363,8 @@ Guarantee no cross-tenant leakage and only authorized roles can mutate inventory
 ---
 
 ## PLAN-7 — QA, Regression, Rollout, and Monitoring
+
+**Status:** Not done — use test matrix below when PLAN-4/5 ship.
 
 ## Goal
 

@@ -38,6 +38,7 @@ import {
   Trash2,
   XCircle,
 } from "lucide-react";
+import { supabase } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getStatusColor, getStatusLabel } from "@/lib/utils/status";
@@ -87,6 +88,45 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
   const [colorAssignments, setColorAssignments] = useState<
     Record<string, { color: string; quantity: number }[]>
   >({});
+
+  // identifierLabel keyed by inventoryIdentifierId — fetched for items that pre-date
+  // the identifierLabel field being stored in the order JSON.
+  const [fetchedIdentifierLabels, setFetchedIdentifierLabels] = useState<Record<string, string>>(
+    {},
+  );
+
+  useEffect(() => {
+    if (!open || !order) {
+      setFetchedIdentifierLabels({});
+      return;
+    }
+    const items = Array.isArray(order.items) ? order.items : [];
+    // Only fetch for items that have an identifier ID but no stored label
+    const idsToFetch = items
+      .filter((oi) => oi.inventoryIdentifierId && !oi.identifierLabel)
+      .map((oi) => oi.inventoryIdentifierId as string);
+
+    if (idsToFetch.length === 0) return;
+
+    (supabase as any)
+      .from("inventory_identifiers")
+      .select("id, imei, serial_number")
+      .in("id", idsToFetch)
+      .then(
+        ({
+          data,
+        }: {
+          data: { id: string; imei: string | null; serial_number: string | null }[] | null;
+        }) => {
+          if (!data) return;
+          const map: Record<string, string> = {};
+          for (const row of data) {
+            map[row.id] = row.imei ?? row.serial_number ?? row.id;
+          }
+          setFetchedIdentifierLabels(map);
+        },
+      );
+  }, [open, order]);
 
   useEffect(() => {
     const fetchCustomerEmail = async () => {
@@ -447,6 +487,20 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
                                     Quantity: {orderItem.quantity || 0}
                                   </span>
                                 </div>
+                                {/* IMEI / serial — from stored label or fetched fallback */}
+                                {(orderItem.identifierLabel ||
+                                  (orderItem.inventoryIdentifierId &&
+                                    fetchedIdentifierLabels[orderItem.inventoryIdentifierId])) && (
+                                  <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                                    <span className="text-xs text-muted-foreground">
+                                      IMEI/Serial:
+                                    </span>
+                                    <span className="font-mono text-xs bg-muted px-2 py-0.5 rounded text-foreground select-all">
+                                      {orderItem.identifierLabel ??
+                                        fetchedIdentifierLabels[orderItem.inventoryIdentifierId!]}
+                                    </span>
+                                  </div>
+                                )}
                                 {/* Colour breakdown — admin only */}
                                 {itemColors.length > 0 && (
                                   <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">

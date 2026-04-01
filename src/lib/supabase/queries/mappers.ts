@@ -130,6 +130,12 @@ export const dbRowToOrder = (row: OrderRow): Order => {
     const pricePerUnit = readNumber(raw.pricePerUnit ?? raw.price_per_unit);
     return {
       quantity,
+      ...(typeof (oi as any).inventoryIdentifierId === "string" && {
+        inventoryIdentifierId: (oi as any).inventoryIdentifierId as string,
+      }),
+      ...(typeof (oi as any).identifierLabel === "string" && {
+        identifierLabel: (oi as any).identifierLabel as string,
+      }),
       item: {
         id: readString(raw.id ?? raw.item_id),
         deviceName: readString(raw.deviceName ?? raw.device_name),

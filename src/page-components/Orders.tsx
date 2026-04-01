@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { Order, OrderStatus } from "@/types/order";
 import { Button } from "@/components/ui/button";
@@ -17,7 +18,6 @@ import { RejectionNote } from "@/components/common/RejectionNote";
 import { Input } from "@/components/ui/input";
 import { cn, formatDateInOntario, formatPrice } from "@/lib/utils";
 import { OrderDetailsModal } from "@/components/modals/OrderDetailsModal";
-import { ManualSaleModal } from "@/components/modals/ManualSaleModal";
 // TODO: Remove if Request Device feature is not required in later development
 // import { AdminWishDetailsModal } from "@/components/modals/AdminWishDetailsModal";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -47,11 +47,11 @@ import { getStatusColor, getStatusLabel } from "@/lib/utils/status";
 import { useCompany } from "@/contexts/CompanyContext";
 
 export default function Orders() {
-  const { companyId } = useCompany();
+  const router = useRouter();
+  const { companyId, slug } = useCompany();
   const [activeTab, setActiveTab] = useState<"orders" | "deleted">("orders");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
-  const [manualSaleOpen, setManualSaleOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<OrderStatus | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [userEmails, setUserEmails] = useState<Record<string, string>>({});
@@ -182,7 +182,8 @@ export default function Orders() {
           const data = await response.json();
           setUserEmails((prev) => ({ ...prev, ...data.emails }));
         }
-      } catch (error) {
+      } catch {
+        /* ignore email fetch failures */
       } finally {
         setLoadingEmails(false);
       }
@@ -245,8 +246,8 @@ export default function Orders() {
   }, []);
 
   const handleOpenManualSale = useCallback(() => {
-    setManualSaleOpen(true);
-  }, []);
+    router.push(`/${slug}/orders/manual-sale`);
+  }, [router, slug]);
 
   if (isLoading && activeTab === "orders") {
     return <Loader text="Loading orders..." />;
@@ -565,8 +566,6 @@ export default function Orders() {
       </Tabs>
 
       <OrderDetailsModal open={modalOpen} onOpenChange={setModalOpen} order={selectedOrder} />
-
-      <ManualSaleModal open={manualSaleOpen} onOpenChange={setManualSaleOpen} />
 
       {/* TODO: Remove if Request Device feature is not required in later development */}
       {/* <AdminWishDetailsModal
