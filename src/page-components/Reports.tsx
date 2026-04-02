@@ -7,15 +7,20 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
   PieChart,
   Pie,
   Cell,
-  LineChart,
-  Line,
-  Legend,
+  AreaChart,
+  Area,
 } from "recharts";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  ChartLegend,
+  ChartLegendContent,
+  type ChartConfig,
+} from "@/components/ui/chart";
 import { useInventory } from "@/contexts/InventoryContext";
 import { useOrders } from "@/contexts/OrdersContext";
 import { getStockStatus } from "@/data/inventory";
@@ -64,6 +69,30 @@ const BG_COLORS = [
   "hsla(0, 72%, 51%, 0.12)",
 ];
 
+// ─── Chart configs (shadcn/ui ChartContainer) ─────────────────────────────────
+
+const trendChartConfig = {
+  orders: { label: "Orders", color: "hsl(245, 58%, 60%)" },
+  units: { label: "Units", color: "hsl(38, 92%, 50%)" },
+  value: { label: "Revenue ($)", color: "hsl(142, 76%, 36%)" },
+} satisfies ChartConfig;
+
+const valueByDeviceConfig = {
+  value: { label: "Inventory Value", color: "hsl(245, 58%, 60%)" },
+} satisfies ChartConfig;
+
+const gradeChartConfig = {
+  value: { label: "Units" },
+} satisfies ChartConfig;
+
+const orderStatusConfig = {
+  value: { label: "Orders" },
+} satisfies ChartConfig;
+
+const revenueByStatusConfig = {
+  value: { label: "Revenue", color: "hsl(142, 76%, 36%)" },
+} satisfies ChartConfig;
+
 interface ReportFilters {
   dateRange: {
     from: Date | null;
@@ -88,6 +117,17 @@ export default function Reports() {
     grade: "all",
     brand: "all",
   });
+
+  // Trend chart grouping — derived from the selected date range
+  const trendGrouping = useMemo<"day" | "week" | "month">(() => {
+    if (!filters.dateRange.from || !filters.dateRange.to) return "month";
+    const daysDiff = Math.ceil(
+      (filters.dateRange.to.getTime() - filters.dateRange.from.getTime()) / (1000 * 60 * 60 * 24),
+    );
+    if (daysDiff <= 14) return "day";
+    if (daysDiff <= 90) return "week";
+    return "month";
+  }, [filters.dateRange.from, filters.dateRange.to]);
 
   // Get unique brands from inventory
   const availableBrands = useMemo(() => {
@@ -136,54 +176,42 @@ export default function Reports() {
     return filtered;
   }, [inventory, filters.grade, filters.brand]);
 
-  // Generate trend data from orders (grouped by month/week/day based on range)
+  // Generate trend data from orders — grouped by the trendGrouping toggle (day / week / month)
   const trendData = useMemo(() => {
     if (filteredOrders.length === 0) return [];
 
-    const ordersByPeriod = new Map<string, { units: number; value: number; orders: number }>();
+    const ordersByPeriod = new Map<
+      string,
+      { units: number; value: number; orders: number; sortKey: number }
+    >();
 
     filteredOrders.forEach((order) => {
       const orderDate = new Date(order.createdAt);
       let periodKey: string;
+      let sortKey: number;
 
-      // Determine grouping based on date range
-      const daysDiff =
-        filters.dateRange.from && filters.dateRange.to
-          ? Math.ceil(
-              (filters.dateRange.to.getTime() - filters.dateRange.from.getTime()) /
-                (1000 * 60 * 60 * 24),
-            )
-          : 365; // Default to yearly if no range
-
-      if (daysDiff <= 7) {
-        // Group by day
+      if (trendGrouping === "day") {
         periodKey = format(orderDate, "MMM dd");
-      } else if (daysDiff <= 90) {
-        // Group by week
+        sortKey = orderDate.setHours(0, 0, 0, 0);
+      } else if (trendGrouping === "week") {
         const weekStart = new Date(orderDate);
         weekStart.setDate(orderDate.getDate() - orderDate.getDay());
+        weekStart.setHours(0, 0, 0, 0);
         periodKey = format(weekStart, "MMM dd");
+        sortKey = weekStart.getTime();
       } else {
-        // Group by month
         periodKey = format(orderDate, "MMM yyyy");
+        sortKey = new Date(orderDate.getFullYear(), orderDate.getMonth(), 1).getTime();
       }
 
-      const existing = ordersByPeriod.get(periodKey) || {
-        units: 0,
-        value: 0,
-        orders: 0,
-      };
-
-      // Calculate units and value from order items
+      const existing = ordersByPeriod.get(periodKey) ?? { units: 0, value: 0, orders: 0, sortKey };
       let orderUnits = 0;
       order.items.forEach((item) => {
         orderUnits += item.quantity;
       });
-
       existing.units += orderUnits;
       existing.value += order.totalPrice;
       existing.orders += 1;
-
       ordersByPeriod.set(periodKey, existing);
     });
 
@@ -193,14 +221,10 @@ export default function Reports() {
         units: data.units,
         value: data.value,
         orders: data.orders,
+        sortKey: data.sortKey,
       }))
-      .sort((a, b) => {
-        // Sort by date
-        const dateA = new Date(a.period);
-        const dateB = new Date(b.period);
-        return dateA.getTime() - dateB.getTime();
-      });
-  }, [filteredOrders, filters.dateRange]);
+      .sort((a, b) => a.sortKey - b.sortKey);
+  }, [filteredOrders, trendGrouping]);
 
   // Stock by Grade (filtered)
   const stockByGrade = useMemo(() => {
@@ -698,72 +722,123 @@ export default function Reports() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Orders & Revenue Trend */}
           <div className="bg-card rounded-lg border border-border shadow-soft p-6 lg:col-span-2">
-            <h3 className="font-semibold text-foreground mb-4">Orders & Revenue Trend</h3>
+            {/* Card header */}
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-1 mb-5">
+              <div>
+                <h3 className="font-semibold text-foreground">Orders & Revenue Trend</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {trendGrouping === "day"
+                    ? "Daily"
+                    : trendGrouping === "week"
+                      ? "Weekly"
+                      : "Monthly"}{" "}
+                  breakdown · orders, units sold, and revenue
+                  {!filters.dateRange.from && (
+                    <span className="ml-1 italic">(select a date range to change granularity)</span>
+                  )}
+                </p>
+              </div>
+              {/* Active grouping badge */}
+              <span className="self-start sm:self-auto inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground shrink-0">
+                {trendGrouping === "day"
+                  ? "By Day"
+                  : trendGrouping === "week"
+                    ? "By Week"
+                    : "By Month"}
+              </span>
+            </div>
+
             {trendData.length > 0 ? (
               <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={trendData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis dataKey="period" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                    <YAxis yAxisId="left" stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                <ChartContainer config={trendChartConfig} className="h-full w-full">
+                  <AreaChart data={trendData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="fillOrders" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--color-orders)" stopOpacity={0.25} />
+                        <stop offset="95%" stopColor="var(--color-orders)" stopOpacity={0.02} />
+                      </linearGradient>
+                      <linearGradient id="fillUnits" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--color-units)" stopOpacity={0.25} />
+                        <stop offset="95%" stopColor="var(--color-units)" stopOpacity={0.02} />
+                      </linearGradient>
+                      <linearGradient id="fillRevenue" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--color-value)" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="var(--color-value)" stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid vertical={false} />
+                    <XAxis
+                      dataKey="period"
+                      tickLine={false}
+                      axisLine={false}
+                      tickMargin={8}
+                      minTickGap={32}
+                      fontSize={12}
+                    />
+                    <YAxis
+                      yAxisId="left"
+                      tickLine={false}
+                      axisLine={false}
+                      fontSize={12}
+                      width={32}
+                    />
                     <YAxis
                       yAxisId="right"
                       orientation="right"
-                      stroke="hsl(var(--muted-foreground))"
+                      tickLine={false}
+                      axisLine={false}
                       fontSize={12}
+                      width={48}
                       tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
                     />
-                    <Tooltip
-                      cursor={{
-                        stroke: "hsl(var(--muted-foreground))",
-                        strokeWidth: 1,
-                        opacity: 0.5,
-                      }}
-                      contentStyle={{
-                        backgroundColor: "hsl(var(--popover))",
-                        border: "1px solid hsl(var(--primary) / 0.4)",
-                        borderRadius: "8px",
-                        color: "hsl(var(--popover-foreground))",
-                        boxShadow: "0 4px 12px hsl(0 0% 0% / 0.4)",
-                        fontSize: "13px",
-                      }}
-                      labelStyle={{ color: "hsl(var(--popover-foreground))" }}
-                      itemStyle={{ color: "hsl(var(--popover-foreground))" }}
+                    <ChartTooltip
+                      cursor={false}
+                      content={
+                        <ChartTooltipContent
+                          indicator="dot"
+                          labelFormatter={(label) => (
+                            <span className="font-medium text-foreground">{label}</span>
+                          )}
+                        />
+                      }
                     />
-                    <Legend />
-                    <Line
+                    <Area
                       yAxisId="left"
-                      type="monotone"
+                      type="natural"
                       dataKey="orders"
-                      stroke="hsl(245, 58%, 60%)"
+                      stroke="var(--color-orders)"
                       strokeWidth={2}
-                      dot={{ r: 4 }}
-                      name="Orders"
+                      fill="url(#fillOrders)"
+                      dot={false}
+                      activeDot={{ r: 5, strokeWidth: 0 }}
                     />
-                    <Line
+                    <Area
                       yAxisId="left"
-                      type="monotone"
+                      type="natural"
                       dataKey="units"
-                      stroke="hsl(38, 92%, 50%)"
+                      stroke="var(--color-units)"
                       strokeWidth={2}
-                      dot={{ r: 4 }}
-                      name="Units"
+                      fill="url(#fillUnits)"
+                      dot={false}
+                      activeDot={{ r: 5, strokeWidth: 0 }}
                     />
-                    <Line
+                    <Area
                       yAxisId="right"
-                      type="monotone"
+                      type="natural"
                       dataKey="value"
-                      stroke="hsl(142, 76%, 36%)"
+                      stroke="var(--color-value)"
                       strokeWidth={2}
-                      dot={{ r: 4 }}
-                      name="Revenue ($)"
+                      fill="url(#fillRevenue)"
+                      dot={false}
+                      activeDot={{ r: 5, strokeWidth: 0 }}
                     />
-                  </LineChart>
-                </ResponsiveContainer>
+                    <ChartLegend content={<ChartLegendContent />} />
+                  </AreaChart>
+                </ChartContainer>
               </div>
             ) : (
-              <div className="h-72 flex items-center justify-center text-muted-foreground">
-                No data available for the selected filters
+              <div className="h-72 flex items-center justify-center text-muted-foreground text-sm">
+                No order data available for the selected filters
               </div>
             )}
           </div>
@@ -773,39 +848,23 @@ export default function Reports() {
             <h3 className="font-semibold text-foreground mb-4">Value by Device</h3>
             {valueByDevice.length > 0 ? (
               <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
+                <ChartContainer config={valueByDeviceConfig} className="h-full w-full">
                   <BarChart data={valueByDevice} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <CartesianGrid strokeDasharray="3 3" />
                     <XAxis
                       type="number"
-                      stroke="hsl(var(--muted-foreground))"
                       fontSize={12}
                       tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
                     />
-                    <YAxis
-                      type="category"
-                      dataKey="name"
-                      stroke="hsl(var(--muted-foreground))"
-                      fontSize={11}
-                      width={80}
+                    <YAxis type="category" dataKey="name" fontSize={11} width={80} />
+                    <ChartTooltip
+                      content={
+                        <ChartTooltipContent formatter={(value) => formatPrice(value as number)} />
+                      }
                     />
-                    <Tooltip
-                      formatter={(value: number) => formatPrice(value)}
-                      cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }}
-                      contentStyle={{
-                        backgroundColor: "hsl(var(--popover))",
-                        border: "1px solid hsl(var(--primary) / 0.4)",
-                        borderRadius: "8px",
-                        color: "hsl(var(--popover-foreground))",
-                        boxShadow: "0 4px 12px hsl(0 0% 0% / 0.4)",
-                        fontSize: "13px",
-                      }}
-                      labelStyle={{ color: "hsl(var(--popover-foreground))" }}
-                      itemStyle={{ color: "hsl(var(--popover-foreground))" }}
-                    />
-                    <Bar dataKey="value" fill="hsl(245, 58%, 60%)" radius={[0, 4, 4, 0]} />
+                    <Bar dataKey="value" fill="var(--color-value)" radius={[0, 4, 4, 0]} />
                   </BarChart>
-                </ResponsiveContainer>
+                </ChartContainer>
               </div>
             ) : (
               <div className="h-64 flex items-center justify-center text-muted-foreground">
@@ -819,7 +878,7 @@ export default function Reports() {
             <h3 className="font-semibold text-foreground mb-4">Units by Grade</h3>
             {stockByGrade.length > 0 ? (
               <div className="h-64 flex items-center justify-center">
-                <ResponsiveContainer width="100%" height="100%">
+                <ChartContainer config={gradeChartConfig} className="h-full w-full">
                   <PieChart>
                     <Pie
                       data={stockByGrade}
@@ -839,20 +898,9 @@ export default function Reports() {
                         />
                       ))}
                     </Pie>
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "hsl(var(--popover))",
-                        border: "1px solid hsl(var(--primary) / 0.4)",
-                        borderRadius: "8px",
-                        color: "hsl(var(--popover-foreground))",
-                        boxShadow: "0 4px 12px hsl(0 0% 0% / 0.4)",
-                        fontSize: "13px",
-                      }}
-                      labelStyle={{ color: "hsl(var(--popover-foreground))" }}
-                      itemStyle={{ color: "hsl(var(--popover-foreground))" }}
-                    />
+                    <ChartTooltip content={<ChartTooltipContent nameKey="name" hideLabel />} />
                   </PieChart>
-                </ResponsiveContainer>
+                </ChartContainer>
               </div>
             ) : (
               <div className="h-64 flex items-center justify-center text-muted-foreground">
@@ -866,7 +914,7 @@ export default function Reports() {
             <h3 className="font-semibold text-foreground mb-4">Order Status Distribution</h3>
             {orderStatusDistribution.length > 0 ? (
               <div className="h-64 flex items-center justify-center">
-                <ResponsiveContainer width="100%" height="100%">
+                <ChartContainer config={orderStatusConfig} className="h-full w-full">
                   <PieChart>
                     <Pie
                       data={orderStatusDistribution}
@@ -883,20 +931,9 @@ export default function Reports() {
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "hsl(var(--popover))",
-                        border: "1px solid hsl(var(--primary) / 0.4)",
-                        borderRadius: "8px",
-                        color: "hsl(var(--popover-foreground))",
-                        boxShadow: "0 4px 12px hsl(0 0% 0% / 0.4)",
-                        fontSize: "13px",
-                      }}
-                      labelStyle={{ color: "hsl(var(--popover-foreground))" }}
-                      itemStyle={{ color: "hsl(var(--popover-foreground))" }}
-                    />
+                    <ChartTooltip content={<ChartTooltipContent nameKey="name" hideLabel />} />
                   </PieChart>
-                </ResponsiveContainer>
+                </ChartContainer>
               </div>
             ) : (
               <div className="h-64 flex items-center justify-center text-muted-foreground">
@@ -910,32 +947,19 @@ export default function Reports() {
             <h3 className="font-semibold text-foreground mb-4">Revenue by Status</h3>
             {revenueByStatus.length > 0 ? (
               <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
+                <ChartContainer config={revenueByStatusConfig} className="h-full w-full">
                   <BarChart data={revenueByStatus}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                    <YAxis
-                      stroke="hsl(var(--muted-foreground))"
-                      fontSize={12}
-                      tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" fontSize={12} />
+                    <YAxis fontSize={12} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
+                    <ChartTooltip
+                      content={
+                        <ChartTooltipContent formatter={(value) => formatPrice(value as number)} />
+                      }
                     />
-                    <Tooltip
-                      formatter={(value: number) => formatPrice(value)}
-                      cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }}
-                      contentStyle={{
-                        backgroundColor: "hsl(var(--popover))",
-                        border: "1px solid hsl(var(--primary) / 0.4)",
-                        borderRadius: "8px",
-                        color: "hsl(var(--popover-foreground))",
-                        boxShadow: "0 4px 12px hsl(0 0% 0% / 0.4)",
-                        fontSize: "13px",
-                      }}
-                      labelStyle={{ color: "hsl(var(--popover-foreground))" }}
-                      itemStyle={{ color: "hsl(var(--popover-foreground))" }}
-                    />
-                    <Bar dataKey="value" fill="hsl(142, 76%, 36%)" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="value" fill="var(--color-value)" radius={[4, 4, 0, 0]} />
                   </BarChart>
-                </ResponsiveContainer>
+                </ChartContainer>
               </div>
             ) : (
               <div className="h-64 flex items-center justify-center text-muted-foreground">

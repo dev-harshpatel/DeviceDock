@@ -1,16 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
-} from "recharts";
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  ChartLegend,
+  ChartLegendContent,
+  type ChartConfig,
+} from "@/components/ui/chart";
 import { useInventory } from "@/contexts/InventoryContext";
 import { useOrders } from "@/contexts/OrdersContext";
 import { formatPrice } from "@/lib/utils";
@@ -38,6 +37,13 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
 const formatPct = (v: number) => `${v.toFixed(2)}%`;
+
+// ─── Chart config (shadcn/ui ChartContainer) ──────────────────────────────────
+
+const hstTimelineConfig = {
+  hstPaid: { label: "HST Paid (ITC)", color: "hsl(217, 91%, 60%)" },
+  hstCollected: { label: "HST Collected", color: "hsl(142, 76%, 36%)" },
+} satisfies ChartConfig;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -826,41 +832,30 @@ export default function HSTReconciliation() {
                   over time.
                 </p>
                 <div className="h-72">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ChartContainer config={hstTimelineConfig} className="h-full w-full">
                     <BarChart data={timelineData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                      <XAxis dataKey="period" stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="period" fontSize={12} />
                       <YAxis
-                        stroke="hsl(var(--muted-foreground))"
                         fontSize={12}
                         tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
                       />
-                      <Tooltip
-                        formatter={(value: number) => formatPrice(value)}
-                        cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }}
-                        contentStyle={{
-                          backgroundColor: "hsl(var(--card))",
-                          border: "1px solid hsl(var(--border))",
-                          borderRadius: "8px",
-                          color: "hsl(var(--foreground))",
-                        }}
-                        labelStyle={{ color: "hsl(var(--foreground))" }}
+                      <ChartTooltip
+                        content={
+                          <ChartTooltipContent
+                            formatter={(value) => formatPrice(value as number)}
+                          />
+                        }
                       />
-                      <Legend />
-                      <Bar
-                        dataKey="hstPaid"
-                        name="HST Paid (ITC)"
-                        fill="hsl(217, 91%, 60%)"
-                        radius={[4, 4, 0, 0]}
-                      />
+                      <ChartLegend content={<ChartLegendContent />} />
+                      <Bar dataKey="hstPaid" fill="var(--color-hstPaid)" radius={[4, 4, 0, 0]} />
                       <Bar
                         dataKey="hstCollected"
-                        name="HST Collected"
-                        fill="hsl(142, 76%, 36%)"
+                        fill="var(--color-hstCollected)"
                         radius={[4, 4, 0, 0]}
                       />
                     </BarChart>
-                  </ResponsiveContainer>
+                  </ChartContainer>
                 </div>
               </div>
             )}
