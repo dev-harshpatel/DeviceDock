@@ -1,13 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useTransition } from "react";
 import { Order, OrderStatus } from "@/types/order";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Eye,
+  Loader2,
   RotateCcw,
   Search,
   ShoppingBag,
@@ -48,6 +49,7 @@ import { useCompany } from "@/contexts/CompanyContext";
 
 export default function Orders() {
   const router = useRouter();
+  const [isPendingManualSale, startManualSaleTransition] = useTransition();
   const { companyId, slug } = useCompany();
   const [activeTab, setActiveTab] = useState<"orders" | "deleted">("orders");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -246,7 +248,9 @@ export default function Orders() {
   }, []);
 
   const handleOpenManualSale = useCallback(() => {
-    router.push(`/${slug}/orders/manual-sale`);
+    startManualSaleTransition(() => {
+      router.push(`/${slug}/orders/manual-sale`);
+    });
   }, [router, slug]);
 
   if (isLoading && activeTab === "orders") {
@@ -313,10 +317,22 @@ export default function Orders() {
                     <SelectItem value="completed">Completed</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button onClick={handleOpenManualSale} className="gap-2 shrink-0">
-                  <ShoppingBag className="h-4 w-4" />
-                  <span className="hidden sm:inline">Record Sale</span>
-                  <span className="sm:hidden">Sale</span>
+                <Button
+                  type="button"
+                  onClick={handleOpenManualSale}
+                  disabled={isPendingManualSale}
+                  className="gap-2 shrink-0"
+                  aria-busy={isPendingManualSale}
+                >
+                  {isPendingManualSale ? (
+                    <Loader2 className="h-4 w-4 animate-spin shrink-0" aria-hidden />
+                  ) : (
+                    <ShoppingBag className="h-4 w-4 shrink-0" aria-hidden />
+                  )}
+                  <span className="hidden sm:inline">
+                    {isPendingManualSale ? "Opening…" : "Record Sale"}
+                  </span>
+                  <span className="sm:hidden">{isPendingManualSale ? "…" : "Sale"}</span>
                 </Button>
                 {hasActiveFilters && (
                   <Button

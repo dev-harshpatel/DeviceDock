@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { NavLink } from "@/components/layout/NavLink";
-import { Bell, ChevronLeft, ShoppingBag, X } from "lucide-react";
+import { Bell, ChevronLeft, ScanLine, ShoppingBag, X } from "lucide-react";
 import { Blocks } from "@/components/animate-ui/icons/blocks";
 import { Users } from "@/components/animate-ui/icons/users";
 import { ChartLine } from "@/components/animate-ui/icons/chart-line";
@@ -54,6 +54,10 @@ function HSTIcon({ className }: { className?: string }) {
   return <HandCoinsIcon size={20} className={className} />;
 }
 
+function ImeiLookupIcon({ className }: { className?: string }) {
+  return <ScanLine className={className} />;
+}
+
 function AppSettingsIcon({ className }: { className?: string }) {
   return <SettingsIcon size={20} className={className} />;
 }
@@ -85,6 +89,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Users", icon: UsersIcon, path: "/users", allowedRoles: ["owner"] },
   { label: "Alerts", icon: Bell, path: "/alerts" },
   { label: "Reports", icon: ReportsIcon, path: "/reports" },
+  { label: "IMEI Lookup", icon: ImeiLookupIcon, path: "/imei-lookup" },
   { label: "HST", icon: HSTIcon, path: "/hst", allowedRoles: ["owner", "manager"] },
   { label: "Settings", icon: AppSettingsIcon, path: "/settings", allowedRoles: ["owner"] },
 ];

@@ -8,3 +8,14 @@ export interface IdentifierSaleLookup {
   status: string;
   item: InventoryItem;
 }
+
+/** Result of a general IMEI lookup (all statuses). */
+export interface IdentifierFullLookup {
+  identifierId: string;
+  imei: string | null;
+  serialNumber: string | null;
+  status: string;
+  soldAt: string | null;
+  color: string | null;
+  item: InventoryItem;
+}

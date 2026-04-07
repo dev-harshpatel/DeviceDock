@@ -28,3 +28,8 @@ export const INVENTORY_SORT_ORDER = {
   created_at: { ascending: true },
   id: { ascending: true },
 } as const;
+
+// IMEI Label Dimensions (in millimeters) — adjust values as needed
+export const IMEI_LABEL_WIDTH_MM = 50;
+export const IMEI_LABEL_HEIGHT_MM = 25;
+export const IMEI_BARCODE_HEIGHT = 50; // barcode height in pixels for canvas rendering

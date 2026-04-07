@@ -1428,12 +1428,20 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
               Back
             </Button>
             <Button
+              type="button"
               disabled={!customerName.trim() || !paymentMethod || isSubmitting}
               onClick={handleSubmit}
-              className="gap-2"
+              className="gap-2 min-w-[148px] justify-center"
+              aria-busy={isSubmitting}
             >
-              {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-              Record Sale
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin shrink-0" aria-hidden />
+                  <span>Recording sale…</span>
+                </>
+              ) : (
+                "Record Sale"
+              )}
             </Button>
           </div>
         </div>

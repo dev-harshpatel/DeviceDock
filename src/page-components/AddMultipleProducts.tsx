@@ -65,6 +65,7 @@ interface BulkProductRowForm {
   serialText: string;
   storage: string;
   colorRows: ColourRow[];
+  colorMergeMode: boolean;
 }
 
 type BulkEditableField = keyof Omit<BulkProductRowForm, "selectedInventoryId">;
@@ -82,6 +83,7 @@ const createEmptyRow = (): BulkProductRowForm => ({
   serialText: "",
   storage: "",
   colorRows: [],
+  colorMergeMode: false,
 });
 
 const GRADE_STYLES: Record<string, string> = {
@@ -279,7 +281,15 @@ export default function AddMultipleProducts() {
     open: boolean;
     rowIndex: number | null;
     initialRows: ColourRow[];
-  }>({ open: false, rowIndex: null, initialRows: [] });
+    existingFullyAssigned: boolean;
+    suggestedColors: string[];
+  }>({
+    open: false,
+    rowIndex: null,
+    initialRows: [],
+    existingFullyAssigned: false,
+    suggestedColors: [],
+  });
   const [isLoadingColorRows, setIsLoadingColorRows] = useState(false);
 
   const inventoryPath = `/${slug}/inventory`;
@@ -335,6 +345,7 @@ export default function AddMultipleProducts() {
               serialText: "",
               selectedInventoryId: item.id,
               colorRows: [],
+              colorMergeMode: false,
             }
           : row,
       ),
@@ -392,6 +403,36 @@ export default function AddMultipleProducts() {
     });
   }, []);
 
+  // Merges new color quantities into existing DB colors (additive)
+  const mergeInventoryColors = useCallback(async (inventoryId: string, newRows: ColourRow[]) => {
+    const validRows = newRows.filter((r) => r.color.trim() && Number(r.quantity) > 0);
+    if (validRows.length === 0) return;
+
+    // Fetch existing colors from DB
+    const { data: existing, error: existingError } = await (supabase as any)
+      .from("inventory_colors")
+      .select("color, quantity")
+      .eq("inventory_id", inventoryId);
+    if (existingError) throw existingError;
+
+    const existingMap = new Map<string, number>(
+      (existing ?? []).map((row: { color: string; quantity: number }) => [row.color, row.quantity]),
+    );
+
+    // Add new quantities to existing
+    const mergedRows = validRows.map((row) => ({
+      inventory_id: inventoryId,
+      color: row.color.trim(),
+      quantity: (existingMap.get(row.color.trim()) ?? 0) + Number(row.quantity),
+      updated_at: new Date().toISOString(),
+    }));
+
+    const { error: upsertError } = await (supabase as any)
+      .from("inventory_colors")
+      .upsert(mergedRows, { onConflict: "inventory_id,color" });
+    if (upsertError) throw upsertError;
+  }, []);
+
   const saveInventoryColors = useCallback(async (inventoryId: string, rows: ColourRow[]) => {
     const validRows = rows
       .filter((row) => row.color.trim() && Number(row.quantity) > 0)
@@ -441,35 +482,28 @@ export default function AddMultipleProducts() {
       const row = rows[rowIndex];
       if (!row) return;
 
+      // Restocking an existing product — only assign colors for the new units
       if (row.selectedInventoryId) {
         setIsLoadingColorRows(true);
+        setColorDialogState({
+          open: true,
+          rowIndex,
+          initialRows: row.colorRows,
+          existingFullyAssigned: true,
+          suggestedColors: [],
+        });
         try {
           const { data, error } = await (supabase as any)
             .from("inventory_colors")
-            .select("color, quantity")
+            .select("color")
             .eq("inventory_id", row.selectedInventoryId)
             .order("color");
-          if (error) throw error;
-
-          const existingColors: ColourRow[] = (data ?? []).map(
-            (entry: { color: string; quantity: number }) => ({
-              color: entry.color,
-              quantity: String(entry.quantity),
-            }),
-          );
-
-          setColorDialogState({
-            open: true,
-            rowIndex,
-            initialRows: row.colorRows.length > 0 ? row.colorRows : existingColors,
-          });
+          if (!error && data) {
+            const colors = (data as { color: string }[]).map((d) => d.color);
+            setColorDialogState((prev) => ({ ...prev, suggestedColors: colors }));
+          }
         } catch {
-          setColorDialogState({
-            open: true,
-            rowIndex,
-            initialRows: row.colorRows,
-          });
-          toast.error("Could not load existing colours. You can still assign manually.");
+          // Dropdown won't have suggestions — user can still type manually
         } finally {
           setIsLoadingColorRows(false);
         }
@@ -480,9 +514,11 @@ export default function AddMultipleProducts() {
         open: true,
         rowIndex,
         initialRows: row.colorRows,
+        existingFullyAssigned: false,
+        suggestedColors: [],
       });
     },
-    [rows],
+    [rows, inventory],
   );
 
   const handleColorDialogConfirm = useCallback(
@@ -490,12 +526,21 @@ export default function AddMultipleProducts() {
       const rowIndex = colorDialogState.rowIndex;
       if (rowIndex === null) return;
 
+      const mergeMode = colorDialogState.existingFullyAssigned;
       setRows((prev) =>
-        prev.map((row, index) => (index === rowIndex ? { ...row, colorRows } : row)),
+        prev.map((row, index) =>
+          index === rowIndex ? { ...row, colorRows, colorMergeMode: mergeMode } : row,
+        ),
       );
-      setColorDialogState({ open: false, rowIndex: null, initialRows: [] });
+      setColorDialogState({
+        open: false,
+        rowIndex: null,
+        initialRows: [],
+        existingFullyAssigned: false,
+        suggestedColors: [],
+      });
     },
-    [colorDialogState.rowIndex],
+    [colorDialogState.rowIndex, colorDialogState.existingFullyAssigned],
   );
 
   const preparedRows = useMemo(() => rows.filter((r) => !isRowEmpty(r)), [rows]);
@@ -604,7 +649,11 @@ export default function AddMultipleProducts() {
             await addInventoryIdentifier(existing.id, null, serial);
           }
           if (row.colorRows.length > 0) {
-            await saveInventoryColors(existing.id, row.colorRows);
+            if (row.colorMergeMode) {
+              await mergeInventoryColors(existing.id, row.colorRows);
+            } else {
+              await saveInventoryColors(existing.id, row.colorRows);
+            }
           }
 
           restockOk++;
@@ -1243,16 +1292,25 @@ export default function AddMultipleProducts() {
         open={colorDialogState.open}
         onOpenChange={(open) => {
           if (open) return;
-          setColorDialogState({ open: false, rowIndex: null, initialRows: [] });
+          setColorDialogState({
+            open: false,
+            rowIndex: null,
+            initialRows: [],
+            existingFullyAssigned: false,
+            suggestedColors: [],
+          });
         }}
         productName={activeColorDialogRow?.deviceName || "this product"}
         totalQuantity={
           activeColorDialogRow
-            ? (activeColorDialogExisting?.quantity ?? 0) +
-              (Number(activeColorDialogRow.quantity) || 0)
+            ? colorDialogState.existingFullyAssigned
+              ? Number(activeColorDialogRow.quantity) || 0
+              : (activeColorDialogExisting?.quantity ?? 0) +
+                (Number(activeColorDialogRow.quantity) || 0)
             : 0
         }
         initialColors={colorDialogState.initialRows}
+        suggestedColors={colorDialogState.suggestedColors}
         isLoadingInitialColors={isLoadingColorRows}
         onConfirm={handleColorDialogConfirm}
         confirmLabel="Save colours"
