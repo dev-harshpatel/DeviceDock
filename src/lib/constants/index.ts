@@ -33,3 +33,7 @@ export const INVENTORY_SORT_ORDER = {
 export const IMEI_LABEL_WIDTH_MM = 50;
 export const IMEI_LABEL_HEIGHT_MM = 25;
 export const IMEI_BARCODE_HEIGHT = 50; // barcode height in pixels for canvas rendering
+
+// Bulk Label Sheet Layout
+export const BULK_LABEL_COLUMNS = 3; // labels per row on the print sheet
+export const BULK_LABEL_GAP_MM = 4; // gap between labels in millimeters
