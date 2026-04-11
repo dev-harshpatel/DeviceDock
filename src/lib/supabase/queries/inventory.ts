@@ -238,7 +238,7 @@ export async function lookupIdentifierByImei(
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: row, error } = await (supabase.from("inventory_identifiers") as any)
-    .select("id, inventory_id, imei, serial_number, status, sold_at")
+    .select("id, inventory_id, imei, serial_number, status, sold_at, color")
     .eq("company_id", companyId)
     .eq("imei", trimmed)
     .maybeSingle();
@@ -254,21 +254,26 @@ export async function lookupIdentifierByImei(
 
   if (invErr || !invRow) return null;
 
-  // Colour is tracked at the inventory configuration level, so for IMEI lookup
-  // we surface the recorded colour breakdown as a concise display string.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: colorRows, error: colorError } = await (supabase.from("inventory_colors") as any)
-    .select("color")
-    .eq("inventory_id", row.inventory_id as string)
-    .order("color");
+  // Prefer the per-unit color from the identifier row.
+  // Fall back to the aggregate inventory_colors table as a display string.
+  const identifierColor = (row.color as string | null) ?? null;
 
-  const color =
-    colorError || !Array.isArray(colorRows)
-      ? null
-      : colorRows
-          .map((colorRow: { color: string | null }) => colorRow.color?.trim() ?? "")
-          .filter(Boolean)
-          .join(", ") || null;
+  let color: string | null = identifierColor;
+  if (!color) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: colorRows, error: colorError } = await (supabase.from("inventory_colors") as any)
+      .select("color")
+      .eq("inventory_id", row.inventory_id as string)
+      .order("color");
+
+    color =
+      colorError || !Array.isArray(colorRows)
+        ? null
+        : colorRows
+            .map((colorRow: { color: string | null }) => colorRow.color?.trim() ?? "")
+            .filter(Boolean)
+            .join(", ") || null;
+  }
 
   return {
     identifierId: row.id as string,

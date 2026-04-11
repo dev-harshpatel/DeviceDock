@@ -1,6 +1,6 @@
 "use client";
 
-import { Layers, Package } from "lucide-react";
+import { Layers, Loader2, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -17,6 +17,8 @@ interface AddProductChoiceModalProps {
   onSelectMultiple: () => void;
   onSelectSingle: () => void;
   open: boolean;
+  /** Which navigation is currently in progress */
+  navigatingTo?: "multiple" | "upload" | null;
 }
 
 export const AddProductChoiceModal = ({
@@ -25,9 +27,12 @@ export const AddProductChoiceModal = ({
   onSelectMultiple,
   onSelectSingle,
   open,
+  navigatingTo,
 }: AddProductChoiceModalProps) => {
+  const isNavigating = !!navigatingTo;
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={isNavigating ? undefined : onOpenChange}>
       <DialogContent className="max-w-xl w-[calc(100%-1rem)] mx-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2.5 text-base">
@@ -48,6 +53,7 @@ export const AddProductChoiceModal = ({
             variant="outline"
             className="h-auto w-full min-w-0 flex-col items-start gap-2 whitespace-normal py-4 px-4 text-left border-border hover:bg-muted/50"
             onClick={onSelectSingle}
+            disabled={isNavigating}
             aria-label="Add a single product with colour breakdown"
           >
             <Package className="h-5 w-5 text-primary shrink-0" aria-hidden />
@@ -63,11 +69,16 @@ export const AddProductChoiceModal = ({
             variant="outline"
             className="h-auto w-full min-w-0 flex-col items-start gap-2 whitespace-normal py-4 px-4 text-left border-border hover:bg-muted/50"
             onClick={onSelectMultiple}
+            disabled={isNavigating}
             aria-label="Add multiple products at once"
           >
-            <Layers className="h-5 w-5 text-primary shrink-0" aria-hidden />
+            {navigatingTo === "multiple" ? (
+              <Loader2 className="h-5 w-5 text-primary shrink-0 animate-spin" aria-hidden />
+            ) : (
+              <Layers className="h-5 w-5 text-primary shrink-0" aria-hidden />
+            )}
             <span className="w-full min-w-0 text-left font-semibold text-foreground">
-              Multiple products
+              {navigatingTo === "multiple" ? "Opening form…" : "Multiple products"}
             </span>
             <span className="w-full min-w-0 text-left text-xs font-normal leading-snug text-muted-foreground [text-wrap:pretty]">
               Opens a full-page form to add several lines at once. Set colours later in Product
@@ -81,13 +92,21 @@ export const AddProductChoiceModal = ({
             Prefer a spreadsheet?{" "}
             <button
               type="button"
-              className="text-primary underline underline-offset-2 font-medium"
+              className="text-primary underline underline-offset-2 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={isNavigating}
               onClick={() => {
                 onOpenChange(false);
                 onNavigateUpload();
               }}
             >
-              Import from spreadsheet
+              {navigatingTo === "upload" ? (
+                <span className="inline-flex items-center gap-1">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Opening…
+                </span>
+              ) : (
+                "Import from spreadsheet"
+              )}
             </button>
           </p>
           <Button
@@ -95,6 +114,7 @@ export const AddProductChoiceModal = ({
             variant="ghost"
             className="w-full sm:w-auto self-center"
             onClick={() => onOpenChange(false)}
+            disabled={isNavigating}
           >
             Cancel
           </Button>

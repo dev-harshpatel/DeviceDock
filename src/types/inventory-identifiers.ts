@@ -6,6 +6,7 @@ export interface IdentifierSaleLookup {
   imei: string | null;
   serialNumber: string | null;
   status: string;
+  color: string | null;
   item: InventoryItem;
 }
 

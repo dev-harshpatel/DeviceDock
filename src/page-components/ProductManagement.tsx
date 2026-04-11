@@ -16,7 +16,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useQueryClient } from "@tanstack/react-query";
 import { useInventory } from "@/contexts/InventoryContext";
+import { useCompany } from "@/contexts/CompanyContext";
 import { useDebounce } from "@/hooks/use-debounce";
 import { usePaginatedReactQuery } from "@/hooks/use-paginated-react-query";
 import { usePageParam } from "@/hooks/use-page-param";
@@ -26,9 +28,19 @@ import { fetchPaginatedInventory } from "@/lib/supabase/queries";
 import { supabase } from "@/lib/supabase/client";
 import { useFilterOptions } from "@/hooks/use-filter-options";
 import { cn } from "@/lib/utils";
-import { Loader2, Palette, RotateCcw, Save } from "lucide-react";
+import { Loader2, Palette, RotateCcw, Save, Trash2 } from "lucide-react";
 import { useState, useCallback } from "react";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { ColourBreakdownDialog, type ColourRow } from "@/components/modals/ColourBreakdownDialog";
 import { GRADES } from "@/lib/constants/grades";
 import { TOAST_MESSAGES } from "@/lib/constants/toast-messages";
@@ -46,6 +58,8 @@ const TableLoadingOverlay = ({ label }: { label: string }) => (
 
 export default function ProductManagement() {
   const { updateProduct, resetInventory } = useInventory();
+  const { isOwner, isManager, companyId } = useCompany();
+  const queryClient = useQueryClient();
 
   // ── Product field edits ───────────────────────────────────────────────────
   const [editedProducts, setEditedProducts] = useState<Record<string, Partial<InventoryItem>>>({});
@@ -265,6 +279,85 @@ export default function ProductManagement() {
   };
 
   const handleResetFilters = () => setFilters(defaultFilters);
+
+  // ── Delete product ────────────────────────────────────────────────────────
+  const [deleteDialog, setDeleteDialog] = useState<{
+    open: boolean;
+    product: InventoryItem | null;
+    /** null = still checking, number = result */
+    orderCount: number | null;
+    isChecking: boolean;
+    isDeleting: boolean;
+  }>({ open: false, product: null, orderCount: null, isChecking: false, isDeleting: false });
+
+  const handleDeleteClick = useCallback(
+    async (product: InventoryItem) => {
+      setDeleteDialog({
+        open: true,
+        product,
+        orderCount: null,
+        isChecking: true,
+        isDeleting: false,
+      });
+
+      try {
+        // Check if any orders reference this inventory item in their JSONB items array.
+        const { count, error } = await (supabase as any)
+          .from("orders")
+          .select("id", { count: "exact", head: true })
+          .eq("company_id", companyId)
+          .filter("items", "cs", JSON.stringify([{ item: { id: product.id } }]));
+
+        if (error) throw error;
+        setDeleteDialog((prev) => ({ ...prev, orderCount: count ?? 0, isChecking: false }));
+      } catch {
+        setDeleteDialog((prev) => ({ ...prev, orderCount: 0, isChecking: false }));
+      }
+    },
+    [companyId],
+  );
+
+  const handleDeleteConfirm = useCallback(async () => {
+    const product = deleteDialog.product;
+    if (!product) return;
+
+    setDeleteDialog((prev) => ({ ...prev, isDeleting: true }));
+    try {
+      const { error } = await (supabase as any)
+        .from("inventory")
+        .delete()
+        .eq("id", product.id)
+        .eq("company_id", companyId);
+
+      if (error) throw error;
+
+      toast.success(`${product.deviceName} deleted`, {
+        description: "Product and all associated records have been removed.",
+      });
+      setDeleteDialog({
+        open: false,
+        product: null,
+        orderCount: null,
+        isChecking: false,
+        isDeleting: false,
+      });
+      // Remove any pending edits for this product
+      setEditedProducts((prev) => {
+        const next = { ...prev };
+        delete next[product.id];
+        return next;
+      });
+      // Refetch the product list
+      await queryClient.invalidateQueries({ queryKey: queryKeys.inventory });
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to delete product. Please try again.",
+      );
+      setDeleteDialog((prev) => ({ ...prev, isDeleting: false }));
+    }
+  }, [deleteDialog.product, companyId, queryClient]);
+
+  const canDelete = isOwner || isManager;
 
   const hasChanges = Object.keys(editedProducts).length > 0;
   const shouldShowSkeleton = (isLoading || isFetching) && filteredItems.length === 0;
@@ -603,6 +696,19 @@ export default function ProductManagement() {
                                 isActive ? "Listed — click to unlist" : "Unlisted — click to list"
                               }
                             />
+
+                            {/* Delete button — owner/manager only */}
+                            {canDelete && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleDeleteClick(product)}
+                                className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                title="Delete product"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -634,6 +740,92 @@ export default function ProductManagement() {
           />
         </div>
       )}
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog
+        open={deleteDialog.open}
+        onOpenChange={(open) => {
+          if (!open && !deleteDialog.isDeleting) {
+            setDeleteDialog({
+              open: false,
+              product: null,
+              orderCount: null,
+              isChecking: false,
+              isDeleting: false,
+            });
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {deleteDialog.isChecking
+                ? "Checking…"
+                : deleteDialog.orderCount && deleteDialog.orderCount > 0
+                  ? "Cannot delete this product"
+                  : `Delete "${deleteDialog.product?.deviceName}"?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                {deleteDialog.isChecking && (
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Checking for associated orders…</span>
+                  </div>
+                )}
+
+                {!deleteDialog.isChecking &&
+                deleteDialog.orderCount &&
+                deleteDialog.orderCount > 0 ? (
+                  <>
+                    <p>
+                      This product appears in{" "}
+                      <strong className="text-foreground">{deleteDialog.orderCount}</strong> order
+                      {deleteDialog.orderCount !== 1 ? "s" : ""}. Deleting it would break those
+                      order records, so it is blocked.
+                    </p>
+                    <p>
+                      To remove this product from your inventory, you can{" "}
+                      <strong className="text-foreground">unlist it</strong> using the toggle — it
+                      will stay in order history but won&apos;t be visible to users.
+                    </p>
+                  </>
+                ) : !deleteDialog.isChecking ? (
+                  <p>
+                    This will permanently delete{" "}
+                    <strong className="text-foreground">{deleteDialog.product?.deviceName}</strong>{" "}
+                    along with all its colour records and IMEI/serial entries. This cannot be
+                    undone.
+                  </p>
+                ) : null}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteDialog.isDeleting}>Cancel</AlertDialogCancel>
+            {!deleteDialog.isChecking &&
+              (!deleteDialog.orderCount || deleteDialog.orderCount === 0) && (
+                <AlertDialogAction
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handleDeleteConfirm();
+                  }}
+                  disabled={deleteDialog.isDeleting}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {deleteDialog.isDeleting ? (
+                    <span className="flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Deleting…
+                    </span>
+                  ) : (
+                    "Delete permanently"
+                  )}
+                </AlertDialogAction>
+              )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Colour breakdown dialog */}
       <ColourBreakdownDialog

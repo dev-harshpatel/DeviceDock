@@ -48,21 +48,18 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   WIRE: "Wire Transfer",
   CHQ: "Cheque",
   CASH: "Cash",
+  CREDIT: "Credit Card",
+  DEBIT: "Debit Card",
   "NET 15": "Net 15",
   "NET 30": "Net 30",
   "NET 60": "Net 60",
 };
 
-type Step = 1 | 2 | 3 | 4;
+type Step = 1 | 2 | 3;
 
 interface SelectedItem {
   item: InventoryItem;
   quantity: number;
-}
-
-interface ColorRow {
-  color: string;
-  quantity: string;
 }
 
 export interface ManualSaleWizardProps {
@@ -75,8 +72,7 @@ export interface ManualSaleWizardProps {
 const STEPS = [
   { n: 1, label: "Select Items" },
   { n: 2, label: "Selling Price" },
-  { n: 3, label: "Colour Assignment" },
-  { n: 4, label: "Customer & Payment" },
+  { n: 3, label: "Customer & Payment" },
 ] as const;
 
 function StepIndicator({ step }: { step: Step }) {
@@ -150,12 +146,7 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
   // Record<itemId, price string> — string so input is editable; validated on advance
   const [sellingPrices, setSellingPrices] = useState<Record<string, string>>({});
 
-  // ── Step 3: Colour Assignment ─────────────────────────────────────────────
-  const [colorAssignments, setColorAssignments] = useState<Record<string, ColorRow[]>>({});
-  const [availableColors, setAvailableColors] = useState<Record<string, string[]>>({});
-  const [loadingColors, setLoadingColors] = useState(false);
-
-  // ── Step 4: Customer & Payment ────────────────────────────────────────────
+  // ── Step 3: Customer & Payment ────────────────────────────────────────────
   const [customerName, setCustomerName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -207,22 +198,6 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
   );
 
   const selectedItemsList = useMemo(() => Object.values(selectedItems), [selectedItems]);
-
-  const itemsNeedingColour = useMemo(() => {
-    const map = new Map<string, { item: InventoryItem; soldQty: number }>();
-    for (const { item, quantity } of selectedItemsList) {
-      map.set(item.id, { item, soldQty: quantity });
-    }
-    for (const line of identifierUnitsFlat) {
-      const prev = map.get(line.item.id);
-      if (prev) {
-        map.set(line.item.id, { item: line.item, soldQty: prev.soldQty + 1 });
-      } else {
-        map.set(line.item.id, { item: line.item, soldQty: 1 });
-      }
-    }
-    return [...map.values()];
-  }, [selectedItemsList, identifierUnitsFlat]);
 
   const getEffectivePrice = useCallback(
     (item: InventoryItem): number => {
@@ -352,6 +327,7 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
         id: crypto.randomUUID(),
         inventoryIdentifierId: found.identifierId,
         displayLabel: found.imei ?? found.serialNumber ?? q,
+        color: found.color,
       };
       setIdentifierGroups((prev) => {
         const idx = prev.findIndex((g) => g.inventoryId === found.item.id);
@@ -412,99 +388,10 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
         return;
       }
     }
-    const assignments: Record<string, ColorRow[]> = {};
-    itemsNeedingColour.forEach(({ item }) => {
-      assignments[item.id] = [{ color: "", quantity: "" }];
-    });
-    setColorAssignments(assignments);
     setStep(3);
   };
 
   // ── Step 3 handlers ───────────────────────────────────────────────────────
-  const fetchAvailableColors = useCallback(async () => {
-    if (itemsNeedingColour.length === 0) return;
-    setLoadingColors(true);
-    const colors: Record<string, string[]> = {};
-    try {
-      await Promise.all(
-        itemsNeedingColour.map(async ({ item }) => {
-          // Table may be missing from generated Database types
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- supabase generated types
-          const { data, error } = await (supabase as any)
-            .from("inventory_colors")
-            .select("color, quantity")
-            .eq("inventory_id", item.id)
-            .gt("quantity", 0)
-            .order("color");
-          colors[item.id] = !error && data ? (data as { color: string }[]).map((r) => r.color) : [];
-        }),
-      );
-      setAvailableColors(colors);
-    } catch {
-      // leave colors empty — user can still proceed (skip tracking)
-    } finally {
-      setLoadingColors(false);
-    }
-  }, [itemsNeedingColour]);
-
-  // Fetch colors when step 3 becomes active
-  useEffect(() => {
-    if (step === 3) {
-      fetchAvailableColors();
-    }
-  }, [step, fetchAvailableColors]);
-
-  const handleColorRowChange = (
-    itemId: string,
-    rowIdx: number,
-    field: keyof ColorRow,
-    value: string,
-  ) => {
-    setColorAssignments((prev) => {
-      const rows = [...(prev[itemId] ?? [])];
-      rows[rowIdx] = { ...rows[rowIdx], [field]: value };
-      return { ...prev, [itemId]: rows };
-    });
-  };
-
-  const handleAddColorRow = (itemId: string) => {
-    setColorAssignments((prev) => ({
-      ...prev,
-      [itemId]: [...(prev[itemId] ?? []), { color: "", quantity: "" }],
-    }));
-  };
-
-  const handleRemoveColorRow = (itemId: string, rowIdx: number) => {
-    setColorAssignments((prev) => {
-      const rows = (prev[itemId] ?? []).filter((_, i) => i !== rowIdx);
-      return { ...prev, [itemId]: rows.length > 0 ? rows : [{ color: "", quantity: "" }] };
-    });
-  };
-
-  const handleGoToStep4 = () => {
-    for (const { item, soldQty } of itemsNeedingColour) {
-      const rows = colorAssignments[item.id] ?? [];
-      const filledRows = rows.filter((r) => r.color || r.quantity !== "");
-      if (filledRows.length === 0) continue; // empty = skip tracking for this item
-
-      // Partial rows: both fields required
-      const partialRow = filledRows.find((r) => !r.color || r.quantity === "");
-      if (partialRow) {
-        toast.error(`Each colour row for ${item.deviceName} needs both a colour and a quantity.`);
-        return;
-      }
-
-      const total = filledRows.reduce((sum, r) => sum + (parseInt(r.quantity, 10) || 0), 0);
-      if (total !== soldQty) {
-        toast.error(
-          `Colour quantities for ${item.deviceName} must total ${soldQty} (currently ${total}).`,
-        );
-        return;
-      }
-    }
-    setStep(4);
-  };
-
   // ── Reset / Close ─────────────────────────────────────────────────────────
   const handleClose = () => {
     setStep(1);
@@ -514,9 +401,6 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
     setIdentifierGroups([]);
     setSellingPricesIdent({});
     setSellingPrices({});
-    setColorAssignments({});
-    setAvailableColors({});
-    setLoadingColors(false);
     setCustomerName("");
     setCustomerEmail("");
     setCustomerPhone("");
@@ -585,58 +469,6 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
           }
           throw qtyErr;
         }
-      }
-
-      // Save colour assignments if any were provided
-      const assignmentEntries = Object.entries(colorAssignments).filter(([, rows]) =>
-        rows.some((r) => r.color && r.quantity !== ""),
-      );
-
-      if (assignmentEntries.length > 0) {
-        await Promise.all(
-          assignmentEntries.map(async ([itemId, rows]) => {
-            const filledRows = rows.filter(
-              (r) => r.color && r.quantity !== "" && parseInt(r.quantity, 10) > 0,
-            );
-            if (filledRows.length === 0) return;
-
-            // Decrement inventory_colors quantities
-            await Promise.all(
-              filledRows.map(async (r) => {
-                const qty = parseInt(r.quantity, 10);
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- supabase generated types
-                const { data: colorRow } = await (supabase as any)
-                  .from("inventory_colors")
-                  .select("quantity")
-                  .eq("inventory_id", itemId)
-                  .eq("color", r.color)
-                  .maybeSingle();
-                if (colorRow) {
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- supabase generated types
-                  await (supabase as any)
-                    .from("inventory_colors")
-                    .update({
-                      quantity: Math.max(0, (colorRow as { quantity: number }).quantity - qty),
-                      updated_at: new Date().toISOString(),
-                    })
-                    .eq("inventory_id", itemId)
-                    .eq("color", r.color);
-                }
-              }),
-            );
-
-            // Record order_color_assignments
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- supabase generated types
-            await (supabase as any).from("order_color_assignments").insert(
-              filledRows.map((r) => ({
-                order_id: order.id,
-                inventory_id: itemId,
-                color: r.color,
-                quantity: parseInt(r.quantity, 10),
-              })),
-            );
-          }),
-        );
       }
 
       toast.success(`Sale recorded — Order #${order.id.slice(-8).toUpperCase()}`);
@@ -748,9 +580,16 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
                               key={unit.id}
                               className="flex items-center justify-between gap-2 text-xs"
                             >
-                              <span className="font-mono text-foreground truncate">
-                                {unit.displayLabel}
-                              </span>
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <span className="font-mono text-foreground truncate">
+                                  {unit.displayLabel}
+                                </span>
+                                {unit.color && (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-medium shrink-0">
+                                    {unit.color}
+                                  </span>
+                                )}
+                              </div>
                               <Button
                                 type="button"
                                 variant="ghost"
@@ -1088,127 +927,14 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
                 <ArrowLeft className="h-4 w-4" />
                 Back
               </Button>
-              <Button onClick={handleGoToStep3}>Next: Colour Assignment →</Button>
+              <Button onClick={handleGoToStep3}>Next: Customer Details →</Button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── STEP 3: Colour Assignment ─────────────────────────────────── */}
+      {/* ── STEP 3: Customer & Payment ────────────────────────────────── */}
       {step === 3 && (
-        <div className="flex flex-col flex-1 min-h-0 px-5 py-3 gap-3">
-          <p className="text-sm text-muted-foreground flex-shrink-0">
-            Assign the colours for each item sold. Quantities must match exactly, or leave all rows
-            empty to skip colour tracking for that item.
-          </p>
-
-          {loadingColors ? (
-            <div className="flex-1 flex items-center justify-center">
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-            </div>
-          ) : (
-            <div className="flex-1 overflow-y-auto min-h-0 space-y-3 -mx-1 px-1">
-              {itemsNeedingColour.map(({ item, soldQty }) => {
-                const colors = availableColors[item.id] ?? [];
-                const rows = colorAssignments[item.id] ?? [];
-                const hasColors = colors.length > 0;
-
-                return (
-                  <div
-                    key={item.id}
-                    className="rounded-lg border border-border bg-card p-4 space-y-3"
-                  >
-                    {/* Item header */}
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="font-semibold text-sm text-foreground">{item.deviceName}</p>
-                      <GradeBadge grade={item.grade} />
-                      <span className="text-xs text-muted-foreground">{item.storage}</span>
-                      <span className="text-xs text-muted-foreground">
-                        Qty sold: <span className="font-semibold text-foreground">{soldQty}</span>
-                      </span>
-                    </div>
-
-                    {!hasColors ? (
-                      <p className="text-xs text-muted-foreground italic">
-                        No colours configured for this item — colour tracking will be skipped.
-                      </p>
-                    ) : (
-                      <>
-                        {/* Colour rows */}
-                        <div className="space-y-2">
-                          {rows.map((row, rowIdx) => (
-                            <div key={rowIdx} className="flex items-center gap-2">
-                              <Select
-                                value={row.color}
-                                onValueChange={(v) =>
-                                  handleColorRowChange(item.id, rowIdx, "color", v)
-                                }
-                              >
-                                <SelectTrigger className="flex-1">
-                                  <SelectValue placeholder="Select colour..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {colors.map((c) => (
-                                    <SelectItem key={c} value={c}>
-                                      {c}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <Input
-                                type="number"
-                                min={1}
-                                placeholder="Qty"
-                                value={row.quantity}
-                                onChange={(e) =>
-                                  handleColorRowChange(item.id, rowIdx, "quantity", e.target.value)
-                                }
-                                className="w-20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                              />
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-9 w-9 text-muted-foreground hover:text-destructive flex-shrink-0"
-                                onClick={() => handleRemoveColorRow(item.id, rowIdx)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* Add colour button */}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-full gap-2 text-muted-foreground"
-                          onClick={() => handleAddColorRow(item.id)}
-                        >
-                          <Plus className="h-3.5 w-3.5" />
-                          Add Colour
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          <div className="flex-shrink-0 border-t border-border px-6 py-4 flex items-center justify-between gap-4 bg-card">
-            <Button variant="outline" onClick={() => setStep(2)} className="gap-2">
-              <ArrowLeft className="h-4 w-4" />
-              Back
-            </Button>
-            <Button onClick={handleGoToStep4} disabled={loadingColors}>
-              Next: Customer Details →
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* ── STEP 4: Customer & Payment ────────────────────────────────── */}
-      {step === 4 && (
         <div className="flex flex-col flex-1 min-h-0">
           {/* Two-column split on desktop */}
           <div className="flex-1 min-h-0 overflow-y-auto">
@@ -1423,7 +1149,7 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
 
           {/* Footer */}
           <div className="flex-shrink-0 border-t border-border px-6 py-4 flex items-center justify-between gap-4 bg-card">
-            <Button variant="outline" onClick={() => setStep(3)} className="gap-2">
+            <Button variant="outline" onClick={() => setStep(2)} className="gap-2">
               <ArrowLeft className="h-4 w-4" />
               Back
             </Button>

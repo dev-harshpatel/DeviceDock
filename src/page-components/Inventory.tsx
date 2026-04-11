@@ -32,6 +32,7 @@ export default function Inventory() {
   const [filters, setFilters] = useState<FilterValues>(defaultFilters);
   const [addProductChoiceOpen, setAddProductChoiceOpen] = useState(false);
   const [addProductOpen, setAddProductOpen] = useState(false);
+  const [navigatingTo, setNavigatingTo] = useState<"multiple" | "upload" | null>(null);
   const filterOptions = useFilterOptions();
   const queryClient = useQueryClient();
   const { companyId, companyName, slug } = useCompany();
@@ -79,11 +80,12 @@ export default function Inventory() {
   }, []);
 
   const handleOpenMultipleProducts = useCallback(() => {
-    setAddProductChoiceOpen(false);
+    setNavigatingTo("multiple");
     router.push(`/${slug}/add-multiple-products`);
   }, [router, slug]);
 
   const handleOpenUploadProducts = useCallback(() => {
+    setNavigatingTo("upload");
     router.push(`/${slug}/upload-products`);
   }, [router, slug]);
 
@@ -180,6 +182,7 @@ export default function Inventory() {
         onSelectSingle={handleOpenSingleProduct}
         onSelectMultiple={handleOpenMultipleProducts}
         onNavigateUpload={handleOpenUploadProducts}
+        navigatingTo={navigatingTo}
       />
     </div>
   );

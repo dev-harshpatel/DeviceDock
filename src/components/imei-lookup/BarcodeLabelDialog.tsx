@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import JsBarcode from "jsbarcode";
 import { Printer } from "lucide-react";
 import {
@@ -12,16 +12,57 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { IMEI_LABEL_WIDTH_MM, IMEI_LABEL_HEIGHT_MM, IMEI_BARCODE_HEIGHT } from "@/lib/constants";
 
 interface BarcodeLabelDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   imei: string;
+  deviceName?: string | null;
+  storage?: string | null;
+  grade?: string | null;
+  sellingPrice?: number | null;
 }
 
-export function BarcodeLabelDialog({ open, onOpenChange, imei }: BarcodeLabelDialogProps) {
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+export function BarcodeLabelDialog({
+  open,
+  onOpenChange,
+  imei,
+  deviceName,
+  storage,
+  grade,
+  sellingPrice,
+}: BarcodeLabelDialogProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [showRetailPrice, setShowRetailPrice] = useState(false);
+  const [customPrice, setCustomPrice] = useState("");
+
+  // Pre-fill price from device data when checkbox is first enabled
+  useEffect(() => {
+    if (showRetailPrice && customPrice === "" && sellingPrice != null) {
+      setCustomPrice(sellingPrice.toFixed(2));
+    }
+  }, [showRetailPrice, customPrice, sellingPrice]);
+
+  // Reset controls when dialog closes
+  useEffect(() => {
+    if (!open) {
+      setShowRetailPrice(false);
+      setCustomPrice("");
+    }
+  }, [open]);
 
   // Callback ref — fires when the canvas mounts into the DOM
   const setCanvasRef = useCallback(
@@ -35,8 +76,9 @@ export function BarcodeLabelDialog({ open, onOpenChange, imei }: BarcodeLabelDia
           width: 2,
           height: IMEI_BARCODE_HEIGHT,
           displayValue: true,
-          fontSize: 14,
-          margin: 10,
+          font: "Arial",
+          fontSize: 12,
+          margin: 6,
         });
       } catch {
         // JsBarcode may throw on invalid input — canvas stays blank
@@ -53,41 +95,128 @@ export function BarcodeLabelDialog({ open, onOpenChange, imei }: BarcodeLabelDia
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
 
+    const metaParts = [grade, storage].filter(Boolean);
+    const metaLine = metaParts.length > 0 ? metaParts.join(" · ") : null;
+    const priceValue = showRetailPrice && customPrice.trim() ? parseFloat(customPrice) : null;
+
     printWindow.document.write(`
       <html>
         <head>
           <title>IMEI Label - ${imei}</title>
           <style>
-            @media print {
-              @page {
-                size: ${IMEI_LABEL_WIDTH_MM}mm ${IMEI_LABEL_HEIGHT_MM}mm;
-                margin: 0;
-              }
-              body { margin: 0; display: flex; align-items: center; justify-content: center; }
-              img { max-width: 100%; max-height: 100%; }
+            @page {
+              size: ${IMEI_LABEL_WIDTH_MM}mm ${IMEI_LABEL_HEIGHT_MM}mm;
+              margin: 0;
             }
-            body { margin: 0; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-            img { max-width: 100%; }
+            html, body {
+              margin: 0; padding: 0;
+              font-family: Arial, sans-serif;
+              color: #000;
+            }
+            .label {
+              width: ${IMEI_LABEL_WIDTH_MM}mm;
+              height: ${IMEI_LABEL_HEIGHT_MM}mm;
+              box-sizing: border-box;
+              padding: 2mm 3mm;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              gap: 1mm;
+            }
+            .device-name {
+              font-size: 10pt;
+              font-weight: 700;
+              font-family: Arial, sans-serif;
+              text-align: center;
+              max-width: 100%;
+              white-space: nowrap;
+              overflow: hidden;
+              text-overflow: ellipsis;
+            }
+            .meta {
+              font-size: 8pt;
+              font-family: Arial, sans-serif;
+              text-align: center;
+              color: #333;
+            }
+            .barcode-img {
+              max-width: 100%;
+              max-height: 55%;
+              object-fit: contain;
+            }
+            .price {
+              font-size: 10pt;
+              font-weight: 700;
+              font-family: Arial, sans-serif;
+              text-align: center;
+            }
           </style>
         </head>
         <body>
-          <img src="${dataUrl}" onload="window.print();window.close();" />
+          <div class="label">
+            ${deviceName ? `<div class="device-name">${escapeHtml(deviceName)}</div>` : ""}
+            ${metaLine ? `<div class="meta">${escapeHtml(metaLine)}</div>` : ""}
+            <img class="barcode-img" src="${dataUrl}" alt="barcode" onload="window.print();window.close();" />
+            ${priceValue != null && !isNaN(priceValue) ? `<div class="price">$${priceValue.toFixed(2)}</div>` : ""}
+          </div>
         </body>
       </html>
     `);
     printWindow.document.close();
-  }, [imei]);
+  }, [imei, deviceName, grade, storage, showRetailPrice, customPrice]);
+
+  const metaSummary = [grade, storage].filter(Boolean).join(" · ");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>IMEI Barcode Label</DialogTitle>
-          <DialogDescription>Preview the barcode label for IMEI: {imei}</DialogDescription>
+          <DialogDescription>
+            {deviceName ? (
+              <>
+                {deviceName}
+                {metaSummary && <span className="text-muted-foreground"> · {metaSummary}</span>}
+              </>
+            ) : (
+              <>Preview the barcode label for IMEI: {imei}</>
+            )}
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="flex items-center justify-center py-4">
+        <div className="flex items-center justify-center py-4 bg-muted/30 rounded-lg">
           <canvas ref={setCanvasRef} className="max-w-full" />
+        </div>
+
+        {/* Retail price toggle */}
+        <div className="space-y-3 pt-1">
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="show-retail-price"
+              checked={showRetailPrice}
+              onCheckedChange={(checked) => setShowRetailPrice(!!checked)}
+            />
+            <Label htmlFor="show-retail-price" className="text-sm cursor-pointer select-none">
+              Show retail price on label
+            </Label>
+          </div>
+
+          {showRetailPrice && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">$</span>
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                placeholder="0.00"
+                value={customPrice}
+                onChange={(e) => setCustomPrice(e.target.value)}
+                className="w-36 h-9 text-sm"
+                autoFocus
+              />
+            </div>
+          )}
         </div>
 
         <DialogFooter>

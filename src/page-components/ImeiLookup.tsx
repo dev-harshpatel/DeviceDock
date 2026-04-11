@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { Search, ScanLine, Tag, Printer, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useCompany } from "@/contexts/CompanyContext";
@@ -22,6 +22,7 @@ interface BulkImeiEntry {
   grade: string | null;
   storage: string | null;
   color: string | null;
+  sellingPrice: number | null;
 }
 
 const identifierStatusConfig: Record<string, { label: string; className: string }> = {
@@ -82,6 +83,7 @@ export default function ImeiLookup() {
   const [showBarcode, setShowBarcode] = useState(false);
 
   // ── Bulk Print state ──
+  const bulkInputRef = useRef<HTMLInputElement>(null);
   const [bulkInput, setBulkInput] = useState("");
   const [bulkEntries, setBulkEntries] = useState<BulkImeiEntry[]>([]);
   const [isBulkLoading, setIsBulkLoading] = useState(false);
@@ -163,14 +165,24 @@ export default function ImeiLookup() {
           grade: data?.item.grade ?? null,
           storage: data?.item.storage ?? null,
           color: data?.color ?? null,
+          sellingPrice: data?.item.sellingPrice ?? null,
         });
       } catch {
-        entries.push({ imei, deviceName: null, grade: null, storage: null, color: null });
+        entries.push({
+          imei,
+          deviceName: null,
+          grade: null,
+          storage: null,
+          color: null,
+          sellingPrice: null,
+        });
       }
     }
 
     setBulkEntries((prev) => [...prev, ...entries]);
     setIsBulkLoading(false);
+    // Restore focus so the user can immediately scan/type the next IMEI.
+    bulkInputRef.current?.focus();
   }, [bulkInput, bulkEntries, companyId]);
 
   const handleBulkKeyDown = useCallback(
@@ -197,7 +209,13 @@ export default function ImeiLookup() {
 
   const bulkCount = bulkEntries.length;
   const hasBulkEntries = bulkCount > 0;
-  const bulkImeis = bulkEntries.map((e) => e.imei);
+  const bulkDialogEntries = bulkEntries.map((e) => ({
+    imei: e.imei,
+    deviceName: e.deviceName,
+    grade: e.grade,
+    storage: e.storage,
+    sellingPrice: e.sellingPrice,
+  }));
 
   return (
     <div className="flex flex-col h-full">
@@ -352,6 +370,7 @@ export default function ImeiLookup() {
               </p>
               <div className="flex gap-2">
                 <Input
+                  ref={bulkInputRef}
                   type="text"
                   placeholder="Enter IMEI numbers..."
                   value={bulkInput}
@@ -449,7 +468,15 @@ export default function ImeiLookup() {
 
       {/* Single barcode dialog */}
       {result?.imei && (
-        <BarcodeLabelDialog open={showBarcode} onOpenChange={setShowBarcode} imei={result.imei} />
+        <BarcodeLabelDialog
+          open={showBarcode}
+          onOpenChange={setShowBarcode}
+          imei={result.imei}
+          deviceName={result.item?.deviceName}
+          storage={result.item?.storage}
+          grade={result.item?.grade}
+          sellingPrice={result.item?.sellingPrice}
+        />
       )}
 
       {/* Bulk barcode dialog */}
@@ -457,7 +484,7 @@ export default function ImeiLookup() {
         <BulkBarcodeLabelDialog
           open={showBulkBarcode}
           onOpenChange={setShowBulkBarcode}
-          imeis={bulkImeis}
+          entries={bulkDialogEntries}
         />
       )}
     </div>

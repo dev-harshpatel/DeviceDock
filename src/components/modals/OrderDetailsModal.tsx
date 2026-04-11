@@ -94,36 +94,51 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
   const [fetchedIdentifierLabels, setFetchedIdentifierLabels] = useState<Record<string, string>>(
     {},
   );
+  // Per-unit color keyed by inventoryIdentifierId
+  const [fetchedIdentifierColors, setFetchedIdentifierColors] = useState<Record<string, string>>(
+    {},
+  );
 
   useEffect(() => {
     if (!open || !order) {
       setFetchedIdentifierLabels({});
+      setFetchedIdentifierColors({});
       return;
     }
     const items = Array.isArray(order.items) ? order.items : [];
-    // Only fetch for items that have an identifier ID but no stored label
-    const idsToFetch = items
-      .filter((oi) => oi.inventoryIdentifierId && !oi.identifierLabel)
+    // Fetch labels for items missing stored label, and colors for all identified items
+    const allIdentifierIds = items
+      .filter((oi) => oi.inventoryIdentifierId)
       .map((oi) => oi.inventoryIdentifierId as string);
 
-    if (idsToFetch.length === 0) return;
+    if (allIdentifierIds.length === 0) return;
 
     (supabase as any)
       .from("inventory_identifiers")
-      .select("id, imei, serial_number")
-      .in("id", idsToFetch)
+      .select("id, imei, serial_number, color")
+      .in("id", allIdentifierIds)
       .then(
         ({
           data,
         }: {
-          data: { id: string; imei: string | null; serial_number: string | null }[] | null;
+          data:
+            | {
+                id: string;
+                imei: string | null;
+                serial_number: string | null;
+                color: string | null;
+              }[]
+            | null;
         }) => {
           if (!data) return;
-          const map: Record<string, string> = {};
+          const labelMap: Record<string, string> = {};
+          const colorMap: Record<string, string> = {};
           for (const row of data) {
-            map[row.id] = row.imei ?? row.serial_number ?? row.id;
+            labelMap[row.id] = row.imei ?? row.serial_number ?? row.id;
+            if (row.color) colorMap[row.id] = row.color;
           }
-          setFetchedIdentifierLabels(map);
+          setFetchedIdentifierLabels(labelMap);
+          setFetchedIdentifierColors(colorMap);
         },
       );
   }, [open, order]);
@@ -499,6 +514,12 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
                                       {orderItem.identifierLabel ??
                                         fetchedIdentifierLabels[orderItem.inventoryIdentifierId!]}
                                     </span>
+                                    {orderItem.inventoryIdentifierId &&
+                                      fetchedIdentifierColors[orderItem.inventoryIdentifierId] && (
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-medium">
+                                          {fetchedIdentifierColors[orderItem.inventoryIdentifierId]}
+                                        </span>
+                                      )}
                                   </div>
                                 )}
                                 {/* Colour breakdown — admin only */}

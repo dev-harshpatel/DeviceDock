@@ -3,6 +3,12 @@
 import { KeyboardEvent, useState, useMemo, useCallback, useEffect } from "react";
 import { Check, ChevronsUpDown, Plus, Loader2, Package, Info, Palette } from "lucide-react";
 import { ColourBreakdownDialog, type ColourRow } from "@/components/modals/ColourBreakdownDialog";
+import {
+  ImeiColorMappingDialog,
+  type IdentifierEntry,
+  type ColorBudget,
+  type ImeiColorMapping,
+} from "@/components/modals/ImeiColorMappingDialog";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { formatPrice } from "@/lib/utils";
@@ -121,6 +127,9 @@ export function AddProductModal({
   /** Authoritative quantity from DB when restocking — context can lag behind React Query on the inventory page. */
   const [liveInventoryQuantity, setLiveInventoryQuantity] = useState<number | null>(null);
   const [suggestedColors, setSuggestedColors] = useState<string[]>([]);
+  // IMEI-to-color mapping dialog state
+  const [imeiColorMappingOpen, setImeiColorMappingOpen] = useState(false);
+  const [pendingColorRows, setPendingColorRows] = useState<ColourRow[]>([]);
 
   const [mode, setMode] = useState<"single" | "bulk">("single");
   const [step, setStep] = useState<"form" | "review">("form");
@@ -313,7 +322,19 @@ export function AddProductModal({
     if (field === "deviceName" && selectedExistingId) {
       setSelectedExistingId(null);
     }
-    setForm((prev) => ({ ...prev, [field]: value }));
+    setForm((prev) => {
+      const updated = { ...prev, [field]: value };
+      // Keep quantity in sync with identifier count so the user doesn't have to type it manually.
+      if (field === "imei" || field === "serialNumber") {
+        const newImeiList = parseIdentifierList(field === "imei" ? value : prev.imei);
+        const newSerialList = parseIdentifierList(
+          field === "serialNumber" ? value : prev.serialNumber,
+        );
+        const totalCount = newImeiList.length + newSerialList.length;
+        updated.quantity = totalCount > 0 ? String(totalCount) : "";
+      }
+      return updated;
+    });
   };
 
   const isFormValid = Boolean(
@@ -593,7 +614,32 @@ export function AddProductModal({
     setStep("review");
   };
 
-  const handleSubmit = async (colorRows: ColourRow[]) => {
+  // When colour dialog confirms: if identifiers exist, open IMEI-color mapping step.
+  // Otherwise, submit directly.
+  const handleColourConfirm = async (colorRows: ColourRow[]) => {
+    const enteredImeiList = parseIdentifierList(form.imei);
+    const enteredSerialList = parseIdentifierList(form.serialNumber);
+    const hasAnyIdentifiers = enteredImeiList.length > 0 || enteredSerialList.length > 0;
+    const hasValidColors = colorRows.some((r) => r.color.trim() && Number(r.quantity) > 0);
+
+    if (hasAnyIdentifiers && hasValidColors) {
+      // Save color rows and open the mapping dialog
+      setPendingColorRows(colorRows);
+      setColourDialogOpen(false);
+      setImeiColorMappingOpen(true);
+      return;
+    }
+
+    // No identifiers or no colors — submit directly
+    await handleSubmit(colorRows);
+  };
+
+  // Called from ImeiColorMappingDialog onConfirm
+  const handleImeiColorMappingConfirm = async (mappings: ImeiColorMapping[]) => {
+    await handleSubmit(pendingColorRows, mappings);
+  };
+
+  const handleSubmit = async (colorRows: ColourRow[], imeiColorMappings?: ImeiColorMapping[]) => {
     setIsSubmitting(true);
     try {
       let savedInventoryId: string | null = null;
@@ -603,6 +649,19 @@ export function AddProductModal({
         ...enteredImeiList.map((imei) => ({ imei, serialNumber: null as string | null })),
         ...enteredSerialList.map((serialNumber) => ({ imei: null as string | null, serialNumber })),
       ];
+
+      // Build a lookup from identifier value → color using the IMEI-color mappings
+      const colorByIdentifier = new Map<string, string>();
+      if (imeiColorMappings) {
+        for (const m of imeiColorMappings) {
+          const key = (m.imei ?? m.serialNumber ?? "").toLowerCase();
+          if (key) colorByIdentifier.set(key, m.color);
+        }
+      }
+      const getColorForIdentifier = (imei: string | null, serial: string | null): string | null => {
+        const key = (imei ?? serial ?? "").toLowerCase();
+        return colorByIdentifier.get(key) ?? null;
+      };
       const quantityForSubmit = Number(form.quantity) || 0;
 
       if (identifiers.length > 0 && identifiers.length !== quantityForSubmit) {
@@ -620,6 +679,47 @@ export function AddProductModal({
       if (uniqueIdentifierSet.size !== identifiers.length) {
         throw new Error("Duplicate IMEI/Serial values detected in this entry.");
       }
+
+      // ── Pre-validate identifiers against the DB BEFORE any writes ──────────
+      // Without this, the inventory row gets committed and then identifier
+      // insertion fails, leaving orphaned inventory rows on each retry.
+      if (identifiers.length > 0 && companyId) {
+        const imeiValues = identifiers.filter((i) => i.imei).map((i) => i.imei as string);
+        const serialValues = identifiers
+          .filter((i) => i.serialNumber)
+          .map((i) => i.serialNumber as string);
+
+        const alreadyExists: string[] = [];
+
+        if (imeiValues.length > 0) {
+          const { data } = await (supabase.from("inventory_identifiers") as any)
+            .select("imei")
+            .eq("company_id", companyId)
+            .in("imei", imeiValues);
+          if (data) {
+            alreadyExists.push(...(data as { imei: string }[]).map((r) => r.imei));
+          }
+        }
+
+        if (serialValues.length > 0) {
+          const { data } = await (supabase.from("inventory_identifiers") as any)
+            .select("serial_number")
+            .eq("company_id", companyId)
+            .in("serial_number", serialValues);
+          if (data) {
+            alreadyExists.push(
+              ...(data as { serial_number: string }[]).map((r) => r.serial_number),
+            );
+          }
+        }
+
+        if (alreadyExists.length > 0) {
+          throw new Error(
+            `${alreadyExists.join(", ")} ${alreadyExists.length === 1 ? "is" : "are"} already registered in inventory. Remove the duplicate${alreadyExists.length === 1 ? "" : "s"} and try again.`,
+          );
+        }
+      }
+      // ────────────────────────────────────────────────────────────────────────
 
       if (selectedExisting && hasIdentifier) {
         // ── Case 1: Scan a new unit of an existing device configuration ──────
@@ -645,6 +745,7 @@ export function AddProductModal({
             selectedExisting.id,
             identifier.imei,
             identifier.serialNumber,
+            getColorForIdentifier(identifier.imei, identifier.serialNumber),
           );
         }
         savedInventoryId = selectedExisting.id;
@@ -715,6 +816,7 @@ export function AddProductModal({
               savedInventoryId,
               identifier.imei,
               identifier.serialNumber,
+              getColorForIdentifier(identifier.imei, identifier.serialNumber),
             );
           }
         }
@@ -802,6 +904,8 @@ export function AddProductModal({
       setExistingColorRows([]);
       setIsLoadingExistingColors(false);
       setSuggestedColors([]);
+      setImeiColorMappingOpen(false);
+      setPendingColorRows([]);
       onOpenChange(false);
     }
   };
@@ -899,11 +1003,11 @@ export function AddProductModal({
                                 </div>
                                 <span
                                   className={cn(
-                                    "shrink-0 inline-flex items-center justify-center text-xs font-bold w-6 h-6 rounded border",
+                                    "shrink-0 inline-flex items-center justify-center text-xs font-bold px-1.5 py-0.5 min-w-[1.5rem] rounded border",
                                     GRADE_STYLES[item.grade],
                                   )}
                                 >
-                                  {item.grade}
+                                  {GRADE_BADGE_LABELS[item.grade as Grade]}
                                 </span>
                               </div>
                             </CommandItem>
@@ -1636,7 +1740,42 @@ export function AddProductModal({
               : undefined
         }
         isLoadingInitialColors={isLoadingExistingColors}
-        onConfirm={handleSubmit}
+        onConfirm={handleColourConfirm}
+        isSaving={isSubmitting}
+        confirmLabel={
+          hasIdentifier
+            ? "Next: Assign Colors to Units"
+            : selectedExisting
+              ? "Update Inventory"
+              : "Add to Inventory"
+        }
+      />
+
+      {/* IMEI-to-color mapping dialog — opens after colour breakdown when identifiers exist */}
+      <ImeiColorMappingDialog
+        open={imeiColorMappingOpen}
+        onOpenChange={(open) => {
+          if (!open && !isSubmitting) {
+            setImeiColorMappingOpen(false);
+            // Re-open colour dialog so user can go back
+            setColourDialogOpen(true);
+          }
+        }}
+        productName={form.deviceName || "this product"}
+        identifiers={(() => {
+          const entries: IdentifierEntry[] = [];
+          for (const imei of imeiList) {
+            entries.push({ label: imei, imei, serialNumber: null });
+          }
+          for (const serial of serialList) {
+            entries.push({ label: serial, imei: null, serialNumber: serial });
+          }
+          return entries;
+        })()}
+        colorBudgets={pendingColorRows
+          .filter((r) => r.color.trim() && Number(r.quantity) > 0)
+          .map((r) => ({ color: r.color.trim(), quantity: Number(r.quantity) }))}
+        onConfirm={handleImeiColorMappingConfirm}
         isSaving={isSubmitting}
         confirmLabel={selectedExisting ? "Update Inventory" : "Add to Inventory"}
       />

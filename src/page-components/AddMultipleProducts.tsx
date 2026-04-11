@@ -1017,7 +1017,16 @@ export default function AddMultipleProducts() {
                             <Command>
                               <CommandInput placeholder="Type to filter..." className="h-9" />
                               <CommandList className="max-h-60">
-                                <CommandEmpty>No match found</CommandEmpty>
+                                <CommandEmpty>
+                                  <div className="py-4 text-center space-y-1">
+                                    <p className="text-sm font-medium text-foreground">
+                                      No match found
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                      Fill in the device name below to add a new product.
+                                    </p>
+                                  </div>
+                                </CommandEmpty>
                                 <CommandGroup heading={`${inventory.length} products in inventory`}>
                                   {inventory.map((item) => (
                                     <CommandItem
@@ -1049,11 +1058,11 @@ export default function AddMultipleProducts() {
                                         </div>
                                         <span
                                           className={cn(
-                                            "shrink-0 inline-flex items-center justify-center text-xs font-bold w-6 h-6 rounded border",
+                                            "shrink-0 inline-flex items-center justify-center text-xs font-bold px-1.5 py-0.5 min-w-[1.5rem] rounded border",
                                             GRADE_STYLES[item.grade],
                                           )}
                                         >
-                                          {item.grade}
+                                          {GRADE_BADGE_LABELS[item.grade as Grade]}
                                         </span>
                                       </div>
                                     </CommandItem>
@@ -1064,6 +1073,28 @@ export default function AddMultipleProducts() {
                           </PopoverContent>
                         </Popover>
                       </div>
+
+                      {/* Device name — editable when adding a new (non-inventory) product */}
+                      {!row.selectedInventoryId && (
+                        <div className="space-y-1.5">
+                          <Label
+                            className="text-sm font-medium"
+                            htmlFor={`bulk-device-name-${index}`}
+                          >
+                            Device name
+                          </Label>
+                          <Input
+                            id={`bulk-device-name-${index}`}
+                            placeholder="e.g. iPhone 14 Pro"
+                            value={row.deviceName}
+                            onChange={(event) =>
+                              handleFieldChange(index, "deviceName", event.target.value)
+                            }
+                            disabled={isSubmitting}
+                            className="h-10"
+                          />
+                        </div>
+                      )}
 
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div className="space-y-1.5">

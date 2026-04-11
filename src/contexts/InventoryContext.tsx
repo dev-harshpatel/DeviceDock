@@ -28,6 +28,7 @@ interface InventoryContextType {
     inventoryId: string,
     imei: string | null,
     serialNumber: string | null,
+    color?: string | null,
   ) => Promise<void>;
   /** Exact IMEI or serial match for manual sale (in_stock / reserved only). */
   lookupIdentifierForSale: (raw: string) => Promise<IdentifierSaleLookup | null>;
@@ -330,6 +331,7 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
       inventoryId: string,
       imei: string | null,
       serialNumber: string | null,
+      color?: string | null,
     ): Promise<void> => {
       if (!companyId) throw new Error("No active company context");
       if (!imei && !serialNumber)
@@ -341,10 +343,18 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
         imei: imei ?? null,
         serial_number: serialNumber ?? null,
         status: "in_stock",
+        ...(color ? { color } : {}),
       });
 
       if (error) {
         console.error("[InventoryContext] addInventoryIdentifier failed:", error);
+        // Unique constraint violation — this IMEI/serial already exists for this company.
+        if (error.code === "23505") {
+          const label = imei ?? serialNumber;
+          throw new Error(
+            `${label} is already registered in inventory. Each IMEI/serial must be unique — remove the duplicate and try again.`,
+          );
+        }
         throw new Error(error.message);
       }
     },
@@ -360,7 +370,7 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
         column: "imei" | "serial_number",
       ): Promise<Record<string, unknown> | null> => {
         const { data, error } = await (supabase.from("inventory_identifiers") as any)
-          .select("id, inventory_id, imei, serial_number, status")
+          .select("id, inventory_id, imei, serial_number, status, color")
           .eq("company_id", companyId)
           .eq(column, q)
           .maybeSingle();
@@ -398,6 +408,7 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
         imei: (row.imei as string | null) ?? null,
         serialNumber: (row.serial_number as string | null) ?? null,
         status,
+        color: (row.color as string | null) ?? null,
         item,
       };
     },
