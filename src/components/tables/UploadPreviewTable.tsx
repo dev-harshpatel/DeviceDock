@@ -5,36 +5,20 @@ import { formatPrice } from "@/lib/utils";
 import { GradeBadge } from "@/components/common/GradeBadge";
 import { AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface UploadPreviewTableProps {
   products: ParsedProduct[];
   className?: string;
 }
 
-export function UploadPreviewTable({
-  products,
-  className,
-}: UploadPreviewTableProps) {
+export function UploadPreviewTable({ products, className }: UploadPreviewTableProps) {
   if (products.length === 0) {
-    return (
-      <div className="text-center py-12 text-muted-foreground">
-        No products to preview
-      </div>
-    );
+    return <div className="text-center py-12 text-muted-foreground">No products to preview</div>;
   }
 
-  const validProducts = products.filter(
-    (p) => !p.errors || p.errors.length === 0
-  );
-  const invalidProducts = products.filter(
-    (p) => p.errors && p.errors.length > 0
-  );
+  const validProducts = products.filter((p) => !p.errors || p.errors.length === 0);
+  const invalidProducts = products.filter((p) => p.errors && p.errors.length > 0);
 
   return (
     <div className={cn("space-y-4", className)}>
@@ -42,19 +26,14 @@ export function UploadPreviewTable({
       <div className="flex items-center justify-between text-sm">
         <div className="flex items-center gap-4">
           <span className="text-muted-foreground">
-            Total:{" "}
-            <span className="font-medium text-foreground">
-              {products.length}
-            </span>{" "}
-            products
+            Total: <span className="font-medium text-foreground">{products.length}</span> products
           </span>
           <span className="text-success">
             Valid: <span className="font-medium">{validProducts.length}</span>
           </span>
           {invalidProducts.length > 0 && (
             <span className="text-destructive">
-              Errors:{" "}
-              <span className="font-medium">{invalidProducts.length}</span>
+              Errors: <span className="font-medium">{invalidProducts.length}</span>
             </span>
           )}
         </div>
@@ -84,6 +63,9 @@ export function UploadPreviewTable({
                 <th className="text-center text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-4">
                   Quantity
                 </th>
+                <th className="text-center text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-4">
+                  Units (IMEI / Serial)
+                </th>
                 <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-4">
                   Purchase Price
                 </th>
@@ -92,9 +74,6 @@ export function UploadPreviewTable({
                 </th>
                 <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-4">
                   HST
-                </th>
-                <th className="text-center text-xs font-medium text-muted-foreground uppercase tracking-wider px-6 py-4">
-                  Status
                 </th>
               </tr>
             </thead>
@@ -108,8 +87,7 @@ export function UploadPreviewTable({
                     className={cn(
                       "transition-colors",
                       index % 2 === 1 && "bg-table-zebra",
-                      hasErrors &&
-                        "bg-destructive/5 border-l-4 border-l-destructive"
+                      hasErrors && "bg-destructive/5 border-l-4 border-l-destructive",
                     )}
                   >
                     <td className="px-6 py-4 text-sm text-muted-foreground">
@@ -128,9 +106,7 @@ export function UploadPreviewTable({
                               </TooltipTrigger>
                               <TooltipContent className="max-w-xs">
                                 <div className="space-y-1">
-                                  <p className="font-semibold">
-                                    Validation Errors:
-                                  </p>
+                                  <p className="font-semibold">Validation Errors:</p>
                                   <ul className="list-disc list-inside text-xs space-y-0.5">
                                     {product.errors?.map((error, i) => (
                                       <li key={i}>{error}</li>
@@ -143,19 +119,23 @@ export function UploadPreviewTable({
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-4 text-sm text-foreground">
-                      {product.brand}
-                    </td>
+                    <td className="px-4 py-4 text-sm text-foreground">{product.brand}</td>
                     <td className="px-4 py-4 text-center">
                       <GradeBadge grade={product.grade} />
                     </td>
-                    <td className="px-4 py-4 text-sm text-foreground">
-                      {product.storage}
-                    </td>
+                    <td className="px-4 py-4 text-sm text-foreground">{product.storage}</td>
                     <td className="px-4 py-4 text-center">
                       <span className="font-semibold text-foreground text-sm">
                         {product.quantity}
                       </span>
+                    </td>
+                    <td className="px-4 py-4 text-center text-sm text-foreground">
+                      <span className="font-medium">
+                        {(product.identifiers?.length ?? 0) === product.quantity
+                          ? `${product.identifiers?.length ?? 0}`
+                          : `${product.identifiers?.length ?? 0} / ${product.quantity}`}
+                      </span>
+                      <span className="text-muted-foreground block text-xs">identifiers</span>
                     </td>
                     <td className="px-4 py-4 text-right">
                       <span className="font-medium text-foreground text-sm">
@@ -173,17 +153,6 @@ export function UploadPreviewTable({
                           ? `${product.hst}%`
                           : `${Number(product.hst) || 0}%`}
                       </span>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      {hasErrors ? (
-                        <span className="text-xs text-destructive font-medium">
-                          Error
-                        </span>
-                      ) : (
-                        <span className="text-xs text-success font-medium">
-                          Valid
-                        </span>
-                      )}
                     </td>
                   </tr>
                 );
@@ -203,17 +172,13 @@ export function UploadPreviewTable({
               key={index}
               className={cn(
                 "p-4 bg-card rounded-lg border",
-                hasErrors
-                  ? "border-destructive border-l-4 bg-destructive/5"
-                  : "border-border"
+                hasErrors ? "border-destructive border-l-4 bg-destructive/5" : "border-border",
               )}
             >
-              <div className="flex items-start justify-between gap-3 mb-3">
-                <div className="flex-1">
+              <div className="flex items-start gap-3 mb-3">
+                <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <h3 className="font-medium text-foreground">
-                      {product.deviceName}
-                    </h3>
+                    <h3 className="font-medium text-foreground">{product.deviceName}</h3>
                     {hasErrors && (
                       <TooltipProvider>
                         <Tooltip>
@@ -222,9 +187,7 @@ export function UploadPreviewTable({
                           </TooltipTrigger>
                           <TooltipContent className="max-w-xs">
                             <div className="space-y-1">
-                              <p className="font-semibold">
-                                Validation Errors:
-                              </p>
+                              <p className="font-semibold">Validation Errors:</p>
                               <ul className="list-disc list-inside text-xs space-y-0.5">
                                 {product.errors?.map((error, i) => (
                                   <li key={i}>{error}</li>
@@ -240,15 +203,6 @@ export function UploadPreviewTable({
                     Row {product.rowNumber || index + 1}
                   </span>
                 </div>
-                {hasErrors ? (
-                  <span className="text-xs text-destructive font-medium">
-                    Error
-                  </span>
-                ) : (
-                  <span className="text-xs text-success font-medium">
-                    Valid
-                  </span>
-                )}
               </div>
 
               {hasErrors && (
@@ -263,55 +217,43 @@ export function UploadPreviewTable({
 
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
-                  <span className="text-xs text-muted-foreground block mb-1">
-                    Brand
-                  </span>
-                  <span className="font-medium text-foreground">
-                    {product.brand}
-                  </span>
+                  <span className="text-xs text-muted-foreground block mb-1">Brand</span>
+                  <span className="font-medium text-foreground">{product.brand}</span>
                 </div>
                 <div>
-                  <span className="text-xs text-muted-foreground block mb-1">
-                    Grade
-                  </span>
+                  <span className="text-xs text-muted-foreground block mb-1">Grade</span>
                   <GradeBadge grade={product.grade} />
                 </div>
                 <div>
-                  <span className="text-xs text-muted-foreground block mb-1">
-                    Storage
-                  </span>
+                  <span className="text-xs text-muted-foreground block mb-1">Storage</span>
+                  <span className="font-medium text-foreground">{product.storage}</span>
+                </div>
+                <div>
+                  <span className="text-xs text-muted-foreground block mb-1">Quantity</span>
+                  <span className="font-semibold text-foreground">{product.quantity}</span>
+                </div>
+                <div>
+                  <span className="text-xs text-muted-foreground block mb-1">Identifiers</span>
                   <span className="font-medium text-foreground">
-                    {product.storage}
+                    {(product.identifiers?.length ?? 0) === product.quantity
+                      ? `${product.identifiers?.length ?? 0} unit(s)`
+                      : `${product.identifiers?.length ?? 0} / ${product.quantity}`}
                   </span>
                 </div>
                 <div>
-                  <span className="text-xs text-muted-foreground block mb-1">
-                    Quantity
-                  </span>
-                  <span className="font-semibold text-foreground">
-                    {product.quantity}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-xs text-muted-foreground block mb-1">
-                    Purchase Price
-                  </span>
+                  <span className="text-xs text-muted-foreground block mb-1">Purchase Price</span>
                   <span className="font-medium text-foreground">
                     {formatPrice(product.purchasePrice)}
                   </span>
                 </div>
                 <div>
-                  <span className="text-xs text-muted-foreground block mb-1">
-                    Selling Price
-                  </span>
+                  <span className="text-xs text-muted-foreground block mb-1">Selling Price</span>
                   <span className="font-medium text-foreground">
                     {formatPrice(product.sellingPrice)}
                   </span>
                 </div>
                 <div>
-                  <span className="text-xs text-muted-foreground block mb-1">
-                    HST
-                  </span>
+                  <span className="text-xs text-muted-foreground block mb-1">HST</span>
                   <span className="font-medium text-foreground">
                     {typeof product.hst === "number"
                       ? `${product.hst}%`

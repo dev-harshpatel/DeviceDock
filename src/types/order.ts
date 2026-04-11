@@ -5,6 +5,10 @@ export type OrderStatus = "pending" | "approved" | "rejected" | "completed";
 export interface OrderItem {
   item: InventoryItem;
   quantity: number;
+  /** When set, this line sold a tracked unit; `inventory_identifiers` is updated on sale. */
+  inventoryIdentifierId?: string;
+  /** Human-readable IMEI or serial number shown in order history (stored at sale time). */
+  identifierLabel?: string;
 }
 
 export interface Order {
@@ -31,7 +35,7 @@ export interface Order {
   invoiceConfirmed?: boolean;
   invoiceConfirmedAt?: string | null;
   discountAmount?: number;
-  discountType?: 'percentage' | 'cad';
+  discountType?: "percentage" | "cad";
   shippingAmount?: number;
   // Addresses (full address string only)
   shippingAddress?: string | null;
@@ -48,5 +52,5 @@ export interface Order {
 // Extended order with user profile info (for display)
 export interface OrderWithUser extends Order {
   userEmail?: string;
-  userRole?: 'user' | 'admin';
+  userRole?: "user" | "admin";
 }

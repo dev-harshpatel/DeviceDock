@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { useState, useEffect, useMemo, useCallback, useTransition } from "react";
 import { Order, OrderStatus } from "@/types/order";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Eye,
+  Loader2,
   RotateCcw,
   Search,
   ShoppingBag,
@@ -17,7 +19,6 @@ import { RejectionNote } from "@/components/common/RejectionNote";
 import { Input } from "@/components/ui/input";
 import { cn, formatDateInOntario, formatPrice } from "@/lib/utils";
 import { OrderDetailsModal } from "@/components/modals/OrderDetailsModal";
-import { ManualSaleModal } from "@/components/modals/ManualSaleModal";
 // TODO: Remove if Request Device feature is not required in later development
 // import { AdminWishDetailsModal } from "@/components/modals/AdminWishDetailsModal";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -47,11 +48,12 @@ import { getStatusColor, getStatusLabel } from "@/lib/utils/status";
 import { useCompany } from "@/contexts/CompanyContext";
 
 export default function Orders() {
-  const { companyId } = useCompany();
+  const router = useRouter();
+  const [isPendingManualSale, startManualSaleTransition] = useTransition();
+  const { companyId, slug } = useCompany();
   const [activeTab, setActiveTab] = useState<"orders" | "deleted">("orders");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
-  const [manualSaleOpen, setManualSaleOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<OrderStatus | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [userEmails, setUserEmails] = useState<Record<string, string>>({});
@@ -182,7 +184,8 @@ export default function Orders() {
           const data = await response.json();
           setUserEmails((prev) => ({ ...prev, ...data.emails }));
         }
-      } catch (error) {
+      } catch {
+        /* ignore email fetch failures */
       } finally {
         setLoadingEmails(false);
       }
@@ -245,8 +248,10 @@ export default function Orders() {
   }, []);
 
   const handleOpenManualSale = useCallback(() => {
-    setManualSaleOpen(true);
-  }, []);
+    startManualSaleTransition(() => {
+      router.push(`/${slug}/orders/manual-sale`);
+    });
+  }, [router, slug]);
 
   if (isLoading && activeTab === "orders") {
     return <Loader text="Loading orders..." />;
@@ -312,10 +317,22 @@ export default function Orders() {
                     <SelectItem value="completed">Completed</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button onClick={handleOpenManualSale} className="gap-2 shrink-0">
-                  <ShoppingBag className="h-4 w-4" />
-                  <span className="hidden sm:inline">Record Sale</span>
-                  <span className="sm:hidden">Sale</span>
+                <Button
+                  type="button"
+                  onClick={handleOpenManualSale}
+                  disabled={isPendingManualSale}
+                  className="gap-2 shrink-0"
+                  aria-busy={isPendingManualSale}
+                >
+                  {isPendingManualSale ? (
+                    <Loader2 className="h-4 w-4 animate-spin shrink-0" aria-hidden />
+                  ) : (
+                    <ShoppingBag className="h-4 w-4 shrink-0" aria-hidden />
+                  )}
+                  <span className="hidden sm:inline">
+                    {isPendingManualSale ? "Opening…" : "Record Sale"}
+                  </span>
+                  <span className="sm:hidden">{isPendingManualSale ? "…" : "Sale"}</span>
                 </Button>
                 {hasActiveFilters && (
                   <Button
@@ -565,8 +582,6 @@ export default function Orders() {
       </Tabs>
 
       <OrderDetailsModal open={modalOpen} onOpenChange={setModalOpen} order={selectedOrder} />
-
-      <ManualSaleModal open={manualSaleOpen} onOpenChange={setManualSaleOpen} />
 
       {/* TODO: Remove if Request Device feature is not required in later development */}
       {/* <AdminWishDetailsModal

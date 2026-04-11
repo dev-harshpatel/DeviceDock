@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { NavLink } from "@/components/layout/NavLink";
-import { Bell, ChevronLeft, ShoppingBag, X } from "lucide-react";
+import { Bell, ChevronLeft, ScanLine, ShoppingBag, X } from "lucide-react";
 import { Blocks } from "@/components/animate-ui/icons/blocks";
 import { Users } from "@/components/animate-ui/icons/users";
 import { ChartLine } from "@/components/animate-ui/icons/chart-line";
@@ -16,9 +16,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { cn } from "@/lib/utils";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useCompanyRoute } from "@/hooks/useCompanyRoute";
-import { useInventory } from "@/contexts/InventoryContext";
 import { useNotificationSettings } from "@/contexts/NotificationSettingsContext";
-import { getStockStatus } from "@/data/inventory";
+import { useNotificationsFeed } from "@/hooks/use-notifications-feed";
 
 interface AppSidebarProps {
   open: boolean;
@@ -55,6 +54,10 @@ function HSTIcon({ className }: { className?: string }) {
   return <HandCoinsIcon size={20} className={className} />;
 }
 
+function ImeiLookupIcon({ className }: { className?: string }) {
+  return <ScanLine className={className} />;
+}
+
 function AppSettingsIcon({ className }: { className?: string }) {
   return <SettingsIcon size={20} className={className} />;
 }
@@ -86,6 +89,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Users", icon: UsersIcon, path: "/users", allowedRoles: ["owner"] },
   { label: "Alerts", icon: Bell, path: "/alerts" },
   { label: "Reports", icon: ReportsIcon, path: "/reports" },
+  { label: "IMEI Lookup", icon: ImeiLookupIcon, path: "/imei-lookup" },
   { label: "HST", icon: HSTIcon, path: "/hst", allowedRoles: ["owner", "manager"] },
   { label: "Settings", icon: AppSettingsIcon, path: "/settings", allowedRoles: ["owner"] },
 ];
@@ -93,18 +97,12 @@ const NAV_ITEMS: NavItem[] = [
 export function AppSidebar({ open, collapsed, onClose, onToggleCollapse }: AppSidebarProps) {
   const { role } = useCompany();
   const { companyRoute } = useCompanyRoute();
-  const { inventory } = useInventory();
-  const { pushNotificationsEnabled, lowStockThreshold, criticalStockThreshold, readIds } =
-    useNotificationSettings();
-
-  const alertCount = useMemo(() => {
-    if (!pushNotificationsEnabled) return 0;
-    return inventory.filter(
-      (item) =>
-        getStockStatus(item.quantity, lowStockThreshold, criticalStockThreshold) !== "in-stock" &&
-        !readIds.has(item.id),
-    ).length;
-  }, [inventory, pushNotificationsEnabled, lowStockThreshold, criticalStockThreshold, readIds]);
+  const { pushNotificationsEnabled } = useNotificationSettings();
+  const { unreadCount } = useNotificationsFeed();
+  const alertCount = useMemo(
+    () => (pushNotificationsEnabled ? unreadCount : 0),
+    [pushNotificationsEnabled, unreadCount],
+  );
 
   const visibleItems = NAV_ITEMS.filter(
     (item) => !item.allowedRoles || item.allowedRoles.includes(role),

@@ -38,6 +38,7 @@ import {
   Trash2,
   XCircle,
 } from "lucide-react";
+import { supabase } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getStatusColor, getStatusLabel } from "@/lib/utils/status";
@@ -87,6 +88,60 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
   const [colorAssignments, setColorAssignments] = useState<
     Record<string, { color: string; quantity: number }[]>
   >({});
+
+  // identifierLabel keyed by inventoryIdentifierId — fetched for items that pre-date
+  // the identifierLabel field being stored in the order JSON.
+  const [fetchedIdentifierLabels, setFetchedIdentifierLabels] = useState<Record<string, string>>(
+    {},
+  );
+  // Per-unit color keyed by inventoryIdentifierId
+  const [fetchedIdentifierColors, setFetchedIdentifierColors] = useState<Record<string, string>>(
+    {},
+  );
+
+  useEffect(() => {
+    if (!open || !order) {
+      setFetchedIdentifierLabels({});
+      setFetchedIdentifierColors({});
+      return;
+    }
+    const items = Array.isArray(order.items) ? order.items : [];
+    // Fetch labels for items missing stored label, and colors for all identified items
+    const allIdentifierIds = items
+      .filter((oi) => oi.inventoryIdentifierId)
+      .map((oi) => oi.inventoryIdentifierId as string);
+
+    if (allIdentifierIds.length === 0) return;
+
+    (supabase as any)
+      .from("inventory_identifiers")
+      .select("id, imei, serial_number, color")
+      .in("id", allIdentifierIds)
+      .then(
+        ({
+          data,
+        }: {
+          data:
+            | {
+                id: string;
+                imei: string | null;
+                serial_number: string | null;
+                color: string | null;
+              }[]
+            | null;
+        }) => {
+          if (!data) return;
+          const labelMap: Record<string, string> = {};
+          const colorMap: Record<string, string> = {};
+          for (const row of data) {
+            labelMap[row.id] = row.imei ?? row.serial_number ?? row.id;
+            if (row.color) colorMap[row.id] = row.color;
+          }
+          setFetchedIdentifierLabels(labelMap);
+          setFetchedIdentifierColors(colorMap);
+        },
+      );
+  }, [open, order]);
 
   useEffect(() => {
     const fetchCustomerEmail = async () => {
@@ -447,6 +502,26 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
                                     Quantity: {orderItem.quantity || 0}
                                   </span>
                                 </div>
+                                {/* IMEI / serial — from stored label or fetched fallback */}
+                                {(orderItem.identifierLabel ||
+                                  (orderItem.inventoryIdentifierId &&
+                                    fetchedIdentifierLabels[orderItem.inventoryIdentifierId])) && (
+                                  <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                                    <span className="text-xs text-muted-foreground">
+                                      IMEI/Serial:
+                                    </span>
+                                    <span className="font-mono text-xs bg-muted px-2 py-0.5 rounded text-foreground select-all">
+                                      {orderItem.identifierLabel ??
+                                        fetchedIdentifierLabels[orderItem.inventoryIdentifierId!]}
+                                    </span>
+                                    {orderItem.inventoryIdentifierId &&
+                                      fetchedIdentifierColors[orderItem.inventoryIdentifierId] && (
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-medium">
+                                          {fetchedIdentifierColors[orderItem.inventoryIdentifierId]}
+                                        </span>
+                                      )}
+                                  </div>
+                                )}
                                 {/* Colour breakdown — admin only */}
                                 {itemColors.length > 0 && (
                                   <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">

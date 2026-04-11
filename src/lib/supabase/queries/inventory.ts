@@ -5,6 +5,7 @@
 
 import { InventoryItem } from "@/data/inventory";
 import type { PaginatedResult } from "@/hooks/use-paginated-query";
+import type { IdentifierFullLookup } from "@/types/inventory-identifiers";
 import { supabase } from "../client/browser";
 import { INVENTORY_SORT_ORDER } from "../../constants";
 import { dbRowToInventoryItem } from "./mappers";
@@ -223,4 +224,64 @@ export async function fetchInventoryByIds(
   if (error) throw error;
 
   return (data || []).map(dbRowToInventoryItem);
+}
+
+/**
+ * Look up a device by exact IMEI across all statuses.
+ */
+export async function lookupIdentifierByImei(
+  companyId: string,
+  imei: string,
+): Promise<IdentifierFullLookup | null> {
+  const trimmed = imei.trim();
+  if (!trimmed) return null;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: row, error } = await (supabase.from("inventory_identifiers") as any)
+    .select("id, inventory_id, imei, serial_number, status, sold_at, color")
+    .eq("company_id", companyId)
+    .eq("imei", trimmed)
+    .maybeSingle();
+
+  if (error || !row) return null;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: invRow, error: invErr } = await (supabase.from("inventory") as any)
+    .select(INVENTORY_ADMIN_FIELDS)
+    .eq("id", row.inventory_id as string)
+    .eq("company_id", companyId)
+    .maybeSingle();
+
+  if (invErr || !invRow) return null;
+
+  // Prefer the per-unit color from the identifier row.
+  // Fall back to the aggregate inventory_colors table as a display string.
+  const identifierColor = (row.color as string | null) ?? null;
+
+  let color: string | null = identifierColor;
+  if (!color) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: colorRows, error: colorError } = await (supabase.from("inventory_colors") as any)
+      .select("color")
+      .eq("inventory_id", row.inventory_id as string)
+      .order("color");
+
+    color =
+      colorError || !Array.isArray(colorRows)
+        ? null
+        : colorRows
+            .map((colorRow: { color: string | null }) => colorRow.color?.trim() ?? "")
+            .filter(Boolean)
+            .join(", ") || null;
+  }
+
+  return {
+    identifierId: row.id as string,
+    imei: (row.imei as string | null) ?? null,
+    serialNumber: (row.serial_number as string | null) ?? null,
+    status: String(row.status ?? "in_stock"),
+    soldAt: (row.sold_at as string | null) ?? null,
+    color,
+    item: dbRowToInventoryItem(invRow),
+  };
 }

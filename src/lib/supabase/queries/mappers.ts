@@ -33,6 +33,10 @@ type StoredInventoryItem = Partial<{
   sellingPrice: number | string | null;
   selling_price: number | string | null;
   storage: string | null;
+  imei: string | null;
+  serialNumber: string | null;
+  serial_number: string | null;
+  status: string | null;
 }>;
 
 const coerceFiniteNumber = (value: number | string): number | null => {
@@ -45,9 +49,7 @@ const readNumber = (value: number | string | null | undefined): number => {
   return coerceFiniteNumber(value) ?? 0;
 };
 
-const readNullableNumber = (
-  value: number | string | null | undefined
-): number | null => {
+const readNullableNumber = (value: number | string | null | undefined): number | null => {
   if (value == null) return null;
   return coerceFiniteNumber(value);
 };
@@ -55,21 +57,12 @@ const readNullableNumber = (
 const readString = (value: string | number | null | undefined): string =>
   value == null ? "" : String(value);
 
-const VALID_GRADES: Grade[] = [
-  "Brand New Sealed",
-  "Brand New Open Box",
-  "A",
-  "B",
-  "C",
-  "D",
-];
+const VALID_GRADES: Grade[] = ["Brand New Sealed", "Brand New Open Box", "A", "B", "C", "D"];
 
 const readGrade = (value: string | null | undefined): Grade =>
   value && VALID_GRADES.includes(value as Grade) ? (value as Grade) : "A";
 
-const readPriceChange = (
-  value: string | null | undefined
-): "up" | "down" | "stable" | undefined =>
+const readPriceChange = (value: string | null | undefined): "up" | "down" | "stable" | undefined =>
   value === "up" || value === "down" || value === "stable" ? value : undefined;
 
 export const dbRowToInventoryItem = (row: InventoryRow): InventoryItem => ({
@@ -82,17 +75,13 @@ export const dbRowToInventoryItem = (row: InventoryRow): InventoryItem => ({
   pricePerUnit: Number(row.price_per_unit),
   purchasePrice: row.purchase_price != null ? Number(row.purchase_price) : null,
   hst: row.hst != null ? Number(row.hst) : null,
-  sellingPrice:
-    row.selling_price != null
-      ? Number(row.selling_price)
-      : Number(row.price_per_unit),
+  sellingPrice: row.selling_price != null ? Number(row.selling_price) : Number(row.price_per_unit),
   lastUpdated: row.last_updated,
-  priceChange: (row.price_change ?? undefined) as
-    | "up"
-    | "down"
-    | "stable"
-    | undefined,
+  priceChange: (row.price_change ?? undefined) as "up" | "down" | "stable" | undefined,
   isActive: (row as any).is_active ?? true,
+  imei: (row as any).imei ?? null,
+  serialNumber: (row as any).serial_number ?? null,
+  status: (row as any).status ?? "in_stock",
 });
 
 export const dbRowToOrder = (row: OrderRow): Order => {
@@ -114,11 +103,7 @@ export const dbRowToOrder = (row: OrderRow): Order => {
             items = values[0] as unknown as OrderItem[];
           } else {
             items = values.filter(
-              (v) =>
-                typeof v === "object" &&
-                v !== null &&
-                "item" in v &&
-                "quantity" in v
+              (v) => typeof v === "object" && v !== null && "item" in v && "quantity" in v,
             ) as unknown as OrderItem[];
           }
         }
@@ -135,7 +120,7 @@ export const dbRowToOrder = (row: OrderRow): Order => {
       "item" in item &&
       "quantity" in item &&
       item.item !== null &&
-      typeof item.item === "object"
+      typeof item.item === "object",
   );
 
   // Normalize each item's product so the app always sees camelCase (deviceName, sellingPrice, etc.)
@@ -145,6 +130,12 @@ export const dbRowToOrder = (row: OrderRow): Order => {
     const pricePerUnit = readNumber(raw.pricePerUnit ?? raw.price_per_unit);
     return {
       quantity,
+      ...(typeof (oi as any).inventoryIdentifierId === "string" && {
+        inventoryIdentifierId: (oi as any).inventoryIdentifierId as string,
+      }),
+      ...(typeof (oi as any).identifierLabel === "string" && {
+        identifierLabel: (oi as any).identifierLabel as string,
+      }),
       item: {
         id: readString(raw.id ?? raw.item_id),
         deviceName: readString(raw.deviceName ?? raw.device_name),
@@ -153,18 +144,16 @@ export const dbRowToOrder = (row: OrderRow): Order => {
         storage: readString(raw.storage),
         quantity: readNumber(raw.quantity),
         pricePerUnit,
-        purchasePrice: readNullableNumber(
-          raw.purchasePrice ?? raw.purchase_price
-        ),
+        purchasePrice: readNullableNumber(raw.purchasePrice ?? raw.purchase_price),
         hst: readNullableNumber(raw.hst),
         sellingPrice: readNumber(
-          raw.sellingPrice ??
-            raw.selling_price ??
-            raw.pricePerUnit ??
-            raw.price_per_unit
+          raw.sellingPrice ?? raw.selling_price ?? raw.pricePerUnit ?? raw.price_per_unit,
         ),
         lastUpdated: readString(raw.lastUpdated ?? raw.last_updated),
         priceChange: readPriceChange(raw.priceChange ?? raw.price_change),
+        imei: readString(raw.imei),
+        serialNumber: readString(raw.serialNumber ?? raw.serial_number),
+        status: readString(raw.status) || "in_stock",
       },
     };
   });
@@ -192,16 +181,9 @@ export const dbRowToOrder = (row: OrderRow): Order => {
     invoiceTerms: (row as any).invoice_terms ?? null,
     invoiceConfirmed: (row as any).invoice_confirmed ?? false,
     invoiceConfirmedAt: (row as any).invoice_confirmed_at ?? null,
-    discountAmount: (row as any).discount_amount
-      ? Number((row as any).discount_amount)
-      : 0,
-    discountType: (row as any).discount_type as
-      | "percentage"
-      | "cad"
-      | undefined,
-    shippingAmount: (row as any).shipping_amount
-      ? Number((row as any).shipping_amount)
-      : 0,
+    discountAmount: (row as any).discount_amount ? Number((row as any).discount_amount) : 0,
+    discountType: (row as any).discount_type as "percentage" | "cad" | undefined,
+    shippingAmount: (row as any).shipping_amount ? Number((row as any).shipping_amount) : 0,
     shippingAddress: (row as any).shipping_address ?? null,
     billingAddress: (row as any).billing_address ?? null,
     imeiNumbers:
@@ -228,10 +210,7 @@ export const dbRowToUserProfile = (row: UserProfileRow): UserProfile => ({
   phone: row.phone,
   businessName: row.business_name,
   businessAddress: row.business_address,
-  businessAddressComponents: row.business_address_components as Record<
-    string,
-    any
-  > | null,
+  businessAddressComponents: row.business_address_components as Record<string, any> | null,
   businessState: row.business_state,
   businessCity: row.business_city,
   businessCountry: row.business_country,
@@ -241,8 +220,7 @@ export const dbRowToUserProfile = (row: UserProfileRow): UserProfile => ({
   // Shipping Address
   shippingAddress: (row as any).shipping_address ?? null,
   shippingAddressComponents:
-    ((row as any).shipping_address_components as Record<string, any> | null) ??
-    null,
+    ((row as any).shipping_address_components as Record<string, any> | null) ?? null,
   shippingCity: (row as any).shipping_city ?? null,
   shippingState: (row as any).shipping_state ?? null,
   shippingCountry: (row as any).shipping_country ?? null,
@@ -250,8 +228,7 @@ export const dbRowToUserProfile = (row: UserProfileRow): UserProfile => ({
   // Billing Address
   billingAddress: (row as any).billing_address ?? null,
   billingAddressComponents:
-    ((row as any).billing_address_components as Record<string, any> | null) ??
-    null,
+    ((row as any).billing_address_components as Record<string, any> | null) ?? null,
   billingCity: (row as any).billing_city ?? null,
   billingState: (row as any).billing_state ?? null,
   billingCountry: (row as any).billing_country ?? null,

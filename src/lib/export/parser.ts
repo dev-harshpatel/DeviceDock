@@ -1,13 +1,32 @@
 import * as XLSX from "xlsx";
 import { ParsedProduct } from "@/types/upload";
 import { calculatePricePerUnit } from "@/data/inventory";
+import { GRADES, normalizeGrade } from "@/lib/constants/grades";
 import {
-  GRADES,
-  normalizeGrade,
-} from "@/lib/constants/grades";
+  applyFileLevelIdentifierDuplicateDetection,
+  buildIdentifiersFromUploadCells,
+} from "@/lib/export/upload-identifier-validation";
 
 /**
- * Parse Excel file and extract product data
+ * Normalize a spreadsheet cell to a trimmed string (IMEI as Text avoids Excel rounding).
+ */
+const cellToString = (cell: unknown): string => {
+  if (cell === null || cell === undefined) return "";
+  if (typeof cell === "number") {
+    if (Number.isInteger(cell) && Math.abs(cell) >= 1e15) {
+      try {
+        return String(BigInt(Math.trunc(cell)));
+      } catch {
+        return String(cell);
+      }
+    }
+    return String(cell);
+  }
+  return String(cell).trim();
+};
+
+/**
+ * Parse Excel file and extract product data (including IMEI / Serial Number columns).
  * @param file - Excel file (.xlsx or .xls)
  * @returns Array of parsed products with validation errors
  */
@@ -32,32 +51,23 @@ export async function parseExcelFile(file: File): Promise<ParsedProduct[]> {
           return;
         }
 
-        // Convert sheet to JSON array
         const jsonData = XLSX.utils.sheet_to_json(worksheet, {
           header: 1,
           defval: "",
-        }) as any[][];
+        }) as unknown[][];
 
         if (jsonData.length < 2) {
-          reject(
-            new Error(
-              "Excel file must have at least a header row and one data row"
-            )
-          );
+          reject(new Error("Excel file must have at least a header row and one data row"));
           return;
         }
 
-        // Get header row (first row)
-        const headers = jsonData[0].map((h: any) =>
-          String(h).trim().toLowerCase()
+        const headers = (jsonData[0] ?? []).map((h) =>
+          String(h ?? "")
+            .trim()
+            .toLowerCase(),
         );
 
-        // Find column indices
-        const deviceNameIndex = findColumnIndex(headers, [
-          "device name",
-          "devicename",
-          "device",
-        ]);
+        const deviceNameIndex = findColumnIndex(headers, ["device name", "devicename", "device"]);
         const brandIndex = findColumnIndex(headers, ["brand"]);
         const gradeIndex = findColumnIndex(headers, ["grade"]);
         const storageIndex = findColumnIndex(headers, ["storage"]);
@@ -83,8 +93,14 @@ export async function parseExcelFile(file: File): Promise<ParsedProduct[]> {
           "last_updated",
           "updated",
         ]);
+        const imeiIndex = findColumnIndex(headers, ["imei"]);
+        const serialIndex = findColumnIndex(headers, [
+          "serial number",
+          "serialnumber",
+          "serial",
+          "serial_no",
+        ]);
 
-        // Validate required columns
         const missingColumns: string[] = [];
         if (deviceNameIndex === -1) missingColumns.push("Device Name");
         if (brandIndex === -1) missingColumns.push("Brand");
@@ -94,60 +110,64 @@ export async function parseExcelFile(file: File): Promise<ParsedProduct[]> {
         if (purchasePriceIndex === -1) missingColumns.push("Purchase Price");
         if (sellingPriceIndex === -1) missingColumns.push("Selling Price");
         if (hstIndex === -1) missingColumns.push("HST");
+        if (imeiIndex === -1) missingColumns.push("IMEI");
+        if (serialIndex === -1) missingColumns.push("Serial Number");
 
         if (missingColumns.length > 0) {
-          reject(
-            new Error(`Missing required columns: ${missingColumns.join(", ")}`)
-          );
+          reject(new Error(`Missing required columns: ${missingColumns.join(", ")}`));
           return;
         }
 
-        // Parse data rows (skip header row)
         const products: ParsedProduct[] = [];
         for (let i = 1; i < jsonData.length; i++) {
-          const row = jsonData[i];
-          const rowNumber = i + 1; // 1-indexed for user display
+          const row = jsonData[i] ?? [];
+          const rowNumber = i + 1;
 
-          // Skip empty rows
-          if (row.every((cell: any) => !cell || String(cell).trim() === "")) {
+          const rowCells = row.map((c) => cellToString(c));
+          if (rowCells.every((c) => c === "")) {
             continue;
           }
 
-          const rawGrade = String(row[gradeIndex] || "").trim();
+          const rawGrade = String(row[gradeIndex] ?? "").trim();
           const normalizedGrade = normalizeGrade(rawGrade);
+          const quantity = parseNumber(row[quantityIndex]);
+
+          const imeiCellRaw = cellToString(row[imeiIndex]);
+          const serialCellRaw = cellToString(row[serialIndex]);
+
           const product: ParsedProduct = {
-            deviceName: String(row[deviceNameIndex] || "").trim(),
-            brand: String(row[brandIndex] || "").trim(),
+            deviceName: cellToString(row[deviceNameIndex]),
+            brand: cellToString(row[brandIndex]),
             grade: normalizedGrade ?? "A",
-            storage: String(row[storageIndex] || "").trim(),
-            quantity: parseNumber(row[quantityIndex]),
+            storage: cellToString(row[storageIndex]),
+            quantity,
             purchasePrice: parseNumber(row[purchasePriceIndex]),
             sellingPrice: parseNumber(row[sellingPriceIndex]),
             hst: parseNumber(row[hstIndex]),
-            lastUpdated:
-              lastUpdatedIndex >= 0
-                ? String(row[lastUpdatedIndex] || "").trim()
-                : undefined,
+            imeiCellRaw,
+            serialCellRaw,
+            identifiers: [],
+            lastUpdated: lastUpdatedIndex >= 0 ? cellToString(row[lastUpdatedIndex]) : undefined,
             rowNumber,
             errors: [],
           };
 
-          // Validate product data
+          const idBundle = buildIdentifiersFromUploadCells(imeiCellRaw, serialCellRaw, quantity);
+          product.identifiers = idBundle.identifiers;
+          const rowErrors: string[] = [...idBundle.errors];
+
           const validation = validateProductData(product);
           if (!validation.valid) {
-            product.errors = validation.errors;
+            rowErrors.push(...validation.errors);
           }
 
+          product.errors = rowErrors.length > 0 ? rowErrors : undefined;
           products.push(product);
         }
 
-        resolve(products);
+        resolve(applyFileLevelIdentifierDuplicateDetection(products));
       } catch (error) {
-        reject(
-          error instanceof Error
-            ? error
-            : new Error("Failed to parse Excel file")
-        );
+        reject(error instanceof Error ? error : new Error("Failed to parse Excel file"));
       }
     };
 
@@ -174,13 +194,12 @@ function findColumnIndex(headers: string[], possibleNames: string[]): number {
 /**
  * Parse number from cell value
  */
-function parseNumber(value: any): number {
+function parseNumber(value: unknown): number {
   if (typeof value === "number") return value;
   if (typeof value === "string") {
-    // Remove currency symbols, commas, and whitespace
     const cleaned = value.replace(/[$,\s]/g, "");
     const parsed = parseFloat(cleaned);
-    return isNaN(parsed) ? 0 : parsed;
+    return Number.isNaN(parsed) ? 0 : parsed;
   }
   return 0;
 }
@@ -196,7 +215,6 @@ export function validateProductData(data: Partial<ParsedProduct>): {
 } {
   const errors: string[] = [];
 
-  // Required fields
   if (!data.deviceName || data.deviceName.trim() === "") {
     errors.push("Device Name is required");
   }
@@ -205,15 +223,12 @@ export function validateProductData(data: Partial<ParsedProduct>): {
     errors.push("Brand is required");
   }
 
-  // Grade validation
   if (!data.grade) {
     errors.push("Grade is required");
   } else {
     const normalized = normalizeGrade(data.grade);
     if (!normalized || !GRADES.includes(normalized)) {
-      errors.push(
-        `Grade must be one of: ${GRADES.join(", ")}`
-      );
+      errors.push(`Grade must be one of: ${GRADES.join(", ")}`);
     }
   }
 
@@ -221,43 +236,33 @@ export function validateProductData(data: Partial<ParsedProduct>): {
     errors.push("Storage is required");
   }
 
-  // Quantity validation
   if (data.quantity === undefined || data.quantity === null) {
     errors.push("Quantity is required");
-  } else if (typeof data.quantity !== "number" || isNaN(data.quantity)) {
+  } else if (typeof data.quantity !== "number" || Number.isNaN(data.quantity)) {
     errors.push("Quantity must be a valid number");
-  } else if (data.quantity < 0) {
-    errors.push("Quantity must be >= 0");
+  } else if (data.quantity < 1) {
+    errors.push("Quantity must be at least 1");
   }
 
-  // Purchase Price validation
   if (data.purchasePrice === undefined || data.purchasePrice === null) {
     errors.push("Purchase Price is required");
-  } else if (
-    typeof data.purchasePrice !== "number" ||
-    isNaN(data.purchasePrice)
-  ) {
+  } else if (typeof data.purchasePrice !== "number" || Number.isNaN(data.purchasePrice)) {
     errors.push("Purchase Price must be a valid number");
   } else if (data.purchasePrice < 0) {
     errors.push("Purchase Price must be >= 0");
   }
 
-  // Selling Price validation
   if (data.sellingPrice === undefined || data.sellingPrice === null) {
     errors.push("Selling Price is required");
-  } else if (
-    typeof data.sellingPrice !== "number" ||
-    isNaN(data.sellingPrice)
-  ) {
+  } else if (typeof data.sellingPrice !== "number" || Number.isNaN(data.sellingPrice)) {
     errors.push("Selling Price must be a valid number");
   } else if (data.sellingPrice <= 0) {
     errors.push("Selling Price must be > 0");
   }
 
-  // HST validation
   if (data.hst === undefined || data.hst === null) {
     errors.push("HST is required");
-  } else if (typeof data.hst !== "number" || isNaN(data.hst)) {
+  } else if (typeof data.hst !== "number" || Number.isNaN(data.hst)) {
     errors.push("HST must be a valid number");
   } else if (data.hst < 0) {
     errors.push("HST must be >= 0");
@@ -286,13 +291,11 @@ export function mapToInventoryItem(parsed: ParsedProduct): {
   hst: number;
   last_updated: string;
 } {
-  // Format last updated date
   let lastUpdated = "Just now";
   if (parsed.lastUpdated && parsed.lastUpdated.trim() !== "") {
     try {
-      // Try to parse and format the date
       const date = new Date(parsed.lastUpdated);
-      if (!isNaN(date.getTime())) {
+      if (!Number.isNaN(date.getTime())) {
         lastUpdated = date.toLocaleDateString("en-US", {
           month: "short",
           day: "numeric",
@@ -306,12 +309,7 @@ export function mapToInventoryItem(parsed: ParsedProduct): {
     }
   }
 
-  // Auto-calculate price per unit: (purchasePrice / quantity) * (1 + hst/100)
-  const pricePerUnit = calculatePricePerUnit(
-    parsed.purchasePrice,
-    parsed.quantity,
-    parsed.hst
-  );
+  const pricePerUnit = calculatePricePerUnit(parsed.purchasePrice, parsed.quantity, parsed.hst);
 
   return {
     device_name: parsed.deviceName,

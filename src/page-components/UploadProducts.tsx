@@ -1,24 +1,35 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useInventory } from "@/contexts/InventoryContext";
 import { useAuth } from "@/lib/auth/context";
 import { useToast } from "@/hooks/use-toast";
-import { parseExcelFile, mapToInventoryItem } from "@/lib/export/parser";
+import { downloadSampleProductUploadTemplate } from "@/lib/export/sample-upload-template";
+import { mergeDatabaseIdentifierConflicts } from "@/lib/export/upload-identifier-validation";
+import { mapToInventoryItem, parseExcelFile } from "@/lib/export/parser";
 import { ParsedProduct, UploadHistory } from "@/types/upload";
 import { InventoryItem } from "@/data/inventory";
 import { UploadPreviewTable } from "@/components/tables/UploadPreviewTable";
 import { UploadHistoryTable } from "@/components/tables/UploadHistoryTable";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Upload, X, FileSpreadsheet, CheckCircle2, AlertCircle } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Download,
+  FileSpreadsheet,
+  Loader2,
+  Upload,
+  X,
+} from "lucide-react";
 import { supabase } from "@/lib/supabase/client/browser";
 import { cn } from "@/lib/utils";
 
 export default function UploadProducts() {
   const {
     inventory,
+    addInventoryIdentifier,
     bulkInsertProducts,
     getUploadHistory,
     isLoading: inventoryLoading,
@@ -34,11 +45,47 @@ export default function UploadProducts() {
   const [uploadHistory, setUploadHistory] = useState<UploadHistory[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  /** Bumps after each successful parse so IMEI/serial can be checked against the database. */
+  const [dbValidateTick, setDbValidateTick] = useState(0);
+  /** Prevents stale async DB checks from overwriting state after clear or re-parse. */
+  const parseGenerationRef = useRef(0);
+  const parsedProductsRef = useRef<ParsedProduct[]>([]);
+  parsedProductsRef.current = parsedProducts;
 
   // Load upload history on mount
   useEffect(() => {
     loadUploadHistory();
   }, []);
+
+  useEffect(() => {
+    if (!companyId) return;
+    const snapshot = parsedProductsRef.current;
+    if (snapshot.length === 0) return;
+
+    let cancelled = false;
+    const generation = parseGenerationRef.current;
+
+    void (async () => {
+      try {
+        const merged = await mergeDatabaseIdentifierConflicts(snapshot, companyId, supabase);
+        if (!cancelled && generation === parseGenerationRef.current) {
+          setParsedProducts(merged);
+        }
+      } catch (error) {
+        if (!cancelled && generation === parseGenerationRef.current) {
+          toast({
+            title: "Could not verify identifiers",
+            description: error instanceof Error ? error.message : "Unknown error",
+            variant: "destructive",
+          });
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, dbValidateTick, toast]);
 
   const loadUploadHistory = async () => {
     setIsLoadingHistory(true);
@@ -82,7 +129,9 @@ export default function UploadProducts() {
 
       try {
         const products = await parseExcelFile(file);
+        parseGenerationRef.current += 1;
         setParsedProducts(products);
+        setDbValidateTick((t) => t + 1);
       } catch (error) {
         toast({
           title: "Error parsing file",
@@ -134,6 +183,8 @@ export default function UploadProducts() {
   const handleClear = () => {
     setSelectedFile(null);
     setParsedProducts([]);
+    setDbValidateTick(0);
+    parseGenerationRef.current = 0;
   };
 
   const handleUpload = async () => {
@@ -146,7 +197,15 @@ export default function UploadProducts() {
       return;
     }
 
-    // Filter out products with errors
+    if (!companyId) {
+      toast({
+        title: "Error",
+        description: "Select a company before uploading.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const validProducts = parsedProducts.filter((p) => !p.errors || p.errors.length === 0);
 
     if (validProducts.length === 0) {
@@ -161,7 +220,6 @@ export default function UploadProducts() {
     setIsUploading(true);
 
     try {
-      // Create upload history record (pending status)
       const { data: uploadRecord, error: uploadError } = await (
         supabase.from("product_uploads") as any
       )
@@ -181,11 +239,14 @@ export default function UploadProducts() {
         throw new Error(`Failed to create upload record: ${uploadError.message}`);
       }
 
-      // Map parsed products to InventoryItem format
-      const inventoryItems: InventoryItem[] = validProducts.map((parsed, index) => {
+      let successCount = 0;
+      let failedCount = 0;
+      const rowErrors: string[] = [];
+
+      for (const parsed of validProducts) {
         const mapped = mapToInventoryItem(parsed);
-        return {
-          id: `temp-${index}`, // Temporary ID, will be generated by database
+        const inventoryItem: InventoryItem = {
+          id: "temp-upload-row",
           deviceName: mapped.device_name,
           brand: mapped.brand,
           grade: mapped.grade as "A" | "B" | "C" | "D",
@@ -197,26 +258,46 @@ export default function UploadProducts() {
           sellingPrice: mapped.selling_price,
           lastUpdated: mapped.last_updated,
         };
-      });
 
-      // Bulk insert products
-      const result = await bulkInsertProducts(inventoryItems);
+        const insertResult = await bulkInsertProducts([inventoryItem]);
+        if (insertResult.success !== 1 || !insertResult.insertedIds?.[0]) {
+          failedCount += 1;
+          rowErrors.push(
+            `Row ${parsed.rowNumber ?? "?"}: ${
+              insertResult.errors[0] ?? "Inventory insert failed"
+            }`,
+          );
+          continue;
+        }
 
-      // Update upload history record
-      const errorMessages: string[] = [];
-      if (result.errors.length > 0) {
-        errorMessages.push(...result.errors);
-      }
-      if (result.failed > 0 && result.errors.length === 0) {
-        errorMessages.push(`${result.failed} products failed to insert`);
+        const inventoryId = insertResult.insertedIds[0];
+
+        try {
+          for (const ident of parsed.identifiers) {
+            await addInventoryIdentifier(inventoryId, ident.imei, ident.serialNumber);
+          }
+          successCount += 1;
+        } catch (identError) {
+          await supabase
+            .from("inventory")
+            .delete()
+            .eq("id", inventoryId)
+            .eq("company_id", companyId);
+          failedCount += 1;
+          rowErrors.push(
+            `Row ${parsed.rowNumber ?? "?"}: ${
+              identError instanceof Error ? identError.message : "Identifier save failed"
+            }`,
+          );
+        }
       }
 
       const { error: updateError } = await (supabase.from("product_uploads") as any)
         .update({
-          successful_inserts: result.success,
-          failed_inserts: result.failed,
-          upload_status: result.failed === 0 ? "completed" : "failed",
-          error_message: errorMessages.length > 0 ? errorMessages.join("; ") : null,
+          successful_inserts: successCount,
+          failed_inserts: failedCount,
+          upload_status: failedCount === 0 ? "completed" : "failed",
+          error_message: rowErrors.length > 0 ? rowErrors.join("; ") : null,
           updated_at: new Date().toISOString(),
         })
         .eq("id", uploadRecord.id);
@@ -225,18 +306,16 @@ export default function UploadProducts() {
         throw new Error(`Failed to update upload record: ${updateError.message}`);
       }
 
-      // Refresh history
       await loadUploadHistory();
 
-      // Show success toast
       toast({
-        title: "Upload successful",
-        description: `${result.success} products uploaded successfully${
-          result.failed > 0 ? `, ${result.failed} failed` : ""
+        title: failedCount === 0 ? "Upload successful" : "Upload finished with errors",
+        description: `${successCount} product row(s) saved${
+          failedCount > 0 ? `, ${failedCount} failed` : ""
         }.`,
+        variant: failedCount > 0 ? "destructive" : "default",
       });
 
-      // Clear form
       handleClear();
     } catch (error) {
       toast({
@@ -339,12 +418,25 @@ export default function UploadProducts() {
 
         {/* Section 2: File Upload & Preview */}
         <Card>
-          <CardHeader>
-            <CardTitle>Upload Excel File</CardTitle>
-            <CardDescription>
-              Upload an Excel file (.xlsx or .xls) with product data. Required columns: Device Name,
-              Brand, Grade, Storage, Quantity, Purchase Price, Selling Price, HST
-            </CardDescription>
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:space-y-0">
+            <div className="space-y-1.5">
+              <CardTitle>Upload Excel File</CardTitle>
+              <CardDescription>
+                Required columns: Device Name, Brand, Grade, Storage, Quantity, Purchase Price,
+                Selling Price, HST, IMEI, and Serial Number. Enter one IMEI (14–17 digits) or serial
+                per unit; separate multiple values with commas or new lines. Total IMEI + serial
+                values must equal Quantity. Format IMEI cells as Text in Excel to avoid rounding.
+              </CardDescription>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="shrink-0 gap-2"
+              onClick={() => downloadSampleProductUploadTemplate()}
+            >
+              <Download className="h-4 w-4" />
+              Download sample Excel
+            </Button>
           </CardHeader>
           <CardContent className="space-y-4">
             {!selectedFile ? (

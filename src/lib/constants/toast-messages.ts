@@ -108,6 +108,10 @@ export const TOAST_MESSAGES = {
   MEMBER_SUSPENDED: "Member suspended",
   MEMBER_REACTIVATED: "Member reactivated",
 
+  // IMEI Lookup
+  IMEI_NOT_FOUND: "No device found with that IMEI number.",
+  IMEI_LOOKUP_ERROR: "Failed to look up IMEI. Please try again.",
+
   // Generic error messages
   ERROR_GENERIC: "An error occurred. Please try again.",
   ERROR_TRY_AGAIN: "Please try again.",

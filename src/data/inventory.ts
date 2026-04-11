@@ -14,6 +14,9 @@ export interface InventoryItem {
   lastUpdated: string;
   priceChange?: "up" | "down" | "stable";
   isActive?: boolean;
+  imei?: string | null;
+  serialNumber?: string | null;
+  status?: string;
 }
 
 // Helper to calculate price per unit: (purchasePrice / quantity) * (1 + hst/100)

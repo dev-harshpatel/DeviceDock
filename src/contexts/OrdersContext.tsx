@@ -10,6 +10,8 @@ import { ReactNode, createContext, useContext, useEffect, useState, useCallback 
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query-keys";
 import { dbRowToOrder, ORDER_FIELDS } from "@/lib/supabase/queries";
+import { createNotificationEvent } from "@/lib/notifications/client";
+import { NOTIFICATION_EVENT_TYPES } from "@/lib/notifications/types";
 
 export interface OrderAddresses {
   shippingAddress: string | null;
@@ -303,6 +305,22 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
 
       const createdOrder = dbRowToOrder(data);
       setOrders((prev) => [createdOrder, ...prev]);
+      if (companyId) {
+        await createNotificationEvent({
+          actorUserId: adminUserId,
+          companyId,
+          entityId: createdOrder.id,
+          entityType: "order",
+          eventType: NOTIFICATION_EVENT_TYPES.manualSaleRecorded,
+          message: `Manual sale recorded for ${customerInfo.name} (${items.length} item${items.length !== 1 ? "s" : ""}) totaling ${totalPrice.toFixed(2)}.`,
+          metadata: {
+            customerName: customerInfo.name,
+            itemCount: items.length,
+            totalPrice,
+          },
+          title: "Manual sale recorded",
+        });
+      }
       return createdOrder;
     },
     [companyId],

@@ -1,14 +1,16 @@
--- Migration: 007_add_order_rejection_fields.sql
--- Description: Add rejection_reason and rejection_comment fields to orders table
+-- Cherry-picked from legacy 007 with safety guards.
 
--- Add rejection_reason column to orders table
-ALTER TABLE orders
-ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
+do $$
+begin
+  if to_regclass('public.orders') is null then
+    raise notice 'Skipping 007_add_order_rejection_fields: public.orders table does not exist.';
+    return;
+  end if;
 
--- Add rejection_comment column to orders table
-ALTER TABLE orders
-ADD COLUMN IF NOT EXISTS rejection_comment TEXT;
+  alter table public.orders
+    add column if not exists rejection_reason text,
+    add column if not exists rejection_comment text;
 
--- Add comments for documentation
-COMMENT ON COLUMN orders.rejection_reason IS 'Common rejection reason selected from dropdown (e.g., "Product out of stock")';
-COMMENT ON COLUMN orders.rejection_comment IS 'Optional additional comment provided by admin when rejecting an order';
+  comment on column public.orders.rejection_reason is 'Common rejection reason selected by admin';
+  comment on column public.orders.rejection_comment is 'Optional additional comment when rejecting an order';
+end $$;

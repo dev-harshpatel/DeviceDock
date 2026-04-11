@@ -20,7 +20,7 @@ export const BLOB_CLEANUP_TIMEOUT_MS = 200;
 export const BULK_INSERT_BATCH_SIZE = 50;
 
 // Payment Methods
-export const PAYMENT_METHODS = ["EMT", "WIRE", "CHQ", "CASH"] as const;
+export const PAYMENT_METHODS = ["EMT", "WIRE", "CHQ", "CASH", "CREDIT", "DEBIT"] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
 // Inventory Sort Order
@@ -28,3 +28,17 @@ export const INVENTORY_SORT_ORDER = {
   created_at: { ascending: true },
   id: { ascending: true },
 } as const;
+
+// IMEI Label Dimensions (in millimeters) — adjust values as needed
+export const IMEI_LABEL_WIDTH_MM = 90;
+export const IMEI_LABEL_HEIGHT_MM = 40;
+export const IMEI_BARCODE_HEIGHT = 48; // barcode height in pixels for canvas rendering
+
+// Bulk Label Sheet Layout
+export const BULK_LABEL_COLUMNS = 3; // labels per row on the print sheet
+export const BULK_LABEL_GAP_MM = 4; // gap between labels in millimeters
+
+// Per-page Label Dimensions (one label per page — DYMO 30256 shipping label)
+// Used when printing each barcode on its own page so the device name fits.
+export const IMEI_PAGE_LABEL_WIDTH_MM = 101;
+export const IMEI_PAGE_LABEL_HEIGHT_MM = 54;

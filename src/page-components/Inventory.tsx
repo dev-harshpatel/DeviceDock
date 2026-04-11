@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
+import { AddProductChoiceModal } from "@/components/modals/AddProductChoiceModal";
 import {
   FilterBar,
   FilterValues,
@@ -23,13 +25,18 @@ import { queryKeys } from "@/lib/query-keys";
 import { fetchPaginatedInventory, fetchAllFilteredInventory } from "@/lib/supabase/queries";
 import { useFilterOptions } from "@/hooks/use-filter-options";
 import { useCompany } from "@/contexts/CompanyContext";
+import { useInventory } from "@/contexts/InventoryContext";
 
 export default function Inventory() {
+  const router = useRouter();
   const [filters, setFilters] = useState<FilterValues>(defaultFilters);
+  const [addProductChoiceOpen, setAddProductChoiceOpen] = useState(false);
   const [addProductOpen, setAddProductOpen] = useState(false);
+  const [navigatingTo, setNavigatingTo] = useState<"multiple" | "upload" | null>(null);
   const filterOptions = useFilterOptions();
   const queryClient = useQueryClient();
-  const { companyId, companyName } = useCompany();
+  const { companyId, companyName, slug } = useCompany();
+  const { refreshInventory } = useInventory();
 
   const debouncedSearch = useDebounce(filters.search);
 
@@ -64,8 +71,23 @@ export default function Inventory() {
   }, []);
 
   const handleOpenAddProduct = useCallback(() => {
+    setAddProductChoiceOpen(true);
+  }, []);
+
+  const handleOpenSingleProduct = useCallback(() => {
+    setAddProductChoiceOpen(false);
     setAddProductOpen(true);
   }, []);
+
+  const handleOpenMultipleProducts = useCallback(() => {
+    setNavigatingTo("multiple");
+    router.push(`/${slug}/add-multiple-products`);
+  }, [router, slug]);
+
+  const handleOpenUploadProducts = useCallback(() => {
+    setNavigatingTo("upload");
+    router.push(`/${slug}/upload-products`);
+  }, [router, slug]);
 
   const handleFetchAllData = useCallback(async () => {
     return await fetchAllFilteredInventory(serverFilters, {
@@ -75,8 +97,9 @@ export default function Inventory() {
   }, [companyId, serverFilters]);
 
   const handleAddProductSuccess = useCallback(async () => {
+    await refreshInventory();
     await queryClient.invalidateQueries({ queryKey: queryKeys.inventory });
-  }, [queryClient]);
+  }, [queryClient, refreshInventory]);
 
   const hasActiveFilters = useMemo(
     () =>
@@ -152,6 +175,14 @@ export default function Inventory() {
         open={addProductOpen}
         onOpenChange={setAddProductOpen}
         onSuccess={handleAddProductSuccess}
+      />
+      <AddProductChoiceModal
+        open={addProductChoiceOpen}
+        onOpenChange={setAddProductChoiceOpen}
+        onSelectSingle={handleOpenSingleProduct}
+        onSelectMultiple={handleOpenMultipleProducts}
+        onNavigateUpload={handleOpenUploadProducts}
+        navigatingTo={navigatingTo}
       />
     </div>
   );

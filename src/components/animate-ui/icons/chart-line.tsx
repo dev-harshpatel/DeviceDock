@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import * as React from 'react';
-import { motion, type Variants } from 'motion/react';
+import * as React from "react";
+import { motion, type Variants } from "motion/react";
 
 import {
   getVariants,
   useAnimateIconContext,
   IconWrapper,
   type IconProps,
-} from '@/components/animate-ui/icons/icon';
+} from "@/components/animate-ui/icons/icon";
 
 type ChartLineProps = IconProps<keyof typeof animations>;
 
@@ -23,13 +23,13 @@ const animations = {
         pathOffset: [1, 0],
         transition: {
           duration: 0.8,
-          ease: 'easeInOut',
+          ease: "easeInOut",
           opacity: { duration: 0.01 },
         },
       },
     },
   } satisfies Record<string, Variants>,
-  'default-loop': {
+  "default-loop": {
     path1: {},
     path2: {
       initial: { opacity: 1, pathLength: 1, pathOffset: 0 },
@@ -39,7 +39,7 @@ const animations = {
         pathOffset: [0, 1, 0],
         transition: {
           duration: 1.6,
-          ease: 'easeInOut',
+          ease: "easeInOut",
           opacity: { duration: 0.01 },
         },
       },
@@ -47,12 +47,16 @@ const animations = {
   } satisfies Record<string, Variants>,
 } as const;
 
-function IconComponent({ size, ...props }: ChartLineProps) {
+const IconComponent = React.forwardRef<SVGSVGElement, ChartLineProps>(function IconComponent(
+  { size, ...props },
+  ref,
+) {
   const { controls } = useAnimateIconContext();
   const variants = getVariants(animations);
 
   return (
     <motion.svg
+      ref={ref}
       xmlns="http://www.w3.org/2000/svg"
       width={size}
       height={size}
@@ -78,7 +82,9 @@ function IconComponent({ size, ...props }: ChartLineProps) {
       />
     </motion.svg>
   );
-}
+});
+
+IconComponent.displayName = "ChartLineIcon";
 
 function ChartLine(props: ChartLineProps) {
   return <IconWrapper icon={IconComponent} {...props} />;

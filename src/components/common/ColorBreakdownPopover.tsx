@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Palette, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -21,24 +21,28 @@ export function ColorBreakdownPopover({ inventoryId }: ColorBreakdownPopoverProp
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
 
+  useEffect(() => {
+    setColors(null);
+    setError(null);
+  }, [inventoryId]);
+
   const handleOpen = async (nextOpen: boolean) => {
     setOpen(nextOpen);
-    if (nextOpen && colors === null && !isLoading) {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const { data, error } = await (supabase as any)
-          .from("inventory_colors")
-          .select("color, quantity")
-          .eq("inventory_id", inventoryId)
-          .order("color");
-        if (error) throw error;
-        setColors(data ?? []);
-      } catch {
-        setError("Could not load colour data.");
-      } finally {
-        setIsLoading(false);
-      }
+    if (!nextOpen) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const { data, error: fetchError } = await (supabase as any)
+        .from("inventory_colors")
+        .select("color, quantity")
+        .eq("inventory_id", inventoryId)
+        .order("color");
+      if (fetchError) throw fetchError;
+      setColors(data ?? []);
+    } catch {
+      setError("Could not load colour data.");
+    } finally {
+      setIsLoading(false);
     }
   };
 

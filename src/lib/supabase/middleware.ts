@@ -107,8 +107,44 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Legacy /admin/* routes — redirect everything to /login
+  // Legacy /admin/* routes — map to tenant routes when authenticated.
   if (pathname.startsWith("/admin")) {
+    if (user) {
+      try {
+        const { data: membership } = await supabase
+          .from("company_users")
+          .select("companies(slug)")
+          .eq("user_id", user.id)
+          .eq("status", "active")
+          .limit(1)
+          .single();
+
+        const row = membership as { companies: { slug: string } | null } | null;
+        const slug = row?.companies?.slug;
+
+        if (slug) {
+          const url = request.nextUrl.clone();
+
+          if (pathname === "/admin/inventory") {
+            url.pathname = `/${slug}/inventory`;
+            return NextResponse.redirect(url);
+          }
+
+          if (pathname === "/admin/upload-products") {
+            url.pathname = `/${slug}/upload-products`;
+            return NextResponse.redirect(url);
+          }
+
+          if (pathname === "/admin/add-multiple-products") {
+            url.pathname = `/${slug}/add-multiple-products`;
+            return NextResponse.redirect(url);
+          }
+        }
+      } catch {
+        // Fall through to /login if membership cannot be resolved.
+      }
+    }
+
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
