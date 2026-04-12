@@ -1,5 +1,5 @@
 import { parseIdentifierList } from "@/lib/inventory/parse-identifier-list";
-import type { ParsedIdentifierEntry, ParsedProduct } from "@/types/upload";
+import type { ParsedIdentifierEntry, ParsedProduct, UploadParseMode } from "@/types/upload";
 
 const CHUNK = 80;
 
@@ -72,6 +72,129 @@ export const buildIdentifiersFromUploadCells = (
   }
 
   return { identifiers, errors: [] };
+};
+
+/**
+ * unit_row: quantity === 1 and exactly one identifier token (IMEI or serial) across both cells.
+ * Otherwise legacy (comma-separated lists, quantity > 1, etc.).
+ */
+export const detectUploadParseMode = (
+  quantity: number,
+  imeiCellRaw: string,
+  serialCellRaw: string,
+): UploadParseMode => {
+  const imeiTokens = parseIdentifierList(imeiCellRaw);
+  const serialTokens = parseIdentifierList(serialCellRaw);
+  if (quantity === 1 && imeiTokens.length + serialTokens.length === 1) {
+    return "unit_row";
+  }
+  return "legacy_row";
+};
+
+/**
+ * Single physical unit per spreadsheet row (one IMEI or one serial). Optional colour for that unit.
+ */
+export const buildIdentifiersForUnitRow = (
+  imeiCellRaw: string,
+  serialCellRaw: string,
+  colorRaw: string | undefined,
+): { identifiers: ParsedIdentifierEntry[]; errors: string[] } => {
+  const errors: string[] = [];
+  const imeiTokens = parseIdentifierList(imeiCellRaw);
+  const serialTokens = parseIdentifierList(serialCellRaw);
+
+  if (imeiTokens.length + serialTokens.length !== 1) {
+    errors.push(
+      "Unit-row format: use Quantity 1 and exactly one IMEI or one Serial (no comma-separated lists). For multiple units, add one row per device or use legacy format with Quantity and comma-separated identifiers.",
+    );
+    return { identifiers: [], errors };
+  }
+
+  for (const token of imeiTokens) {
+    if (!isImeiTokenValid(token)) {
+      errors.push(
+        `Invalid IMEI "${token}": use 14–17 digits only (format Excel IMEI column as Text to avoid rounding).`,
+      );
+    }
+  }
+
+  for (const token of serialTokens) {
+    if (!isSerialTokenValid(token)) {
+      errors.push(`Invalid serial value "${token}".`);
+    }
+  }
+
+  if (errors.length > 0) {
+    return { identifiers: [], errors };
+  }
+
+  const colorTrimmed = colorRaw?.trim() ?? "";
+  const color = colorTrimmed.length > 0 ? colorTrimmed : null;
+
+  if (imeiTokens.length === 1) {
+    return {
+      identifiers: [{ imei: imeiTokens[0].trim(), serialNumber: null, color }],
+      errors: [],
+    };
+  }
+
+  return {
+    identifiers: [{ imei: null, serialNumber: serialTokens[0].trim(), color }],
+    errors: [],
+  };
+};
+
+/**
+ * Within each SKU group, Selling Price and HST must match for unit-row merge.
+ */
+export const applyUnitRowGroupPricingValidation = (products: ParsedProduct[]): ParsedProduct[] => {
+  const keyToRows = new Map<string, ParsedProduct[]>();
+
+  for (const p of products) {
+    if (p.errors && p.errors.length > 0) continue;
+    if (p.parseMode !== "unit_row") continue;
+    const key = skuKeyForUploadProduct(p);
+    const list = keyToRows.get(key) ?? [];
+    list.push(p);
+    keyToRows.set(key, list);
+  }
+
+  const priceMismatchKeys = new Set<string>();
+
+  for (const [key, rows] of keyToRows) {
+    if (rows.length < 2) continue;
+    const first = rows[0];
+    if (!first) continue;
+    const sp = first.sellingPrice;
+    const h = first.hst;
+    const mismatch = rows.some((r) => r.sellingPrice !== sp || r.hst !== h);
+    if (mismatch) priceMismatchKeys.add(key);
+  }
+
+  if (priceMismatchKeys.size === 0) return products;
+
+  return products.map((p) => {
+    if (p.parseMode !== "unit_row") return p;
+    const key = skuKeyForUploadProduct(p);
+    if (!priceMismatchKeys.has(key)) return p;
+    return {
+      ...p,
+      errors: [
+        ...(p.errors ?? []),
+        "All rows for the same Device / Brand / Grade / Storage must have the same Selling Price and HST when merging unit rows.",
+      ],
+    };
+  });
+};
+
+/** Stable key for grouping mergeable unit rows (company applied at insert). */
+export const skuKeyForUploadProduct = (p: ParsedProduct): string => {
+  return [
+    p.brand.trim().toLowerCase(),
+    p.deviceName.trim().toLowerCase(),
+    p.grade,
+    p.storage.trim().toLowerCase(),
+  ].join("|");
 };
 
 type Occurrence = { rowNumber: number; kind: "imei" | "serial"; value: string };

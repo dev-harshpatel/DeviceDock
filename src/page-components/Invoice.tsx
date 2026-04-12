@@ -100,16 +100,6 @@ export default function Invoice() {
     },
   });
 
-  // IMEI changed vs saved order (so Save is enabled when only IMEI is edited)
-  const isImeiDirty = (() => {
-    const saved = order?.imeiNumbers ?? {};
-    const keys = new Set([...Object.keys(imeiNumbers), ...Object.keys(saved)]);
-    for (const key of keys) {
-      if ((imeiNumbers[key] ?? "").trim() !== (saved[key] ?? "").trim()) return true;
-    }
-    return false;
-  })();
-
   // Redirect if not admin
   useEffect(() => {
     if (isAdmin === false) {
@@ -156,10 +146,15 @@ export default function Invoice() {
         const fetchedHstNumber: string = settingsRow?.hst_number || "";
         setCompanyHstNumber(fetchedHstNumber);
 
-        // Initialize IMEI numbers from saved order data
-        if (currentOrder.imeiNumbers) {
-          setImeiNumbers(currentOrder.imeiNumbers);
-        }
+        // Initialize IMEI numbers: prefer saved invoice data, fall back to identifier labels from order items
+        const initialImei: Record<string, string> = { ...(currentOrder.imeiNumbers ?? {}) };
+        currentOrder.items.forEach((item, index) => {
+          const key = String(index);
+          if (!initialImei[key] && item.identifierLabel) {
+            initialImei[key] = item.identifierLabel;
+          }
+        });
+        setImeiNumbers(initialImei);
 
         // Load customer info — for manual sales use the stored customer data
         if (currentOrder.isManualSale) {
@@ -612,9 +607,7 @@ export default function Invoice() {
 
                   <Button
                     type="submit"
-                    disabled={
-                      isSaving || (!!order.invoiceNumber && !form.formState.isDirty && !isImeiDirty)
-                    }
+                    disabled={isSaving || (!!order.invoiceNumber && !form.formState.isDirty)}
                     className="w-full"
                   >
                     {isSaving ? (
@@ -786,58 +779,14 @@ export default function Invoice() {
                             {formatPrice(orderItem.item.pricePerUnit * orderItem.quantity)}
                           </p>
                         </div>
-                        <div className="mt-1">
-                          <p className="text-xs text-muted-foreground mb-1.5">
-                            IMEI
-                            {orderItem.quantity > 1
-                              ? ` — ${orderItem.quantity} units, comma-separated`
-                              : ""}
-                          </p>
-                          {orderItem.quantity > 1 ? (
-                            <>
-                              <Textarea
-                                placeholder={`Enter ${orderItem.quantity} IMEI numbers separated by commas`}
-                                value={imeiNumbers[itemKey] ?? ""}
-                                onChange={(e) =>
-                                  setImeiNumbers((prev) => ({
-                                    ...prev,
-                                    [itemKey]: e.target.value,
-                                  }))
-                                }
-                                className="text-xs min-h-[80px] resize-none border-border focus-visible:ring-1 focus-visible:ring-border focus-visible:ring-offset-0"
-                              />
-                              {(() => {
-                                const entered = (imeiNumbers[itemKey] ?? "")
-                                  .split(",")
-                                  .map((s) => s.trim())
-                                  .filter(Boolean).length;
-                                return entered > 0 ? (
-                                  <p
-                                    className={`text-xs mt-1 ${
-                                      entered === orderItem.quantity
-                                        ? "text-green-600"
-                                        : "text-muted-foreground"
-                                    }`}
-                                  >
-                                    {entered}/{orderItem.quantity} IMEI numbers entered
-                                  </p>
-                                ) : null;
-                              })()}
-                            </>
-                          ) : (
-                            <Input
-                              placeholder="Enter IMEI number"
-                              value={imeiNumbers[itemKey] ?? ""}
-                              onChange={(e) =>
-                                setImeiNumbers((prev) => ({
-                                  ...prev,
-                                  [itemKey]: e.target.value,
-                                }))
-                              }
-                              className="h-8 text-xs border-border focus-visible:ring-1 focus-visible:ring-border focus-visible:ring-offset-0"
-                            />
-                          )}
-                        </div>
+                        {imeiNumbers[itemKey] && (
+                          <div className="mt-1">
+                            <p className="text-xs text-muted-foreground mb-1">IMEI</p>
+                            <p className="text-xs font-mono text-foreground">
+                              {imeiNumbers[itemKey]}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     );
                   })

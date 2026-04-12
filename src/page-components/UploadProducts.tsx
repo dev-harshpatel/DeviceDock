@@ -7,7 +7,16 @@ import { useAuth } from "@/lib/auth/context";
 import { useToast } from "@/hooks/use-toast";
 import { downloadSampleProductUploadTemplate } from "@/lib/export/sample-upload-template";
 import { mergeDatabaseIdentifierConflicts } from "@/lib/export/upload-identifier-validation";
-import { mapToInventoryItem, parseExcelFile } from "@/lib/export/parser";
+import {
+  mapMergedUnitGroupToInventoryItem,
+  mapToInventoryItem,
+  parseExcelFile,
+} from "@/lib/export/parser";
+import {
+  aggregateColorsFromUnitGroup,
+  partitionParsedProductsForUpload,
+} from "@/lib/export/upload-merge-groups";
+import { replaceInventoryColors } from "@/lib/inventory/inventory-colors";
 import { ParsedProduct, UploadHistory } from "@/types/upload";
 import { InventoryItem } from "@/data/inventory";
 import { UploadPreviewTable } from "@/components/tables/UploadPreviewTable";
@@ -220,6 +229,7 @@ export default function UploadProducts() {
     setIsUploading(true);
 
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- product_uploads not in generated Database
       const { data: uploadRecord, error: uploadError } = await (
         supabase.from("product_uploads") as any
       )
@@ -243,55 +253,129 @@ export default function UploadProducts() {
       let failedCount = 0;
       const rowErrors: string[] = [];
 
-      for (const parsed of validProducts) {
-        const mapped = mapToInventoryItem(parsed);
-        const inventoryItem: InventoryItem = {
-          id: "temp-upload-row",
-          deviceName: mapped.device_name,
-          brand: mapped.brand,
-          grade: mapped.grade as "A" | "B" | "C" | "D",
-          storage: mapped.storage,
-          quantity: mapped.quantity,
-          pricePerUnit: mapped.price_per_unit,
-          purchasePrice: mapped.purchase_price,
-          hst: mapped.hst,
-          sellingPrice: mapped.selling_price,
-          lastUpdated: mapped.last_updated,
-        };
+      const toInventoryItem = (mapped: ReturnType<typeof mapToInventoryItem>): InventoryItem => ({
+        id: "temp-upload-row",
+        deviceName: mapped.device_name,
+        brand: mapped.brand,
+        grade: mapped.grade as InventoryItem["grade"],
+        storage: mapped.storage,
+        quantity: mapped.quantity,
+        pricePerUnit: mapped.price_per_unit,
+        purchasePrice: mapped.purchase_price,
+        hst: mapped.hst,
+        sellingPrice: mapped.selling_price,
+        lastUpdated: mapped.last_updated,
+      });
 
+      const { legacyRows, unitGroups } = partitionParsedProductsForUpload(validProducts);
+
+      const processInsert = async (
+        parsed: ParsedProduct,
+        mapped: ReturnType<typeof mapToInventoryItem>,
+      ): Promise<boolean> => {
+        const inventoryItem = toInventoryItem(mapped);
         const insertResult = await bulkInsertProducts([inventoryItem]);
         if (insertResult.success !== 1 || !insertResult.insertedIds?.[0]) {
-          failedCount += 1;
           rowErrors.push(
             `Row ${parsed.rowNumber ?? "?"}: ${
               insertResult.errors[0] ?? "Inventory insert failed"
             }`,
           );
-          continue;
+          return false;
         }
 
         const inventoryId = insertResult.insertedIds[0];
 
         try {
           for (const ident of parsed.identifiers) {
-            await addInventoryIdentifier(inventoryId, ident.imei, ident.serialNumber);
+            await addInventoryIdentifier(
+              inventoryId,
+              ident.imei,
+              ident.serialNumber,
+              ident.color ?? undefined,
+            );
           }
-          successCount += 1;
+          return true;
         } catch (identError) {
           await supabase
             .from("inventory")
             .delete()
             .eq("id", inventoryId)
             .eq("company_id", companyId);
-          failedCount += 1;
           rowErrors.push(
             `Row ${parsed.rowNumber ?? "?"}: ${
               identError instanceof Error ? identError.message : "Identifier save failed"
             }`,
           );
+          return false;
+        }
+      };
+
+      for (const parsed of legacyRows) {
+        const mapped = mapToInventoryItem(parsed);
+        const ok = await processInsert(parsed, mapped);
+        if (ok) successCount += 1;
+        else failedCount += 1;
+      }
+
+      for (const group of unitGroups) {
+        const rowLabel = group.map((p) => p.rowNumber ?? "?").join(", ");
+        try {
+          const mapped = mapMergedUnitGroupToInventoryItem(group);
+          const inventoryItem = toInventoryItem(mapped);
+          const insertResult = await bulkInsertProducts([inventoryItem]);
+          if (insertResult.success !== 1 || !insertResult.insertedIds?.[0]) {
+            failedCount += 1;
+            rowErrors.push(
+              `Rows ${rowLabel}: ${insertResult.errors[0] ?? "Inventory insert failed"}`,
+            );
+            continue;
+          }
+
+          const inventoryId = insertResult.insertedIds[0];
+
+          try {
+            for (const parsed of group) {
+              const ident = parsed.identifiers[0];
+              if (!ident) {
+                throw new Error("Missing identifier for unit row");
+              }
+              await addInventoryIdentifier(
+                inventoryId,
+                ident.imei,
+                ident.serialNumber,
+                ident.color ?? undefined,
+              );
+            }
+
+            const colorRows = aggregateColorsFromUnitGroup(group);
+            if (colorRows.length > 0) {
+              await replaceInventoryColors(supabase, inventoryId, colorRows);
+            }
+
+            successCount += 1;
+          } catch (innerError) {
+            await supabase
+              .from("inventory")
+              .delete()
+              .eq("id", inventoryId)
+              .eq("company_id", companyId);
+            failedCount += 1;
+            rowErrors.push(
+              `Rows ${rowLabel}: ${
+                innerError instanceof Error ? innerError.message : "Save failed"
+              }`,
+            );
+          }
+        } catch (groupError) {
+          failedCount += 1;
+          rowErrors.push(
+            `Rows ${rowLabel}: ${groupError instanceof Error ? groupError.message : "Merge failed"}`,
+          );
         }
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- product_uploads not in generated Database
       const { error: updateError } = await (supabase.from("product_uploads") as any)
         .update({
           successful_inserts: successCount,
@@ -310,9 +394,9 @@ export default function UploadProducts() {
 
       toast({
         title: failedCount === 0 ? "Upload successful" : "Upload finished with errors",
-        description: `${successCount} product row(s) saved${
+        description: `${successCount} inventory line(s) created${
           failedCount > 0 ? `, ${failedCount} failed` : ""
-        }.`,
+        } (${parsedProducts.length} sheet row${parsedProducts.length !== 1 ? "s" : ""}).`,
         variant: failedCount > 0 ? "destructive" : "default",
       });
 
@@ -422,10 +506,16 @@ export default function UploadProducts() {
             <div className="space-y-1.5">
               <CardTitle>Upload Excel File</CardTitle>
               <CardDescription>
-                Required columns: Device Name, Brand, Grade, Storage, Quantity, Purchase Price,
-                Selling Price, HST, IMEI, and Serial Number. Enter one IMEI (14–17 digits) or serial
-                per unit; separate multiple values with commas or new lines. Total IMEI + serial
-                values must equal Quantity. Format IMEI cells as Text in Excel to avoid rounding.
+                Required: Device Name, Brand, Grade, Storage, Quantity, Purchase Price, Selling
+                Price, HST, IMEI, Serial Number. Optional: Color (per unit).{" "}
+                <strong className="text-foreground font-medium">Unit-row mode</strong> (recommended
+                for multiple units of the same SKU): use Quantity{" "}
+                <span className="font-mono text-xs">1</span>, one IMEI or one serial per row, same
+                Selling Price and HST for every row that merges — matching rows combine into a
+                single inventory line with summed purchase cost and aggregated colours.{" "}
+                <strong className="text-foreground font-medium">Legacy mode</strong>: Quantity can
+                be &gt; 1 with comma- or newline-separated IMEI/serial values in the cells; one
+                inventory line per sheet row. Format IMEI as Text in Excel to avoid rounding.
               </CardDescription>
             </div>
             <Button

@@ -1,8 +1,10 @@
 "use client";
 
 import { ParsedProduct } from "@/types/upload";
+import { partitionParsedProductsForUpload } from "@/lib/export/upload-merge-groups";
 import { formatPrice } from "@/lib/utils";
 import { GradeBadge } from "@/components/common/GradeBadge";
+import { Badge } from "@/components/ui/badge";
 import { AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -19,14 +21,18 @@ export function UploadPreviewTable({ products, className }: UploadPreviewTablePr
 
   const validProducts = products.filter((p) => !p.errors || p.errors.length === 0);
   const invalidProducts = products.filter((p) => p.errors && p.errors.length > 0);
+  const { legacyRows, unitGroups } = partitionParsedProductsForUpload(validProducts);
+  const inventoryLinesAfterUpload = legacyRows.length + unitGroups.length;
+  const unitRowSheetCount = validProducts.filter((p) => p.parseMode === "unit_row").length;
 
   return (
     <div className={cn("space-y-4", className)}>
       {/* Summary */}
-      <div className="flex items-center justify-between text-sm">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col gap-2 text-sm">
+        <div className="flex flex-wrap items-center gap-4">
           <span className="text-muted-foreground">
-            Total: <span className="font-medium text-foreground">{products.length}</span> products
+            Total: <span className="font-medium text-foreground">{products.length}</span> sheet row
+            {products.length !== 1 ? "s" : ""}
           </span>
           <span className="text-success">
             Valid: <span className="font-medium">{validProducts.length}</span>
@@ -37,6 +43,21 @@ export function UploadPreviewTable({ products, className }: UploadPreviewTablePr
             </span>
           )}
         </div>
+        {validProducts.length > 0 && (
+          <p className="text-xs text-muted-foreground rounded-md border border-border bg-muted/30 px-3 py-2">
+            Upload will create{" "}
+            <span className="font-semibold text-foreground">{inventoryLinesAfterUpload}</span>{" "}
+            inventory line{inventoryLinesAfterUpload !== 1 ? "s" : ""}
+            {unitRowSheetCount > 0 && (
+              <>
+                {" "}
+                ({unitRowSheetCount} unit-row sheet row{unitRowSheetCount !== 1 ? "s" : ""} merge by
+                device + brand + grade + storage)
+              </>
+            )}
+            .
+          </p>
+        )}
       </div>
 
       {/* Desktop Table */}
@@ -74,6 +95,12 @@ export function UploadPreviewTable({ products, className }: UploadPreviewTablePr
                 </th>
                 <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-4">
                   HST
+                </th>
+                <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-4">
+                  Color
+                </th>
+                <th className="text-center text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-4">
+                  Row format
                 </th>
               </tr>
             </thead>
@@ -153,6 +180,19 @@ export function UploadPreviewTable({ products, className }: UploadPreviewTablePr
                           ? `${product.hst}%`
                           : `${Number(product.hst) || 0}%`}
                       </span>
+                    </td>
+                    <td className="px-4 py-4 text-sm text-foreground">
+                      {product.identifiers[0]?.color?.trim()
+                        ? product.identifiers[0].color
+                        : product.colorCellRaw?.trim() || "—"}
+                    </td>
+                    <td className="px-4 py-4 text-center">
+                      <Badge
+                        variant="secondary"
+                        className="text-[10px] font-normal uppercase tracking-wide"
+                      >
+                        {product.parseMode === "unit_row" ? "Unit row" : "Legacy"}
+                      </Badge>
                     </td>
                   </tr>
                 );
@@ -259,6 +299,20 @@ export function UploadPreviewTable({ products, className }: UploadPreviewTablePr
                       ? `${product.hst}%`
                       : `${Number(product.hst) || 0}%`}
                   </span>
+                </div>
+                <div>
+                  <span className="text-xs text-muted-foreground block mb-1">Color</span>
+                  <span className="font-medium text-foreground">
+                    {product.identifiers[0]?.color?.trim()
+                      ? product.identifiers[0].color
+                      : product.colorCellRaw?.trim() || "—"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-xs text-muted-foreground block mb-1">Row format</span>
+                  <Badge variant="secondary" className="text-[10px] font-normal">
+                    {product.parseMode === "unit_row" ? "Unit row" : "Legacy"}
+                  </Badge>
                 </div>
               </div>
             </div>
