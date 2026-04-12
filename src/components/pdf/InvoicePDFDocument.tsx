@@ -36,41 +36,36 @@ const styles = StyleSheet.create({
     fontSize: 9,
     padding: 30,
   },
-  // Header Section
+  // Header: left = logo stacked above company name; right = INVOICE details — tops aligned
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
     marginBottom: 12,
   },
-  // Logo + company name side by side
-  logoRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
+  headerLeftColumn: {
+    flexDirection: "column",
+    alignItems: "flex-start",
   },
   logo: {
-    width: 110,
-    height: 65,
-    objectFit: "contain",
-  },
-  companyInfo: {
-    flexDirection: "column",
-    justifyContent: "center",
+    width: 140,
+    height: 100,
+    marginBottom: 5,
   },
   companyName: {
-    fontSize: 12,
+    fontSize: 11,
     fontFamily: "Helvetica-Bold",
     color: "#1a1a1a",
     marginBottom: 2,
   },
   companyAddress: {
-    fontSize: 8,
-    color: "#666666",
+    fontSize: 7.5,
+    color: "#555555",
     lineHeight: 1.4,
   },
   headerRight: {
     alignItems: "flex-end",
+    flexShrink: 0,
   },
   invoiceTitle: {
     fontSize: 16,
@@ -380,14 +375,12 @@ export const InvoicePDFDocument = ({
   return (
     <Document>
       <Page size="A4" style={styles.page}>
-        {/* Header Section */}
+        {/* Header: left = logo + company name/address stacked; right = INVOICE details */}
         <View style={styles.header}>
-          <View style={styles.logoRow}>
-            {companyInfo.logoUrl && <Image style={styles.logo} src={companyInfo.logoUrl} />}
-            <View style={styles.companyInfo}>
-              <Text style={styles.companyName}>{companyInfo.name}</Text>
-              <Text style={styles.companyAddress}>{companyInfo.address}</Text>
-            </View>
+          <View style={styles.headerLeftColumn}>
+            {companyInfo.logoUrl ? <Image style={styles.logo} src={companyInfo.logoUrl} /> : null}
+            <Text style={styles.companyName}>{companyInfo.name}</Text>
+            <Text style={styles.companyAddress}>{companyInfo.address}</Text>
           </View>
           <View style={styles.headerRight}>
             <Text style={styles.invoiceTitle}>INVOICE</Text>

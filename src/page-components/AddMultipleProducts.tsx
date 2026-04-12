@@ -41,6 +41,10 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useInventory } from "@/contexts/InventoryContext";
+import {
+  mergeInventoryColorsAdditive,
+  replaceInventoryColors,
+} from "@/lib/inventory/inventory-colors";
 import { parseIdentifierList } from "@/lib/inventory/parse-identifier-list";
 import { queryKeys } from "@/lib/query-keys";
 import { createNotificationEvent } from "@/lib/notifications/client";
@@ -403,78 +407,18 @@ export default function AddMultipleProducts() {
     });
   }, []);
 
-  // Merges new color quantities into existing DB colors (additive)
   const mergeInventoryColors = useCallback(async (inventoryId: string, newRows: ColourRow[]) => {
-    const validRows = newRows.filter((r) => r.color.trim() && Number(r.quantity) > 0);
-    if (validRows.length === 0) return;
-
-    // Fetch existing colors from DB
-    const { data: existing, error: existingError } = await (supabase as any)
-      .from("inventory_colors")
-      .select("color, quantity")
-      .eq("inventory_id", inventoryId);
-    if (existingError) throw existingError;
-
-    const existingMap = new Map<string, number>(
-      (existing ?? []).map((row: { color: string; quantity: number }) => [row.color, row.quantity]),
-    );
-
-    // Add new quantities to existing
-    const mergedRows = validRows.map((row) => ({
-      inventory_id: inventoryId,
-      color: row.color.trim(),
-      quantity: (existingMap.get(row.color.trim()) ?? 0) + Number(row.quantity),
-      updated_at: new Date().toISOString(),
-    }));
-
-    const { error: upsertError } = await (supabase as any)
-      .from("inventory_colors")
-      .upsert(mergedRows, { onConflict: "inventory_id,color" });
-    if (upsertError) throw upsertError;
+    const mapped = newRows
+      .filter((r) => r.color.trim() && Number(r.quantity) > 0)
+      .map((r) => ({ color: r.color.trim(), quantity: Number(r.quantity) }));
+    await mergeInventoryColorsAdditive(supabase, inventoryId, mapped);
   }, []);
 
   const saveInventoryColors = useCallback(async (inventoryId: string, rows: ColourRow[]) => {
-    const validRows = rows
+    const mapped = rows
       .filter((row) => row.color.trim() && Number(row.quantity) > 0)
-      .map((row) => ({
-        inventory_id: inventoryId,
-        color: row.color.trim(),
-        quantity: Number(row.quantity),
-        updated_at: new Date().toISOString(),
-      }));
-
-    if (validRows.length > 0) {
-      const { error: upsertError } = await (supabase as any)
-        .from("inventory_colors")
-        .upsert(validRows, { onConflict: "inventory_id,color" });
-      if (upsertError) throw upsertError;
-
-      const keptColors = validRows.map((row) => row.color);
-      const { data: existing, error: existingError } = await (supabase as any)
-        .from("inventory_colors")
-        .select("color")
-        .eq("inventory_id", inventoryId);
-      if (existingError) throw existingError;
-
-      const toDelete = (existing ?? [])
-        .map((row: { color: string }) => row.color)
-        .filter((color: string) => !keptColors.includes(color));
-      if (toDelete.length > 0) {
-        const { error: deleteError } = await (supabase as any)
-          .from("inventory_colors")
-          .delete()
-          .eq("inventory_id", inventoryId)
-          .in("color", toDelete);
-        if (deleteError) throw deleteError;
-      }
-      return;
-    }
-
-    const { error: clearError } = await (supabase as any)
-      .from("inventory_colors")
-      .delete()
-      .eq("inventory_id", inventoryId);
-    if (clearError) throw clearError;
+      .map((row) => ({ color: row.color.trim(), quantity: Number(row.quantity) }));
+    await replaceInventoryColors(supabase, inventoryId, mapped);
   }, []);
 
   const openColorDialog = useCallback(

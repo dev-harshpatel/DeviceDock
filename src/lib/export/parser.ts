@@ -4,7 +4,10 @@ import { calculatePricePerUnit } from "@/data/inventory";
 import { GRADES, normalizeGrade } from "@/lib/constants/grades";
 import {
   applyFileLevelIdentifierDuplicateDetection,
+  applyUnitRowGroupPricingValidation,
+  buildIdentifiersForUnitRow,
   buildIdentifiersFromUploadCells,
+  detectUploadParseMode,
 } from "@/lib/export/upload-identifier-validation";
 
 /**
@@ -100,6 +103,7 @@ export async function parseExcelFile(file: File): Promise<ParsedProduct[]> {
           "serial",
           "serial_no",
         ]);
+        const colorIndex = findColumnIndex(headers, ["color", "colour", "device color"]);
 
         const missingColumns: string[] = [];
         if (deviceNameIndex === -1) missingColumns.push("Device Name");
@@ -134,6 +138,9 @@ export async function parseExcelFile(file: File): Promise<ParsedProduct[]> {
 
           const imeiCellRaw = cellToString(row[imeiIndex]);
           const serialCellRaw = cellToString(row[serialIndex]);
+          const colorCellRaw = colorIndex >= 0 ? cellToString(row[colorIndex]) : "";
+
+          const parseMode = detectUploadParseMode(quantity, imeiCellRaw, serialCellRaw);
 
           const product: ParsedProduct = {
             deviceName: cellToString(row[deviceNameIndex]),
@@ -146,13 +153,18 @@ export async function parseExcelFile(file: File): Promise<ParsedProduct[]> {
             hst: parseNumber(row[hstIndex]),
             imeiCellRaw,
             serialCellRaw,
+            colorCellRaw: colorIndex >= 0 ? colorCellRaw : undefined,
             identifiers: [],
+            parseMode,
             lastUpdated: lastUpdatedIndex >= 0 ? cellToString(row[lastUpdatedIndex]) : undefined,
             rowNumber,
             errors: [],
           };
 
-          const idBundle = buildIdentifiersFromUploadCells(imeiCellRaw, serialCellRaw, quantity);
+          const idBundle =
+            parseMode === "unit_row"
+              ? buildIdentifiersForUnitRow(imeiCellRaw, serialCellRaw, colorCellRaw)
+              : buildIdentifiersFromUploadCells(imeiCellRaw, serialCellRaw, quantity);
           product.identifiers = idBundle.identifiers;
           const rowErrors: string[] = [...idBundle.errors];
 
@@ -165,7 +177,8 @@ export async function parseExcelFile(file: File): Promise<ParsedProduct[]> {
           products.push(product);
         }
 
-        resolve(applyFileLevelIdentifierDuplicateDetection(products));
+        const withDupes = applyFileLevelIdentifierDuplicateDetection(products);
+        resolve(applyUnitRowGroupPricingValidation(withDupes));
       } catch (error) {
         reject(error instanceof Error ? error : new Error("Failed to parse Excel file"));
       }
@@ -321,6 +334,61 @@ export function mapToInventoryItem(parsed: ParsedProduct): {
     purchase_price: parsed.purchasePrice,
     selling_price: parsed.sellingPrice,
     hst: parsed.hst,
+    last_updated: lastUpdated,
+  };
+}
+
+/**
+ * Merged SKU from multiple unit-row `ParsedProduct`s (same device/brand/grade/storage).
+ */
+export function mapMergedUnitGroupToInventoryItem(group: ParsedProduct[]): {
+  device_name: string;
+  brand: string;
+  grade: string;
+  storage: string;
+  quantity: number;
+  price_per_unit: number;
+  purchase_price: number;
+  selling_price: number;
+  hst: number;
+  last_updated: string;
+} {
+  const first = group[0];
+  if (!first) {
+    throw new Error("Cannot merge an empty unit group");
+  }
+  const totalQty = group.length;
+  const totalPP = group.reduce((sum, p) => sum + (p.purchasePrice ?? 0), 0);
+  const pricePerUnit = calculatePricePerUnit(totalPP, totalQty, first.hst);
+
+  let lastUpdated = "Just now";
+  if (first.lastUpdated && first.lastUpdated.trim() !== "") {
+    try {
+      const date = new Date(first.lastUpdated);
+      if (!Number.isNaN(date.getTime())) {
+        lastUpdated = date.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        });
+      } else {
+        lastUpdated = first.lastUpdated;
+      }
+    } catch {
+      lastUpdated = first.lastUpdated;
+    }
+  }
+
+  return {
+    device_name: first.deviceName,
+    brand: first.brand,
+    grade: first.grade,
+    storage: first.storage,
+    quantity: totalQty,
+    price_per_unit: pricePerUnit,
+    purchase_price: totalPP,
+    selling_price: first.sellingPrice,
+    hst: first.hst,
     last_updated: lastUpdated,
   };
 }
