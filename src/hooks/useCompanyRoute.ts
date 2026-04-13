@@ -1,4 +1,5 @@
-import { useCompany } from '@/contexts/CompanyContext';
+import { useCallback } from "react";
+import { useCompany } from "@/contexts/CompanyContext";
 
 /**
  * Returns a helper that prepends the company slug to any path.
@@ -9,10 +10,13 @@ import { useCompany } from '@/contexts/CompanyContext';
 export function useCompanyRoute() {
   const { slug } = useCompany();
 
-  const companyRoute = (path: string): string => {
-    const cleanPath = path.startsWith('/') ? path : `/${path}`;
-    return `/${slug}${cleanPath}`;
-  };
+  const companyRoute = useCallback(
+    (path: string): string => {
+      const cleanPath = path.startsWith("/") ? path : `/${path}`;
+      return `/${slug}${cleanPath}`;
+    },
+    [slug],
+  );
 
   return { companyRoute, slug };
 }
