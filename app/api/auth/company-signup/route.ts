@@ -1,11 +1,54 @@
 import { createClient } from "@supabase/supabase-js";
 import { Database } from "@/lib/database.types";
 import { supabaseAdmin } from "@/lib/supabase/client/admin";
-import { generateSlug, isSlugAvailable } from "@/lib/utils/slug";
+import { generateSlug, isReservedSlug } from "@/lib/utils/slug";
 import { NextRequest, NextResponse } from "next/server";
+
+/** Rollback must never throw — or the handler returns 500 after auth user + email already sent. */
+const safeDeleteAuthUser = async (userId: string): Promise<void> => {
+  try {
+    const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
+    if (error) {
+      console.error("[company-signup] auth.admin.deleteUser:", error.message, error);
+    }
+  } catch (err) {
+    console.error("[company-signup] auth.admin.deleteUser exception:", err);
+  }
+};
+
+/**
+ * Slug uniqueness must use the service role: anon cannot read `companies` under RLS,
+ * so the browser client's count was always wrong on the server.
+ */
+const isSlugAvailableForSignup = async (slug: string): Promise<boolean> => {
+  if (isReservedSlug(slug)) return false;
+
+  const { count, error } = await supabaseAdmin
+    .from("companies")
+    .select("id", { count: "exact", head: true })
+    .eq("slug", slug);
+
+  if (error) {
+    console.error("[company-signup] slug availability check:", error.message, error);
+    return false;
+  }
+  return (count ?? 0) === 0;
+};
 
 export async function POST(request: NextRequest) {
   try {
+    if (
+      !process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ||
+      !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ||
+      !process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
+    ) {
+      console.error("[company-signup] missing Supabase URL, anon key, or service role key");
+      return NextResponse.json(
+        { error: "Server configuration is incomplete. Please try again later." },
+        { status: 503 },
+      );
+    }
+
     const redirectTo = `${request.nextUrl.origin}/auth/confirm`;
     const {
       firstName,
@@ -22,34 +65,67 @@ export async function POST(request: NextRequest) {
       website,
     } = await request.json();
 
-    if (!firstName || !lastName || !email || !password || !companyName || !country || !province || !city) {
+    if (
+      !firstName ||
+      !lastName ||
+      !email ||
+      !password ||
+      !companyName ||
+      !country ||
+      !province ||
+      !city
+    ) {
       return NextResponse.json({ error: "All required fields must be provided" }, { status: 400 });
     }
 
     const slug = generateSlug(companyName);
-    const slugAvailable = await isSlugAvailable(slug);
+    const slugAvailable = await isSlugAvailableForSignup(slug);
 
     if (!slugAvailable) {
       const suffix = Math.floor(100 + Math.random() * 900);
       const altSlug = `${slug}-${suffix}`;
-      const altAvailable = await isSlugAvailable(altSlug);
+      const altAvailable = await isSlugAvailableForSignup(altSlug);
       if (!altAvailable) {
         return NextResponse.json(
-          { error: "A company with a similar name already exists. Please choose a different name." },
-          { status: 409 }
+          {
+            error: "A company with a similar name already exists. Please choose a different name.",
+          },
+          { status: 409 },
         );
       }
       return await createCompanyAndUser({
-        firstName, lastName, email, password, companyName,
-        slug: altSlug, country, province, city, streetAddress,
-        yearsInBusiness, businessEmail, website, redirectTo,
+        firstName,
+        lastName,
+        email,
+        password,
+        companyName,
+        slug: altSlug,
+        country,
+        province,
+        city,
+        streetAddress,
+        yearsInBusiness,
+        businessEmail,
+        website,
+        redirectTo,
       });
     }
 
     return await createCompanyAndUser({
-      firstName, lastName, email, password, companyName,
-      slug, country, province, city, streetAddress,
-      yearsInBusiness, businessEmail, website, redirectTo,
+      firstName,
+      lastName,
+      email,
+      password,
+      companyName,
+      slug,
+      country,
+      province,
+      city,
+      streetAddress,
+      yearsInBusiness,
+      businessEmail,
+      website,
+      redirectTo,
     });
   } catch (error: unknown) {
     console.error("[company-signup] unexpected error:", error);
@@ -74,13 +150,22 @@ async function createCompanyAndUser(params: {
   redirectTo: string;
 }) {
   const {
-    firstName, lastName, email, password, companyName, slug,
-    country, province, city,
-    streetAddress, yearsInBusiness, businessEmail, website, redirectTo,
+    firstName,
+    lastName,
+    email,
+    password,
+    companyName,
+    slug,
+    country,
+    province,
+    city,
+    streetAddress,
+    yearsInBusiness,
+    businessEmail,
+    website,
+    redirectTo,
   } = params;
 
-  // 1. Create auth user with public sign-up flow so Supabase sends
-  // the confirmation email immediately using emailRedirectTo.
   const supabasePublic = createClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -110,16 +195,21 @@ async function createCompanyAndUser(params: {
       authError?.message?.toLowerCase().includes("already registered") ||
       authError?.message?.toLowerCase().includes("already exists")
     ) {
-      return NextResponse.json({ error: "An account with this email already exists." }, { status: 409 });
+      return NextResponse.json(
+        { error: "An account with this email already exists." },
+        { status: 409 },
+      );
     }
     console.error("[company-signup] createUser error:", authError);
-    return NextResponse.json({ error: authError?.message || "Failed to create account" }, { status: 500 });
+    return NextResponse.json(
+      { error: authError?.message || "Failed to create account" },
+      { status: 500 },
+    );
   }
 
   const userId = authData.user.id;
 
   try {
-    // 2. Create company record
     const settingsJson: Record<string, string> = {};
     if (website) settingsJson.website = website;
     if (streetAddress) settingsJson.street_address = streetAddress;
@@ -140,33 +230,45 @@ async function createCompanyAndUser(params: {
       .single();
 
     if (companyError || !company) {
-      await supabaseAdmin.auth.admin.deleteUser(userId);
+      await safeDeleteAuthUser(userId);
       console.error("[company-signup] company insert error:", companyError);
-      return NextResponse.json({ error: "Failed to create company" }, { status: 500 });
+      const code = companyError?.code;
+      if (code === "23505") {
+        return NextResponse.json(
+          {
+            error:
+              "That company URL is already taken. Try a slightly different business name and submit again.",
+          },
+          { status: 409 },
+        );
+      }
+      return NextResponse.json(
+        { error: "Failed to create company. Please try again or contact support." },
+        { status: 500 },
+      );
     }
 
-    // 3. Create company_users record (owner)
-    const { error: membershipError } = await supabaseAdmin
-      .from("company_users")
-      .insert({
-        company_id: company.id,
-        user_id: userId,
-        role: "owner",
-        status: "active",
-      });
+    const { error: membershipError } = await supabaseAdmin.from("company_users").insert({
+      company_id: company.id,
+      user_id: userId,
+      role: "owner",
+      status: "active",
+    });
 
     if (membershipError) {
       await supabaseAdmin.from("companies").delete().eq("id", company.id);
-      await supabaseAdmin.auth.admin.deleteUser(userId);
+      await safeDeleteAuthUser(userId);
       console.error("[company-signup] company_users insert error:", membershipError);
-      return NextResponse.json({ error: "Failed to create membership" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Failed to create membership. Please try again or contact support." },
+        { status: 500 },
+      );
     }
 
-    // 4. Create company_registrations audit record (best-effort)
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     const tokenHash = crypto.randomUUID();
 
-    await supabaseAdmin.from("company_registrations").insert({
+    const { error: registrationError } = await supabaseAdmin.from("company_registrations").insert({
       company_slug: slug,
       company_name: companyName.trim(),
       owner_email: email.toLowerCase().trim(),
@@ -184,10 +286,20 @@ async function createCompanyAndUser(params: {
       user_id: userId,
     });
 
+    if (registrationError) {
+      console.error(
+        "[company-signup] company_registrations insert (non-fatal):",
+        registrationError,
+      );
+    }
+
     return NextResponse.json({ slug: company.slug }, { status: 201 });
   } catch (error: unknown) {
-    await supabaseAdmin.auth.admin.deleteUser(userId).catch(() => {});
+    await safeDeleteAuthUser(userId);
     console.error("[company-signup] unexpected error during creation:", error);
-    return NextResponse.json({ error: "Failed to complete registration" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to complete registration. Please try again." },
+      { status: 500 },
+    );
   }
 }

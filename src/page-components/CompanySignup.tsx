@@ -540,7 +540,7 @@ export default function CompanySignup() {
                       id="companyName"
                       value={form.companyName}
                       onChange={(e) => update("companyName", e.target.value)}
-                      placeholder="Peel Wireless Inc."
+                      placeholder="e.g. Acme Electronics Inc."
                       className={cn(errors.companyName && "border-destructive")}
                     />
                     {errors.companyName && (

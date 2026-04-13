@@ -5,7 +5,7 @@ import { useCompany } from "@/contexts/CompanyContext";
  * Returns a helper that prepends the company slug to any path.
  * Usage:
  *   const { companyRoute } = useCompanyRoute();
- *   companyRoute('/orders') // → '/peel-wireless/orders'
+ *   companyRoute('/orders') // → '/acme-electronics/orders'
  */
 export function useCompanyRoute() {
   const { slug } = useCompany();
