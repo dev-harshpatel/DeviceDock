@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { RoleGuard } from "@/components/common/RoleGuard";
-import { ManualSaleWizard } from "@/components/manual-sale/ManualSaleWizard";
+import { ManualSaleWizardDynamic } from "@/components/manual-sale/ManualSaleWizardDynamic";
 import { Button } from "@/components/ui/button";
 
 export default function ManualSalePage() {
@@ -29,7 +29,7 @@ export default function ManualSalePage() {
           </Button>
         </div>
         <div className="flex-1 flex flex-col min-h-0 max-w-5xl w-full mx-auto rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-          <ManualSaleWizard layout="page" onDismiss={handleDismiss} />
+          <ManualSaleWizardDynamic layout="page" onDismiss={handleDismiss} />
         </div>
       </div>
     </RoleGuard>

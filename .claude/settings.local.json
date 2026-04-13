@@ -51,7 +51,9 @@
       "Bash(curl:*)",
       "Bash(python3 -c \"import json,sys; data=json.load\\(sys.stdin\\); [print\\(d['path']\\) for d in data]\")",
       "Bash(node -e \"const d=require\\('fs'\\).readFileSync\\('/dev/stdin','utf8'\\); JSON.parse\\(d\\).forEach\\(x=>console.log\\(x.path\\)\\)\")",
-      "Bash(echo \"--exit: $?\")"
+      "Bash(echo \"--exit: $?\")",
+      "Bash(cmd /c \"npx tsc --noEmit 2>&1\")",
+      "Bash(cmd:*)"
     ]
   },
   "statusLine": {

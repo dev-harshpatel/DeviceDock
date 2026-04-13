@@ -1,13 +1,16 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useState, useEffect, useMemo, useCallback, useTransition } from "react";
 import { Order, OrderStatus } from "@/types/order";
+import { ActiveOrderTableRow } from "@/components/orders/ActiveOrderTableRow";
+import { DeletedOrderTableRow } from "@/components/orders/DeletedOrderTableRow";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Eye,
+  Archive,
   Loader2,
   RotateCcw,
   Search,
@@ -15,10 +18,7 @@ import {
   // TODO: Remove if Request Device feature is not required in later development
   // PackageSearch,
 } from "lucide-react";
-import { RejectionNote } from "@/components/common/RejectionNote";
 import { Input } from "@/components/ui/input";
-import { cn, formatDateInOntario, formatPrice } from "@/lib/utils";
-import { OrderDetailsModal } from "@/components/modals/OrderDetailsModal";
 // TODO: Remove if Request Device feature is not required in later development
 // import { AdminWishDetailsModal } from "@/components/modals/AdminWishDetailsModal";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -31,7 +31,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Archive } from "lucide-react";
 import { useDebounce } from "@/hooks/use-debounce";
 import { usePaginatedReactQuery } from "@/hooks/use-paginated-react-query";
 import { usePageParam } from "@/hooks/use-page-param";
@@ -44,8 +43,15 @@ import {
 } from "@/lib/supabase/queries";
 // TODO: Remove if Request Device feature is not required in later development
 // import { fetchAllWishesForAdmin } from "@/lib/supabase/queries/wishes";
-import { getStatusColor, getStatusLabel } from "@/lib/utils/status";
 import { useCompany } from "@/contexts/CompanyContext";
+
+const OrderDetailsModal = dynamic(
+  () =>
+    import("@/components/modals/OrderDetailsModal").then((mod) => ({
+      default: mod.OrderDetailsModal,
+    })),
+  { loading: () => null, ssr: false },
+);
 
 export default function Orders() {
   const router = useRouter();
@@ -195,10 +201,16 @@ export default function Orders() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userIdsKey]);
 
-  const handleViewOrder = (order: Order) => {
+  const handleViewOrder = useCallback((order: Order) => {
     setSelectedOrder(order);
     setModalOpen(true);
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!modalOpen || !selectedOrder) return;
+    const fresh = filteredOrders.find((o) => o.id === selectedOrder.id);
+    if (fresh) setSelectedOrder(fresh);
+  }, [filteredOrders, modalOpen, selectedOrder?.id]);
 
   const handleResetFilter = () => {
     setStatusFilter("all");
@@ -395,70 +407,15 @@ export default function Orders() {
                     </thead>
                     <tbody className="divide-y divide-border">
                       {orderRows.map(({ order, brands, customerLabel, itemCount }, index) => (
-                        <tr
+                        <ActiveOrderTableRow
                           key={order.id}
-                          className={cn(
-                            "transition-colors hover:bg-table-hover",
-                            index % 2 === 1 && "bg-table-zebra",
-                          )}
-                        >
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium text-foreground">
-                                #{order.id.slice(-8).toUpperCase()}
-                              </span>
-                              {order.isManualSale && (
-                                <Badge
-                                  variant="outline"
-                                  className="text-xs px-1.5 py-0 text-orange-600 border-orange-300 bg-orange-50 dark:bg-orange-950 dark:border-orange-800 dark:text-orange-400"
-                                >
-                                  Manual
-                                </Badge>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-4 py-4 text-sm text-foreground">{customerLabel}</td>
-                          <td className="px-4 py-4 text-sm text-foreground">{brands}</td>
-                          <td className="px-4 py-4 text-center text-sm text-foreground">
-                            {itemCount} item(s)
-                          </td>
-                          <td className="px-4 py-4 text-right">
-                            <span className="font-semibold text-foreground">
-                              {formatPrice(order.totalPrice)}
-                            </span>
-                          </td>
-                          <td className="px-4 py-4 text-center">
-                            <Badge
-                              variant="outline"
-                              className={cn("text-xs", getStatusColor(order.status))}
-                            >
-                              {getStatusLabel(order.status)}
-                            </Badge>
-                          </td>
-                          <td className="px-4 py-4 text-sm text-muted-foreground">
-                            {formatDateInOntario(order.createdAt)}
-                          </td>
-                          <td className="px-4 py-4">
-                            {order.status === "rejected" ? (
-                              <RejectionNote
-                                rejectionReason={order.rejectionReason}
-                                rejectionComment={order.rejectionComment}
-                              />
-                            ) : (
-                              <span className="text-xs text-muted-foreground">—</span>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleViewOrder(order)}
-                              className="h-8 w-8"
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                          </td>
-                        </tr>
+                          order={order}
+                          brands={brands}
+                          customerLabel={customerLabel}
+                          itemCount={itemCount}
+                          index={index}
+                          onView={handleViewOrder}
+                        />
                       ))}
                     </tbody>
                   </table>
@@ -506,49 +463,12 @@ export default function Orders() {
                     </thead>
                     <tbody className="divide-y divide-border">
                       {deletedOrderRows.map(({ order, customerLabel }, index) => (
-                        <tr
+                        <DeletedOrderTableRow
                           key={order.id}
-                          className={cn(
-                            "transition-colors hover:bg-table-hover",
-                            index % 2 === 1 && "bg-table-zebra",
-                          )}
-                        >
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium text-foreground">
-                                #{order.id.slice(-8).toUpperCase()}
-                              </span>
-                              {order.isManualSale && (
-                                <Badge
-                                  variant="outline"
-                                  className="text-xs px-1.5 py-0 text-orange-600 border-orange-300 bg-orange-50 dark:bg-orange-950 dark:border-orange-800 dark:text-orange-400"
-                                >
-                                  Manual
-                                </Badge>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-4 py-4 text-sm text-foreground">{customerLabel}</td>
-                          <td className="px-4 py-4 text-right">
-                            <span className="font-semibold text-foreground">
-                              {formatPrice(order.totalPrice)}
-                            </span>
-                          </td>
-                          <td className="px-4 py-4 text-center">
-                            <Badge
-                              variant="outline"
-                              className={cn("text-xs", getStatusColor(order.status))}
-                            >
-                              {getStatusLabel(order.status)}
-                            </Badge>
-                          </td>
-                          <td className="px-4 py-4 text-sm text-muted-foreground">
-                            {formatDateInOntario(order.createdAt)}
-                          </td>
-                          <td className="px-6 py-4 text-sm text-muted-foreground">
-                            {formatDateInOntario(order.deletedAt)}
-                          </td>
-                        </tr>
+                          order={order}
+                          customerLabel={customerLabel}
+                          index={index}
+                        />
                       ))}
                     </tbody>
                   </table>
@@ -581,7 +501,9 @@ export default function Orders() {
         )}
       </Tabs>
 
-      <OrderDetailsModal open={modalOpen} onOpenChange={setModalOpen} order={selectedOrder} />
+      {modalOpen && (
+        <OrderDetailsModal open={modalOpen} onOpenChange={setModalOpen} order={selectedOrder} />
+      )}
 
       {/* TODO: Remove if Request Device feature is not required in later development */}
       {/* <AdminWishDetailsModal

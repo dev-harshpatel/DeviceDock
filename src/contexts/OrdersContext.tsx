@@ -6,7 +6,15 @@ import { useAuth } from "@/lib/auth/context";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useRealtimeContext } from "@/contexts/RealtimeContext";
 import { Order, OrderItem, OrderStatus } from "@/types/order";
-import { ReactNode, createContext, useContext, useEffect, useState, useCallback } from "react";
+import {
+  ReactNode,
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query-keys";
 import { dbRowToOrder, ORDER_FIELDS } from "@/lib/supabase/queries";
@@ -38,6 +46,19 @@ interface OrdersContextType {
     shippingAddress?: string,
     notes?: string,
   ) => Promise<Order>;
+  updateManualOrder: (orderId: string, items: OrderItem[], hstPercent?: number) => Promise<Order>;
+  patchManualSaleOrderDetails: (
+    orderId: string,
+    patch: {
+      customerName?: string;
+      customerEmail?: string;
+      customerPhone?: string | null;
+      paymentMethod?: string;
+      billingAddress?: string | null;
+      shippingAddress?: string | null;
+      notes?: string | null;
+    },
+  ) => Promise<void>;
   updateOrderStatus: (
     orderId: string,
     status: OrderStatus,
@@ -326,6 +347,97 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
     [companyId],
   );
 
+  const updateManualOrder = useCallback(
+    async (orderId: string, items: OrderItem[], hstPercent?: number): Promise<Order> => {
+      if (!items || items.length === 0) {
+        throw new Error("Order must have at least one item");
+      }
+
+      const taxRate = hstPercent != null && hstPercent > 0 ? hstPercent / 100 : null;
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC not in generated Database types
+      const { error: rpcError } = await (supabase as any).rpc("update_manual_sale_order", {
+        p_order_id: orderId,
+        p_items: items as unknown as Json,
+        p_tax_rate: taxRate,
+      });
+
+      if (rpcError) {
+        throw new Error(rpcError.message || "Failed to update manual sale order");
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase.from("orders") as any)
+        .select(ORDER_FIELDS)
+        .eq("id", orderId)
+        .single();
+
+      if (error || !data) {
+        throw new Error(error?.message ?? "Failed to load updated order");
+      }
+
+      const updatedOrder = dbRowToOrder(data);
+      await loadOrders();
+      queryClient.invalidateQueries({ queryKey: queryKeys.orders });
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventory });
+      queryClient.invalidateQueries({ queryKey: ["paginated", "userOrders"] });
+      return updatedOrder;
+    },
+    [loadOrders, queryClient],
+  );
+
+  const patchManualSaleOrderDetails = useCallback(
+    async (
+      orderId: string,
+      patch: {
+        customerName?: string;
+        customerEmail?: string;
+        customerPhone?: string | null;
+        paymentMethod?: string;
+        billingAddress?: string | null;
+        shippingAddress?: string | null;
+        notes?: string | null;
+      },
+    ): Promise<void> => {
+      const updateData: OrderUpdate = {
+        updated_at: new Date().toISOString(),
+      };
+
+      if (patch.customerName !== undefined) {
+        updateData.manual_customer_name = patch.customerName;
+      }
+      if (patch.customerEmail !== undefined) {
+        updateData.manual_customer_email = patch.customerEmail || null;
+      }
+      if (patch.customerPhone !== undefined) {
+        updateData.manual_customer_phone = patch.customerPhone;
+      }
+      if (patch.paymentMethod !== undefined) {
+        updateData.payment_terms = patch.paymentMethod;
+      }
+      if (patch.billingAddress !== undefined) {
+        updateData.billing_address = patch.billingAddress;
+      }
+      if (patch.shippingAddress !== undefined) {
+        updateData.shipping_address = patch.shippingAddress;
+      }
+      if (patch.notes !== undefined) {
+        updateData.invoice_notes = patch.notes;
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase.from("orders") as any).update(updateData).eq("id", orderId);
+
+      if (error) {
+        throw new Error(error.message || "Failed to update order details");
+      }
+
+      await loadOrders();
+      queryClient.invalidateQueries({ queryKey: queryKeys.orders });
+    },
+    [loadOrders, queryClient],
+  );
+
   const getOrderById = useCallback(
     (orderId: string): Order | undefined => {
       return orders.find((order) => order.id === orderId);
@@ -566,25 +678,42 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
     [companyId],
   );
 
-  return (
-    <OrdersContext.Provider
-      value={{
-        orders,
-        createOrder,
-        createManualOrder,
-        updateOrderStatus,
-        deleteOrder,
-        updateInvoice,
-        confirmInvoice,
-        downloadInvoicePDF,
-        getUserOrders,
-        getAllOrders,
-        getOrderById,
-        refreshOrders: loadOrders,
-        isLoading,
-      }}
-    >
-      {children}
-    </OrdersContext.Provider>
+  const contextValue = useMemo(
+    () => ({
+      orders,
+      createOrder,
+      createManualOrder,
+      updateManualOrder,
+      patchManualSaleOrderDetails,
+      updateOrderStatus,
+      deleteOrder,
+      updateInvoice,
+      confirmInvoice,
+      downloadInvoicePDF,
+      getUserOrders,
+      getAllOrders,
+      getOrderById,
+      refreshOrders: loadOrders,
+      isLoading,
+    }),
+    [
+      orders,
+      isLoading,
+      createOrder,
+      createManualOrder,
+      updateManualOrder,
+      patchManualSaleOrderDetails,
+      updateOrderStatus,
+      deleteOrder,
+      updateInvoice,
+      confirmInvoice,
+      downloadInvoicePDF,
+      getUserOrders,
+      getAllOrders,
+      getOrderById,
+      loadOrders,
+    ],
   );
+
+  return <OrdersContext.Provider value={contextValue}>{children}</OrdersContext.Provider>;
 };

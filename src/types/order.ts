@@ -19,6 +19,8 @@ export interface Order {
   taxRate: number | null;
   taxAmount: number | null;
   totalPrice: number;
+  /** Gross profit snapshot (manual sale / RPC updates). */
+  profit?: number | null;
   status: OrderStatus;
   createdAt: string;
   updatedAt: string;

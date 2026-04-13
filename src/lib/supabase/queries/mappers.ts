@@ -128,14 +128,26 @@ export const dbRowToOrder = (row: OrderRow): Order => {
     const raw: StoredInventoryItem = oi.item;
     const quantity = typeof oi.quantity === "number" ? oi.quantity : 1;
     const pricePerUnit = readNumber(raw.pricePerUnit ?? raw.price_per_unit);
+    const line = oi as OrderItem & {
+      inventory_identifier_id?: string;
+      identifier_label?: string;
+    };
+    const inventoryIdentifierId =
+      typeof line.inventoryIdentifierId === "string"
+        ? line.inventoryIdentifierId
+        : typeof line.inventory_identifier_id === "string"
+          ? line.inventory_identifier_id
+          : undefined;
+    const identifierLabel =
+      typeof line.identifierLabel === "string"
+        ? line.identifierLabel
+        : typeof line.identifier_label === "string"
+          ? line.identifier_label
+          : undefined;
     return {
       quantity,
-      ...(typeof (oi as any).inventoryIdentifierId === "string" && {
-        inventoryIdentifierId: (oi as any).inventoryIdentifierId as string,
-      }),
-      ...(typeof (oi as any).identifierLabel === "string" && {
-        identifierLabel: (oi as any).identifierLabel as string,
-      }),
+      ...(inventoryIdentifierId != null && { inventoryIdentifierId }),
+      ...(identifierLabel != null && { identifierLabel }),
       item: {
         id: readString(raw.id ?? raw.item_id),
         deviceName: readString(raw.deviceName ?? raw.device_name),
@@ -166,6 +178,10 @@ export const dbRowToOrder = (row: OrderRow): Order => {
     taxRate: (row as any).tax_rate ? Number((row as any).tax_rate) : null,
     taxAmount: (row as any).tax_amount ? Number((row as any).tax_amount) : null,
     totalPrice: Number(row.total_price),
+    profit:
+      (row as any).profit != null && (row as any).profit !== ""
+        ? Number((row as any).profit)
+        : null,
     status: row.status as Order["status"],
     createdAt: row.created_at,
     updatedAt: row.updated_at,

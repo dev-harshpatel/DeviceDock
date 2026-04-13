@@ -1,13 +1,13 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useInventory } from "@/contexts/InventoryContext";
 import { useOrders } from "@/contexts/OrdersContext";
 import { useAuth } from "@/lib/auth/context";
 import { InventoryItem } from "@/data/inventory";
 import { queryKeys } from "@/lib/query-keys";
-import { OrderItem } from "@/types/order";
+import { Order, OrderItem } from "@/types/order";
 import { DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PAYMENT_METHODS } from "@/lib/constants";
+import { ManualSaleStepIndicator } from "@/components/manual-sale/ManualSaleStepIndicator";
 import type {
   IdentifierScanGroup,
   ScannedIdentifierUnit,
@@ -55,11 +56,19 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   "NET 60": "Net 60",
 };
 
-type Step = 1 | 2 | 3;
+type Step = 1 | 2 | 3 | 4;
 
 interface SelectedItem {
   item: InventoryItem;
   quantity: number;
+}
+
+interface AvailableIdentifierUnit {
+  id: string;
+  imei: string | null;
+  serialNumber: string | null;
+  color: string | null;
+  displayLabel: string;
 }
 
 export interface ManualSaleWizardProps {
@@ -67,63 +76,63 @@ export interface ManualSaleWizardProps {
   onDismiss: () => void;
   /** Full page gives the browse list more vertical room than the modal. */
   layout: "modal" | "page";
+  mode?: "create" | "edit";
+  /** When `mode` is `edit`, seed and submit against this order. */
+  orderToEdit?: Order | null;
+  /** Called after a successful edit (not used for create). */
+  onManualOrderUpdated?: (order: Order) => void;
 }
 
-const STEPS = [
-  { n: 1, label: "Select Items" },
-  { n: 2, label: "Selling Price" },
-  { n: 3, label: "Customer & Payment" },
-] as const;
+const getOrderLineIdentifierId = (oi: OrderItem): string | undefined => {
+  const line = oi as OrderItem & { inventory_identifier_id?: string };
+  if (typeof oi.inventoryIdentifierId === "string") return oi.inventoryIdentifierId;
+  if (typeof line.inventory_identifier_id === "string") return line.inventory_identifier_id;
+  return undefined;
+};
 
-function StepIndicator({ step }: { step: Step }) {
-  return (
-    <div className="flex items-center mt-3 overflow-x-auto py-1.5 px-0.5">
-      {STEPS.map((s, i) => {
-        const isDone = step > s.n;
-        const isActive = step === s.n;
-        return (
-          <div key={s.n} className="flex items-center flex-shrink-0 flex-1">
-            <div
-              className={cn(
-                "flex items-center gap-2.5 text-sm font-medium transition-colors",
-                isActive
-                  ? "text-primary"
-                  : isDone
-                    ? "text-muted-foreground"
-                    : "text-muted-foreground/40",
-              )}
-            >
-              <div
-                className={cn(
-                  "w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ring-2 transition-all",
-                  isActive
-                    ? "bg-primary text-primary-foreground ring-primary/30"
-                    : isDone
-                      ? "bg-muted text-muted-foreground ring-border"
-                      : "bg-transparent text-muted-foreground/40 ring-border/50",
-                )}
-              >
-                {isDone ? <Check className="h-3.5 w-3.5" /> : s.n}
-              </div>
-              <span className="whitespace-nowrap hidden sm:inline">{s.label}</span>
-            </div>
-            {i < STEPS.length - 1 && (
-              <div
-                className={cn(
-                  "flex-1 h-px mx-3 min-w-[2rem] transition-colors",
-                  step > s.n ? "bg-primary/40" : "bg-border",
-                )}
-              />
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
+const getOrderLineIdentifierLabel = (oi: OrderItem): string | undefined => {
+  const line = oi as OrderItem & { identifier_label?: string };
+  if (typeof oi.identifierLabel === "string") return oi.identifierLabel;
+  if (typeof line.identifier_label === "string") return line.identifier_label;
+  return undefined;
+};
 
-export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
+/** `inventory_identifiers` is not in generated Database types; narrow client for this query only. */
+type InventoryIdentifierRow = {
+  id: string;
+  imei: string | null;
+  serial_number: string | null;
+  color: string | null;
+};
+const fetchInventoryIdentifierLabels = async (ids: string[]): Promise<InventoryIdentifierRow[]> => {
+  if (ids.length === 0) return [];
+  const client = supabase as unknown as {
+    from: (table: string) => {
+      select: (columns: string) => {
+        in: (
+          column: string,
+          values: string[],
+        ) => PromiseLike<{ data: InventoryIdentifierRow[] | null }>;
+      };
+    };
+  };
+  const { data } = await client
+    .from("inventory_identifiers")
+    .select("id, imei, serial_number, color")
+    .in("id", ids);
+  return data ?? [];
+};
+
+export function ManualSaleWizard({
+  onDismiss,
+  layout,
+  mode = "create",
+  orderToEdit = null,
+  onManualOrderUpdated,
+}: ManualSaleWizardProps) {
   const isPage = layout === "page";
+  const isEdit = mode === "edit" && orderToEdit != null;
+  const allowedSoldIdentifierIdsRef = useRef<readonly string[]>([]);
   const {
     inventory,
     decreaseQuantity,
@@ -131,7 +140,7 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
     markInventoryIdentifierSold,
     revertInventoryIdentifierSold,
   } = useInventory();
-  const { createManualOrder } = useOrders();
+  const { createManualOrder, patchManualSaleOrderDetails, updateManualOrder } = useOrders();
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
@@ -164,6 +173,13 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
   /** Per inventory row (SKU) for scanned units */
   const [sellingPricesIdent, setSellingPricesIdent] = useState<Record<string, string>>({});
 
+  // ── Step 2: IMEI Assignment ─────────────────────────────────────────────────
+  const [pendingImeiSelections, setPendingImeiSelections] = useState<Record<string, string[]>>({});
+  const [availableIdentifiers, setAvailableIdentifiers] = useState<
+    Record<string, AvailableIdentifierUnit[]>
+  >({});
+  const [identifiersLoading, setIdentifiersLoading] = useState(false);
+
   const identifierUnitsFlat = useMemo(
     () =>
       identifierGroups.flatMap((g) =>
@@ -182,20 +198,212 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
     [identifierGroups],
   );
 
+  /** When editing, add back quantities from this order so browse max qty matches pre-sale capacity. */
+  const qtyBonusByItemId = useMemo(() => {
+    if (!isEdit || !orderToEdit) return {} as Record<string, number>;
+    const map: Record<string, number> = {};
+    for (const line of orderToEdit.items) {
+      const id = line.item?.id;
+      if (!id) continue;
+      map[id] = (map[id] ?? 0) + line.quantity;
+    }
+    return map;
+  }, [isEdit, orderToEdit]);
+
+  const getEffectiveStock = useCallback(
+    (item: InventoryItem): number => {
+      const bonus = qtyBonusByItemId[item.id] ?? 0;
+      return item.quantity + bonus;
+    },
+    [qtyBonusByItemId],
+  );
+
   // ── Derived ───────────────────────────────────────────────────────────────
   const availableItems = useMemo(
     () =>
       inventory.filter(
         (item) =>
           item.isActive !== false &&
-          item.quantity > 0 &&
+          getEffectiveStock(item) > 0 &&
           (searchQuery === "" ||
             item.deviceName.toLowerCase().includes(searchQuery.toLowerCase()) ||
             item.brand.toLowerCase().includes(searchQuery.toLowerCase()) ||
             item.storage.toLowerCase().includes(searchQuery.toLowerCase())),
       ),
-    [inventory, searchQuery],
+    [getEffectiveStock, inventory, searchQuery],
   );
+
+  const didHydrateEditRef = useRef(false);
+  const inventoryMergedForEditRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!isEdit || !orderToEdit) {
+      didHydrateEditRef.current = false;
+      inventoryMergedForEditRef.current = null;
+      return;
+    }
+    if (didHydrateEditRef.current) return;
+    didHydrateEditRef.current = true;
+
+    let cancelled = false;
+
+    void (async () => {
+      allowedSoldIdentifierIdsRef.current = orderToEdit.items
+        .map(getOrderLineIdentifierId)
+        .filter((x): x is string => typeof x === "string");
+
+      const lineIdentifierIds = orderToEdit.items
+        .map(getOrderLineIdentifierId)
+        .filter((x): x is string => Boolean(x));
+
+      const labelById = new Map<string, string>();
+      const colorById = new Map<string, string | null>();
+      if (lineIdentifierIds.length > 0) {
+        const identRows = await fetchInventoryIdentifierLabels(lineIdentifierIds);
+        if (!cancelled) {
+          for (const row of identRows) {
+            labelById.set(row.id, row.imei ?? row.serial_number ?? row.id);
+            colorById.set(row.id, row.color);
+          }
+        }
+      }
+
+      if (cancelled) return;
+
+      const selected: Record<string, SelectedItem> = {};
+      const groupsMap = new Map<string, IdentifierScanGroup>();
+
+      for (const oi of orderToEdit.items) {
+        const snap = oi.item;
+        const live = inventory.find((i) => i.id === snap.id);
+        const merged: InventoryItem = live
+          ? {
+              ...live,
+              sellingPrice: snap.sellingPrice ?? live.sellingPrice,
+              pricePerUnit: snap.pricePerUnit ?? live.pricePerUnit,
+              purchasePrice: snap.purchasePrice ?? live.purchasePrice,
+              hst: snap.hst ?? live.hst,
+            }
+          : (snap as InventoryItem);
+
+        const identId = getOrderLineIdentifierId(oi);
+        if (identId) {
+          const invId = merged.id;
+          const displayLabel = getOrderLineIdentifierLabel(oi) || labelById.get(identId) || identId;
+          const unit: ScannedIdentifierUnit = {
+            id: crypto.randomUUID(),
+            inventoryIdentifierId: identId,
+            displayLabel,
+            color: colorById.get(identId) ?? null,
+          };
+          const existing = groupsMap.get(invId);
+          if (existing) {
+            existing.units.push(unit);
+          } else {
+            groupsMap.set(invId, {
+              inventoryId: invId,
+              item: merged,
+              units: [unit],
+            });
+          }
+        } else {
+          const id = merged.id;
+          const prev = selected[id];
+          if (prev) {
+            selected[id] = { item: merged, quantity: prev.quantity + oi.quantity };
+          } else {
+            selected[id] = { item: merged, quantity: oi.quantity };
+          }
+        }
+      }
+
+      const groupsArray = [...groupsMap.values()];
+
+      setSelectedItems(selected);
+      setIdentifierGroups(groupsArray);
+      setIdentifierQuery("");
+
+      const sellPrices: Record<string, string> = {};
+      Object.values(selected).forEach(({ item }) => {
+        sellPrices[item.id] = String(item.sellingPrice ?? item.pricePerUnit);
+      });
+      setSellingPrices(sellPrices);
+
+      const identPrices: Record<string, string> = {};
+      groupsMap.forEach((g) => {
+        identPrices[g.inventoryId] = String(g.item.sellingPrice ?? g.item.pricePerUnit);
+      });
+      setSellingPricesIdent(identPrices);
+
+      setCustomerName(orderToEdit.manualCustomerName?.trim() ?? "");
+      setCustomerEmail(orderToEdit.manualCustomerEmail?.trim() ?? "");
+      let phone = orderToEdit.manualCustomerPhone?.trim() ?? "";
+      if (phone.startsWith("+1")) {
+        phone = phone.slice(2);
+      }
+      setCustomerPhone(phone);
+      setBillingAddress(orderToEdit.billingAddress?.trim() ?? "");
+      setShippingAddress(orderToEdit.shippingAddress?.trim() ?? "");
+      setSameAsShipping(false);
+      setPaymentMethod(orderToEdit.paymentTerms ?? "");
+      const tr = orderToEdit.taxRate;
+      setHstPercent(String(Math.round((tr ?? 0) * 100)));
+      setNotes(orderToEdit.invoiceNotes?.trim() ?? "");
+    })();
+
+    return () => {
+      cancelled = true;
+      // Reset so a remount (e.g. React Strict Mode double-invoke) can re-hydrate.
+      // The `cancelled` flag above prevents the in-flight async from writing stale state.
+      didHydrateEditRef.current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- hydrate once per edit open; inventory merged in separate effect
+  }, [isEdit, orderToEdit?.id]);
+
+  useEffect(() => {
+    if (!isEdit || !orderToEdit) {
+      inventoryMergedForEditRef.current = null;
+      return;
+    }
+    if (identifierGroups.length === 0 || inventory.length === 0) return;
+    if (inventoryMergedForEditRef.current === orderToEdit.id) return;
+    inventoryMergedForEditRef.current = orderToEdit.id;
+
+    setIdentifierGroups((prev) =>
+      prev.map((g) => {
+        const live = inventory.find((i) => i.id === g.inventoryId);
+        if (!live) return g;
+        return {
+          ...g,
+          item: {
+            ...live,
+            sellingPrice: g.item.sellingPrice,
+            pricePerUnit: g.item.pricePerUnit,
+            purchasePrice: g.item.purchasePrice ?? live.purchasePrice,
+            hst: g.item.hst ?? live.hst,
+          },
+        };
+      }),
+    );
+    setSelectedItems((prev) => {
+      const next: Record<string, SelectedItem> = { ...prev };
+      for (const key of Object.keys(next)) {
+        const live = inventory.find((i) => i.id === key);
+        if (!live) continue;
+        next[key] = {
+          ...next[key],
+          item: {
+            ...live,
+            sellingPrice: next[key].item.sellingPrice,
+            pricePerUnit: next[key].item.pricePerUnit,
+            purchasePrice: next[key].item.purchasePrice ?? live.purchasePrice,
+            hst: next[key].item.hst ?? live.hst,
+          },
+        };
+      }
+      return next;
+    });
+  }, [isEdit, orderToEdit?.id, inventory, identifierGroups.length]);
 
   const selectedItemsList = useMemo(() => Object.values(selectedItems), [selectedItems]);
 
@@ -246,7 +454,8 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
     setSelectedItems((prev) => {
       const current = prev[itemId];
       if (!current) return prev;
-      const newQty = Math.max(1, Math.min(current.item.quantity, current.quantity + delta));
+      const maxQty = getEffectiveStock(current.item);
+      const newQty = Math.max(1, Math.min(maxQty, current.quantity + delta));
       return { ...prev, [itemId]: { ...current, quantity: newQty } };
     });
   };
@@ -263,18 +472,111 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
   };
 
   // ── Step 2 handlers ───────────────────────────────────────────────────────
-  const handleGoToStep2 = () => {
-    const prices: Record<string, string> = {};
-    selectedItemsList.forEach(({ item }) => {
-      prices[item.id] = String(item.sellingPrice ?? item.pricePerUnit);
+  const handleGoToStep2 = async () => {
+    if (selectedItemsList.length > 0) {
+      setIdentifiersLoading(true);
+      try {
+        const existingScannedIds = new Set(identifierUnitsFlat.map((u) => u.inventoryIdentifierId));
+        const result: Record<string, AvailableIdentifierUnit[]> = {};
+        for (const { item } of selectedItemsList) {
+          const { data } = await (supabase.from("inventory_identifiers") as any)
+            .select("id, imei, serial_number, color")
+            .eq("inventory_id", item.id)
+            .in("status", ["in_stock", "reserved"]);
+          result[item.id] = ((data ?? []) as Record<string, unknown>[])
+            .filter((row) => !existingScannedIds.has(String(row.id)))
+            .map((row) => ({
+              id: String(row.id),
+              imei: (row.imei as string | null) ?? null,
+              serialNumber: (row.serial_number as string | null) ?? null,
+              color: (row.color as string | null) ?? null,
+              displayLabel: String(row.imei ?? row.serial_number ?? row.id),
+            }));
+        }
+        setAvailableIdentifiers(result);
+        const initial: Record<string, string[]> = {};
+        for (const { item } of selectedItemsList) {
+          initial[item.id] = pendingImeiSelections[item.id] ?? [];
+        }
+        setPendingImeiSelections(initial);
+        setStep(2);
+      } catch {
+        toast.error("Failed to load available units. Please try again.");
+      } finally {
+        setIdentifiersLoading(false);
+      }
+    } else {
+      // No browse selections (edit mode hydration or direct-scan only) — skip IMEI step
+      const identPrices: Record<string, string> = {};
+      identifierGroups.forEach((g) => {
+        identPrices[g.inventoryId] = String(g.item.sellingPrice ?? g.item.pricePerUnit);
+      });
+      setSellingPricesIdent(identPrices);
+      setStep(3);
+    }
+  };
+
+  const handleTogglePendingImei = (inventoryId: string, identId: string, maxQty: number) => {
+    setPendingImeiSelections((prev) => {
+      const current = prev[inventoryId] ?? [];
+      if (current.includes(identId)) {
+        return { ...prev, [inventoryId]: current.filter((id) => id !== identId) };
+      }
+      if (current.length >= maxQty) return prev;
+      return { ...prev, [inventoryId]: [...current, identId] };
     });
-    setSellingPrices(prices);
+  };
+
+  const handleGoToStep3FromImei = () => {
+    for (const { item, quantity } of selectedItemsList) {
+      const selected = pendingImeiSelections[item.id] ?? [];
+      if (selected.length !== quantity) {
+        toast.error(
+          `Select exactly ${quantity} unit${quantity !== 1 ? "s" : ""} for ${item.deviceName}.`,
+        );
+        return;
+      }
+    }
+    // Convert pending selections → identifierGroups
+    const newGroupsMap = new Map<string, IdentifierScanGroup>();
+    for (const { item } of selectedItemsList) {
+      const selectedIds = pendingImeiSelections[item.id] ?? [];
+      const available = availableIdentifiers[item.id] ?? [];
+      const units: ScannedIdentifierUnit[] = selectedIds.map((id) => {
+        const found = available.find((u) => u.id === id);
+        return {
+          id: crypto.randomUUID(),
+          inventoryIdentifierId: id,
+          displayLabel: found?.displayLabel ?? id,
+          color: found?.color ?? null,
+        };
+      });
+      newGroupsMap.set(item.id, { inventoryId: item.id, item, units });
+    }
+    setIdentifierGroups((prev) => {
+      const next = [...prev];
+      newGroupsMap.forEach((group) => {
+        const idx = next.findIndex((g) => g.inventoryId === group.inventoryId);
+        if (idx >= 0) {
+          next[idx] = { ...next[idx], units: [...next[idx].units, ...group.units] };
+        } else {
+          next.push(group);
+        }
+      });
+      return next;
+    });
+    setSelectedItems({});
+    setPendingImeiSelections({});
+    // Init selling prices for all groups (including newly added)
     const identPrices: Record<string, string> = {};
     identifierGroups.forEach((g) => {
       identPrices[g.inventoryId] = String(g.item.sellingPrice ?? g.item.pricePerUnit);
     });
+    newGroupsMap.forEach((g) => {
+      identPrices[g.inventoryId] = String(g.item.sellingPrice ?? g.item.pricePerUnit);
+    });
     setSellingPricesIdent(identPrices);
-    setStep(2);
+    setStep(3);
   };
 
   const handleSellingPriceChange = (itemId: string, value: string) => {
@@ -314,7 +616,12 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
     }
     setIdentifierLookupLoading(true);
     try {
-      const found = await lookupIdentifierForSale(q);
+      const found = await lookupIdentifierForSale(
+        q,
+        isEdit && allowedSoldIdentifierIdsRef.current.length > 0
+          ? { allowSoldIdentifierIds: allowedSoldIdentifierIdsRef.current }
+          : undefined,
+      );
       if (!found) {
         toast.error("No unit found with that IMEI or serial number.");
         return;
@@ -366,7 +673,7 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
     );
   };
 
-  const handleGoToStep3 = () => {
+  const handleGoToStep4 = () => {
     // Validate selling prices — none can be below list price
     for (const { item } of selectedItemsList) {
       const listPrice = item.sellingPrice ?? item.pricePerUnit;
@@ -388,7 +695,7 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
         return;
       }
     }
-    setStep(3);
+    setStep(4);
   };
 
   // ── Step 3 handlers ───────────────────────────────────────────────────────
@@ -401,6 +708,9 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
     setIdentifierGroups([]);
     setSellingPricesIdent({});
     setSellingPrices({});
+    setPendingImeiSelections({});
+    setAvailableIdentifiers({});
+    setIdentifiersLoading(false);
     setCustomerName("");
     setCustomerEmail("");
     setCustomerPhone("");
@@ -410,6 +720,7 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
     setPaymentMethod("");
     setHstPercent("13");
     setNotes("");
+    didHydrateEditRef.current = false;
     onDismiss();
   };
 
@@ -436,6 +747,28 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
       ];
 
       const finalShippingAddress = sameAsShipping ? billingAddress.trim() : shippingAddress.trim();
+      const hstVal = Math.max(0, parseFloat(hstPercent) || 0);
+
+      if (isEdit && orderToEdit) {
+        const updated = await updateManualOrder(orderToEdit.id, orderItems, hstVal);
+        await patchManualSaleOrderDetails(orderToEdit.id, {
+          customerName: customerName.trim(),
+          customerEmail: customerEmail.trim() || undefined,
+          customerPhone: customerPhone.trim() ? `+1${customerPhone.trim()}` : null,
+          paymentMethod,
+          billingAddress: billingAddress.trim() || null,
+          shippingAddress: finalShippingAddress || null,
+          notes: notes.trim() || null,
+        });
+
+        toast.success(`Manual sale updated — Order #${updated.id.slice(-8).toUpperCase()}`);
+        queryClient.invalidateQueries({ queryKey: queryKeys.inventory });
+        queryClient.invalidateQueries({ queryKey: queryKeys.orders });
+        queryClient.invalidateQueries({ queryKey: ["paginated", "userOrders"] });
+        onManualOrderUpdated?.(updated);
+        handleClose();
+        return;
+      }
 
       const order = await createManualOrder(
         user.id,
@@ -446,7 +779,7 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
           phone: customerPhone.trim() ? `+1${customerPhone.trim()}` : undefined,
         },
         paymentMethod,
-        Math.max(0, parseFloat(hstPercent) || 0),
+        hstVal,
         billingAddress.trim() || undefined,
         finalShippingAddress || undefined,
         notes.trim() || undefined,
@@ -477,7 +810,11 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
       queryClient.invalidateQueries({ queryKey: ["paginated", "userOrders"] });
       handleClose();
     } catch {
-      toast.error("Failed to record sale. Please try again.");
+      toast.error(
+        isEdit
+          ? "Failed to update manual sale. Please try again."
+          : "Failed to record sale. Please try again.",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -489,17 +826,17 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
         <div className="px-6 pt-4 pb-3 border-b border-border flex-shrink-0">
           <h1 className="text-lg font-semibold tracking-tight flex items-center gap-2">
             <ShoppingBag className="h-4 w-4 text-primary shrink-0" aria-hidden />
-            Record Manual Sale
+            {isEdit ? "Edit Manual Sale" : "Record Manual Sale"}
           </h1>
-          <StepIndicator step={step} />
+          <ManualSaleStepIndicator step={step} />
         </div>
       ) : (
         <DialogHeader className="px-6 pt-6 pb-4 border-b border-border flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <ShoppingBag className="h-5 w-5 text-primary shrink-0" aria-hidden />
-            Record Manual Sale
+            {isEdit ? "Edit Manual Sale" : "Record Manual Sale"}
           </DialogTitle>
-          <StepIndicator step={step} />
+          <ManualSaleStepIndicator step={step} />
         </DialogHeader>
       )}
 
@@ -510,7 +847,7 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
           <div className="flex-1 min-h-0 flex flex-col md:flex-row md:divide-x md:divide-border overflow-hidden">
             {/* Left panel: IMEI / serial scanner */}
             <div className="md:w-[38%] flex flex-col overflow-hidden border-b border-border md:border-b-0 flex-shrink-0">
-              {/* Sticky: header + input — never scrolls */}
+              {/* Sticky: header + input */}
               <div className="flex-shrink-0 px-5 pt-4 pb-3 space-y-3 border-b border-border/60 bg-card">
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
@@ -643,6 +980,7 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
                   </p>
                 ) : (
                   availableItems.map((item) => {
+                    const effStock = getEffectiveStock(item);
                     const isSelected = !!selectedItems[item.id];
                     const selected = selectedItems[item.id];
                     return (
@@ -677,9 +1015,7 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
                             <p className="text-xs text-muted-foreground">
                               {item.brand} • {item.storage}
                             </p>
-                            <p className="text-xs text-muted-foreground">
-                              {item.quantity} in stock
-                            </p>
+                            <p className="text-xs text-muted-foreground">{effStock} in stock</p>
                           </div>
                           <div className="text-right flex-shrink-0">
                             <p className="font-semibold text-sm text-foreground">
@@ -708,15 +1044,15 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
                               <Input
                                 type="number"
                                 min={1}
-                                max={item.quantity}
+                                max={effStock}
                                 value={selected.quantity}
                                 onChange={(e) =>
-                                  handleQuantityInput(item.id, e.target.value, item.quantity)
+                                  handleQuantityInput(item.id, e.target.value, effStock)
                                 }
                                 onBlur={(e) => {
                                   const parsed = parseInt(e.target.value, 10);
                                   if (isNaN(parsed) || parsed < 1)
-                                    handleQuantityInput(item.id, "1", item.quantity);
+                                    handleQuantityInput(item.id, "1", effStock);
                                 }}
                                 className="h-7 w-16 text-center text-sm px-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                 onClick={(e) => e.stopPropagation()}
@@ -726,7 +1062,7 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
                                 size="icon"
                                 className="h-6 w-6"
                                 onClick={() => handleQuantityChange(item.id, 1)}
-                                disabled={selected.quantity >= item.quantity}
+                                disabled={selected.quantity >= effStock}
                               >
                                 <Plus className="h-3 w-3" />
                               </Button>
@@ -752,7 +1088,9 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
             <p className="text-sm text-muted-foreground">
               {selectedItemsList.length > 0 || scannedUnitCount > 0 ? (
                 <span className="font-medium text-foreground">
-                  {selectedItemsList.length} browse line(s), {scannedUnitCount} scanned unit(s)
+                  {selectedItemsList.length > 0 && `${selectedItemsList.length} browse line(s)`}
+                  {selectedItemsList.length > 0 && scannedUnitCount > 0 && ", "}
+                  {scannedUnitCount > 0 && `${scannedUnitCount} scanned unit(s)`}
                   {" — "}
                   subtotal {formatPrice(subtotal)}
                 </span>
@@ -766,7 +1104,156 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
               </Button>
               <Button
                 disabled={selectedItemsList.length === 0 && scannedUnitCount === 0}
-                onClick={handleGoToStep2}
+                onClick={() => void handleGoToStep2()}
+              >
+                {selectedItemsList.length > 0 ? "Next: Assign IMEIs →" : "Next: Selling Price →"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── STEP 2: Assign IMEIs ─────────────────────────────────────── */}
+      {step === 2 && (
+        <div className="flex flex-col flex-1 min-h-0">
+          <div className="flex-shrink-0 px-5 pt-4 pb-3 border-b border-border/60 bg-card">
+            <p className="text-sm text-muted-foreground">
+              Select the specific units (by IMEI or serial) for each item. You must select exactly
+              the quantity chosen in the previous step.
+            </p>
+          </div>
+
+          <div className="flex-1 overflow-y-auto min-h-0 px-5 py-4 space-y-4">
+            {identifiersLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              selectedItemsList.map(({ item, quantity }) => {
+                const available = availableIdentifiers[item.id] ?? [];
+                const selected = pendingImeiSelections[item.id] ?? [];
+                const isComplete = selected.length === quantity;
+
+                return (
+                  <div
+                    key={item.id}
+                    className="rounded-lg border border-border bg-card overflow-hidden"
+                  >
+                    {/* Device header */}
+                    <div
+                      className={cn(
+                        "px-4 py-3 flex items-center justify-between gap-3 border-b border-border",
+                        isComplete ? "bg-primary/5" : "bg-muted/40",
+                      )}
+                    >
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-semibold text-sm text-foreground">{item.deviceName}</p>
+                        <GradeBadge grade={item.grade} />
+                        <span className="text-xs text-muted-foreground">
+                          {item.brand} · {item.storage}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span
+                          className={cn(
+                            "text-xs font-semibold tabular-nums px-2 py-0.5 rounded-full",
+                            isComplete
+                              ? "bg-primary/10 text-primary"
+                              : "bg-muted text-muted-foreground",
+                          )}
+                        >
+                          {selected.length} / {quantity} selected
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Units list */}
+                    {available.length === 0 ? (
+                      <div className="px-4 py-6 text-center">
+                        <p className="text-sm text-destructive font-medium">
+                          No available units found for this device.
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Ensure units are in stock with IMEI/serial numbers assigned.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-border/60">
+                        {available.map((unit) => {
+                          const isSelected = selected.includes(unit.id);
+                          const isDisabled = !isSelected && selected.length >= quantity;
+                          return (
+                            <label
+                              key={unit.id}
+                              className={cn(
+                                "flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors select-none",
+                                isSelected
+                                  ? "bg-primary/5"
+                                  : isDisabled
+                                    ? "opacity-40"
+                                    : "hover:bg-muted/40",
+                              )}
+                            >
+                              <Checkbox
+                                checked={isSelected}
+                                disabled={isDisabled}
+                                onCheckedChange={() =>
+                                  handleTogglePendingImei(item.id, unit.id, quantity)
+                                }
+                                aria-label={`Select unit ${unit.displayLabel}`}
+                              />
+                              <span className="font-mono text-sm text-foreground flex-1 truncate">
+                                {unit.displayLabel}
+                              </span>
+                              {unit.color && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-medium shrink-0">
+                                  {unit.color}
+                                </span>
+                              )}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="flex-shrink-0 border-t border-border px-5 py-3 flex items-center justify-between gap-4 bg-card">
+            <p className="text-sm text-muted-foreground">
+              {selectedItemsList.every(
+                ({ item, quantity }) => (pendingImeiSelections[item.id] ?? []).length === quantity,
+              ) ? (
+                <span className="text-primary font-medium">All units assigned</span>
+              ) : (
+                "Assign IMEIs for all items to continue"
+              )}
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setPendingImeiSelections({});
+                  setAvailableIdentifiers({});
+                  setStep(1);
+                }}
+                className="gap-2"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back
+              </Button>
+              <Button
+                disabled={
+                  identifiersLoading ||
+                  !selectedItemsList.every(
+                    ({ item, quantity }) =>
+                      (pendingImeiSelections[item.id] ?? []).length === quantity,
+                  )
+                }
+                onClick={handleGoToStep3FromImei}
               >
                 Next: Selling Price →
               </Button>
@@ -775,8 +1262,8 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
         </div>
       )}
 
-      {/* ── STEP 2: Selling Price ─────────────────────────────────────── */}
-      {step === 2 && (
+      {/* ── STEP 3: Selling Price ─────────────────────────────────────── */}
+      {step === 3 && (
         <div className="flex flex-col flex-1 min-h-0 px-5 py-3 gap-3">
           <p className="text-sm text-muted-foreground flex-shrink-0">
             Set the selling price for each line. You cannot go below the inventory list price.
@@ -927,14 +1414,14 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
                 <ArrowLeft className="h-4 w-4" />
                 Back
               </Button>
-              <Button onClick={handleGoToStep3}>Next: Customer Details →</Button>
+              <Button onClick={handleGoToStep4}>Next: Customer Details →</Button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── STEP 3: Customer & Payment ────────────────────────────────── */}
-      {step === 3 && (
+      {/* ── STEP 4: Customer & Payment ────────────────────────────────── */}
+      {step === 4 && (
         <div className="flex flex-col flex-1 min-h-0">
           {/* Two-column split on desktop */}
           <div className="flex-1 min-h-0 overflow-y-auto">
@@ -1149,7 +1636,7 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
 
           {/* Footer */}
           <div className="flex-shrink-0 border-t border-border px-6 py-4 flex items-center justify-between gap-4 bg-card">
-            <Button variant="outline" onClick={() => setStep(2)} className="gap-2">
+            <Button variant="outline" onClick={() => setStep(3)} className="gap-2">
               <ArrowLeft className="h-4 w-4" />
               Back
             </Button>
@@ -1165,6 +1652,8 @@ export function ManualSaleWizard({ onDismiss, layout }: ManualSaleWizardProps) {
                   <Loader2 className="h-4 w-4 animate-spin shrink-0" aria-hidden />
                   <span>Recording sale…</span>
                 </>
+              ) : isEdit ? (
+                "Save changes"
               ) : (
                 "Record Sale"
               )}

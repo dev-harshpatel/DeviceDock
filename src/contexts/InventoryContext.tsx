@@ -6,7 +6,15 @@ import { supabase } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/context";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useRealtimeContext } from "@/contexts/RealtimeContext";
-import { ReactNode, createContext, useContext, useEffect, useState, useCallback } from "react";
+import {
+  ReactNode,
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import type { IdentifierSaleLookup } from "@/types/inventory-identifiers";
 import { UploadHistory, BulkInsertResult } from "@/types/upload";
 import { dbRowToInventoryItem, INVENTORY_ADMIN_FIELDS } from "@/lib/supabase/queries";
@@ -31,7 +39,10 @@ interface InventoryContextType {
     color?: string | null,
   ) => Promise<void>;
   /** Exact IMEI or serial match for manual sale (in_stock / reserved only). */
-  lookupIdentifierForSale: (raw: string) => Promise<IdentifierSaleLookup | null>;
+  lookupIdentifierForSale: (
+    raw: string,
+    options?: { allowSoldIdentifierIds?: readonly string[] },
+  ) => Promise<IdentifierSaleLookup | null>;
   /** Marks a unit sold after the order is recorded; call before decreaseQuantity for that line. */
   markInventoryIdentifierSold: (identifierId: string) => Promise<void>;
   /** Restores identifier to in_stock if quantity decrease failed after mark (best-effort). */
@@ -362,9 +373,14 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
   );
 
   const lookupIdentifierForSale = useCallback(
-    async (raw: string): Promise<IdentifierSaleLookup | null> => {
+    async (
+      raw: string,
+      options?: { allowSoldIdentifierIds?: readonly string[] },
+    ): Promise<IdentifierSaleLookup | null> => {
       const q = raw.trim();
       if (!q || !companyId) return null;
+
+      const allowSold = new Set(options?.allowSoldIdentifierIds ?? []);
 
       const fetchIdent = async (
         column: "imei" | "serial_number",
@@ -381,14 +397,17 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
         return data ?? null;
       };
 
-      let row = (await fetchIdent("imei")) ?? (await fetchIdent("serial_number"));
+      const row = (await fetchIdent("imei")) ?? (await fetchIdent("serial_number"));
       if (!row) return null;
 
       const status = String(row.status ?? "");
+      const identifierId = String(row.id ?? "");
+
       if (status === "sold") {
-        throw new Error("This IMEI/serial has already been sold and is no longer available.");
-      }
-      if (status !== "in_stock" && status !== "reserved") {
+        if (!allowSold.has(identifierId)) {
+          throw new Error("This IMEI/serial has already been sold and is no longer available.");
+        }
+      } else if (status !== "in_stock" && status !== "reserved") {
         throw new Error(`This unit is not available for sale (status: ${status}).`);
       }
 
@@ -401,10 +420,13 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
       if (invErr || !invRow) return null;
 
       const item = dbRowToInventoryItem(invRow);
-      if (item.isActive === false || item.quantity < 1) return null;
+      if (item.isActive === false) return null;
+
+      const allowSoldQty = allowSold.has(identifierId);
+      if (!allowSoldQty && item.quantity < 1) return null;
 
       return {
-        identifierId: row.id as string,
+        identifierId,
         imei: (row.imei as string | null) ?? null,
         serialNumber: (row.serial_number as string | null) ?? null,
         status,
@@ -499,26 +521,38 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
     }));
   }, [companyId]);
 
-  return (
-    <InventoryContext.Provider
-      value={{
-        inventory,
-        updateProduct,
-        decreaseQuantity,
-        resetInventory,
-        refreshInventory,
-        bulkInsertProducts,
-        addInventoryIdentifier,
-        lookupIdentifierForSale,
-        markInventoryIdentifierSold,
-        revertInventoryIdentifierSold,
-        getUploadHistory,
-        isLoading,
-      }}
-    >
-      {children}
-    </InventoryContext.Provider>
+  const contextValue = useMemo(
+    () => ({
+      inventory,
+      updateProduct,
+      decreaseQuantity,
+      resetInventory,
+      refreshInventory,
+      bulkInsertProducts,
+      addInventoryIdentifier,
+      lookupIdentifierForSale,
+      markInventoryIdentifierSold,
+      revertInventoryIdentifierSold,
+      getUploadHistory,
+      isLoading,
+    }),
+    [
+      inventory,
+      isLoading,
+      updateProduct,
+      decreaseQuantity,
+      resetInventory,
+      refreshInventory,
+      bulkInsertProducts,
+      addInventoryIdentifier,
+      lookupIdentifierForSale,
+      markInventoryIdentifierSold,
+      revertInventoryIdentifierSold,
+      getUploadHistory,
+    ],
   );
+
+  return <InventoryContext.Provider value={contextValue}>{children}</InventoryContext.Provider>;
 };
 
 export const useInventory = () => {

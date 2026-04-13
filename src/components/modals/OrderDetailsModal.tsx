@@ -99,6 +99,15 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
     {},
   );
 
+  // Stable keys: `order` from the parent is often a new object reference on every list/query
+  // refresh, which would retrigger effects that listed `order` in deps and spam APIs.
+  const orderId = order?.id;
+  const orderStatus = order?.status;
+  const orderUserId = order?.userId;
+  const orderIsManualSale = order?.isManualSale;
+  /** Content-based key so `order.items` reference churn does not retrigger fetches. */
+  const orderItemsJsonKey = order?.items != null ? JSON.stringify(order.items) : "";
+
   useEffect(() => {
     if (!open || !order) {
       setFetchedIdentifierLabels({});
@@ -141,12 +150,11 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
           setFetchedIdentifierColors(colorMap);
         },
       );
-  }, [open, order]);
+  }, [open, orderId, orderItemsJsonKey]);
 
   useEffect(() => {
     const fetchCustomerEmail = async () => {
-      // Manual sales store customer info directly — no need to look up by userId
-      if (!order?.userId || order?.isManualSale) return;
+      if (!orderUserId || orderIsManualSale) return;
 
       try {
         const response = await fetch("/api/users/emails", {
@@ -154,35 +162,35 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ userIds: [order.userId] }),
+          body: JSON.stringify({ userIds: [orderUserId] }),
         });
 
         if (response.ok) {
           const data = await response.json();
-          setCustomerEmail(data.emails[order.userId] || null);
+          setCustomerEmail(data.emails[orderUserId] || null);
         }
       } catch {
         // Silently handle error - email is optional
       }
     };
 
-    if (open && order) {
-      fetchCustomerEmail();
+    if (open && orderUserId) {
+      void fetchCustomerEmail();
     }
-  }, [open, order]);
+  }, [open, orderIsManualSale, orderUserId]);
 
   // Fetch colour assignments when admin opens an approved/completed order
   useEffect(() => {
-    if (!open || !order || !isAdmin) return;
-    if (order.status !== "approved" && order.status !== "completed") {
+    if (!open || !orderId || !isAdmin) return;
+    if (orderStatus !== "approved" && orderStatus !== "completed") {
       setColorAssignments({});
       return;
     }
-    fetch(`/api/admin/order-color-assignments?order_id=${encodeURIComponent(order.id)}`)
+    fetch(`/api/admin/order-color-assignments?order_id=${encodeURIComponent(orderId)}`)
       .then((r) => (r.ok ? r.json() : { assignments: {} }))
       .then((data) => setColorAssignments(data.assignments ?? {}))
       .catch(() => setColorAssignments({}));
-  }, [open, order, isAdmin]);
+  }, [open, isAdmin, orderId, orderStatus]);
 
   // Invoice route — must be computed before any early return so hooks below stay stable
   const invoiceRoute = order ? `/${companySlug}/orders/${order.id}/invoice` : "";
@@ -330,6 +338,12 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
   const canReject = order.status === "pending" && isAdmin;
   const canDeleteOrder = isAdmin && (order.status === "approved" || order.status === "completed");
 
+  const canEditManualSale =
+    isAdmin &&
+    order.isManualSale === true &&
+    (order.status === "approved" || order.status === "completed") &&
+    order.invoiceConfirmed !== true;
+
   // Invoice actions
   const hasInvoice = !!order.invoiceNumber;
   const canDownloadInvoice = hasInvoice && isAdmin;
@@ -357,6 +371,13 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
     startNavigation();
     router.push(invoiceRoute);
     onOpenChange(false);
+  };
+
+  const handleEditManualSale = () => {
+    if (!order || !companySlug) return;
+    startNavigation();
+    onOpenChange(false);
+    router.push(`/${companySlug}/orders/manual-sale/edit/${order.id}`);
   };
 
   const handleDeleteOrder = async () => {
@@ -998,6 +1019,16 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
             >
               Close
             </Button>
+            {canEditManualSale && (
+              <Button
+                variant="outline"
+                onClick={handleEditManualSale}
+                disabled={isApproving || isRejecting || isDeleting}
+              >
+                <ShoppingBag className="mr-2 h-4 w-4" />
+                Edit manual sale
+              </Button>
+            )}
             {canDeleteOrder && (
               <Button
                 variant="destructive"

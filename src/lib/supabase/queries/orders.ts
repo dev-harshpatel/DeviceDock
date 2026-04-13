@@ -76,6 +76,7 @@ export const ORDER_FIELDS = [
   "manual_customer_name",
   "manual_customer_email",
   "manual_customer_phone",
+  "profit",
 ].join(", ");
 
 export async function fetchPaginatedOrders(
