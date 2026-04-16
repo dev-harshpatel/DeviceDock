@@ -127,6 +127,17 @@ export function BulkBarcodeLabelDialog({
         const metaLine = metaParts.join(" · ");
         const priceValue = showRetailPrice && customPrice.trim() ? parseFloat(customPrice) : null;
 
+        const hasText = !!(deviceName || metaLine);
+        const hasPrice = priceValue != null && !isNaN(priceValue);
+        const gridTemplateColumns =
+          hasText && hasPrice
+            ? "minmax(0, 1fr) minmax(0, 1.15fr) auto"
+            : hasText && !hasPrice
+              ? "minmax(0, 1fr) minmax(0, 1.15fr)"
+              : !hasText && hasPrice
+                ? "minmax(0, 1.15fr) auto"
+                : "minmax(0, 1fr)";
+
         const textBlock =
           deviceName || metaLine
             ? `<div class="label-text">` +
@@ -136,9 +147,9 @@ export function BulkBarcodeLabelDialog({
             : "";
 
         return (
-          `<section class="label">` +
+          `<section class="label" style="grid-template-columns: ${gridTemplateColumns}">` +
           textBlock +
-          `<img class="barcode-img" src="${src}" alt="barcode" />` +
+          `<div class="barcode-wrap"><img class="barcode-img" src="${src}" alt="barcode" /></div>` +
           (priceValue != null && !isNaN(priceValue)
             ? `<div class="price">$${priceValue.toFixed(2)}</div>`
             : "") +
@@ -162,11 +173,9 @@ export function BulkBarcodeLabelDialog({
               height: ${heightMm}mm;
               box-sizing: border-box;
               padding: 0.75mm 2mm;
-              display: flex;
-              flex-direction: row;
+              display: grid;
               align-items: center;
-              justify-content: space-between;
-              gap: 1.5mm;
+              column-gap: 1.5mm;
               page-break-after: always;
               break-after: page;
               overflow: hidden;
@@ -176,11 +185,11 @@ export function BulkBarcodeLabelDialog({
               break-after: auto;
             }
             .label-text {
-              flex: 1 1 30%;
               min-width: 0;
               display: flex;
               flex-direction: column;
               justify-content: center;
+              align-self: center;
               gap: 0.25mm;
             }
             .device-name {
@@ -204,21 +213,28 @@ export function BulkBarcodeLabelDialog({
               overflow: hidden;
               text-overflow: ellipsis;
             }
+            .barcode-wrap {
+              min-width: 0;
+              min-height: 0;
+              height: 100%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+            }
             .barcode-img {
-              flex: 0 1 auto;
-              max-height: 96%;
-              max-width: 48%;
+              max-width: 100%;
+              max-height: 100%;
               width: auto;
               height: auto;
               object-fit: contain;
             }
             .price {
-              flex: 0 0 auto;
               font-size: 7pt;
               font-weight: 700;
               font-family: Arial, sans-serif;
               text-align: right;
               white-space: nowrap;
+              align-self: center;
             }
           </style>
         </head>

@@ -98,6 +98,16 @@ export function BarcodeLabelDialog({
     const metaParts = [grade, storage].filter(Boolean);
     const metaLine = metaParts.length > 0 ? metaParts.join(" · ") : null;
     const priceValue = showRetailPrice && customPrice.trim() ? parseFloat(customPrice) : null;
+    const hasText = !!(deviceName || metaLine);
+    const hasPrice = priceValue != null && !isNaN(priceValue);
+    const gridTemplateColumns =
+      hasText && hasPrice
+        ? "minmax(0, 1fr) minmax(0, 1.15fr) auto"
+        : hasText && !hasPrice
+          ? "minmax(0, 1fr) minmax(0, 1.15fr)"
+          : !hasText && hasPrice
+            ? "minmax(0, 1.15fr) auto"
+            : "minmax(0, 1fr)";
 
     printWindow.document.write(`
       <html>
@@ -109,27 +119,33 @@ export function BarcodeLabelDialog({
               margin: 0;
             }
             html, body {
-              margin: 0; padding: 0;
+              margin: 0;
+              padding: 0;
+              width: ${IMEI_LABEL_WIDTH_MM}mm;
+              height: ${IMEI_LABEL_HEIGHT_MM}mm;
+              overflow: hidden;
               font-family: Arial, sans-serif;
               color: #000;
             }
+            body {
+              display: block;
+            }
             .label {
-              width: ${IMEI_LABEL_WIDTH_MM}mm;
-              height: ${IMEI_LABEL_HEIGHT_MM}mm;
+              width: 100%;
+              height: 100%;
               box-sizing: border-box;
               padding: 0.75mm 2mm;
-              display: flex;
-              flex-direction: row;
+              display: grid;
+              grid-template-columns: ${gridTemplateColumns};
               align-items: center;
-              justify-content: space-between;
-              gap: 1.5mm;
+              column-gap: 1.5mm;
             }
             .label-text {
-              flex: 1 1 30%;
               min-width: 0;
               display: flex;
               flex-direction: column;
               justify-content: center;
+              align-self: center;
               gap: 0.25mm;
             }
             .device-name {
@@ -153,21 +169,28 @@ export function BarcodeLabelDialog({
               overflow: hidden;
               text-overflow: ellipsis;
             }
+            .barcode-wrap {
+              min-width: 0;
+              min-height: 0;
+              height: 100%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+            }
             .barcode-img {
-              flex: 0 1 auto;
-              max-height: 96%;
-              max-width: 48%;
+              max-width: 100%;
+              max-height: 100%;
               width: auto;
               height: auto;
               object-fit: contain;
             }
             .price {
-              flex: 0 0 auto;
               font-size: 7pt;
               font-weight: 700;
               font-family: Arial, sans-serif;
               text-align: right;
               white-space: nowrap;
+              align-self: center;
             }
           </style>
         </head>
@@ -180,7 +203,9 @@ export function BarcodeLabelDialog({
                   }${metaLine ? `<div class="meta">${escapeHtml(metaLine)}</div>` : ""}</div>`
                 : ""
             }
-            <img class="barcode-img" src="${dataUrl}" alt="barcode" onload="window.print();window.close();" />
+            <div class="barcode-wrap">
+              <img class="barcode-img" src="${dataUrl}" alt="barcode" onload="window.print();window.close();" />
+            </div>
             ${priceValue != null && !isNaN(priceValue) ? `<div class="price">$${priceValue.toFixed(2)}</div>` : ""}
           </div>
         </body>
