@@ -29,16 +29,19 @@ export const INVENTORY_SORT_ORDER = {
   id: { ascending: true },
 } as const;
 
-// IMEI Label Dimensions (in millimeters) — adjust values as needed
-export const IMEI_LABEL_WIDTH_MM = 90;
-export const IMEI_LABEL_HEIGHT_MM = 40;
+// IMEI label stock: DYMO 30252 Address — 1-1/8" × 3-1/2" (width × height, portrait)
+const MM_PER_IN = 25.4;
+const DYMO_30252_WIDTH_IN = 1.125;
+const DYMO_30252_HEIGHT_IN = 3.5;
+
+export const IMEI_LABEL_WIDTH_MM = DYMO_30252_WIDTH_IN * MM_PER_IN;
+export const IMEI_LABEL_HEIGHT_MM = DYMO_30252_HEIGHT_IN * MM_PER_IN;
 export const IMEI_BARCODE_HEIGHT = 48; // barcode height in pixels for canvas rendering
 
-// Bulk Label Sheet Layout
+// Bulk Label Sheet Layout (reserved for future multi-up layouts; bulk print uses per-page below)
 export const BULK_LABEL_COLUMNS = 3; // labels per row on the print sheet
 export const BULK_LABEL_GAP_MM = 4; // gap between labels in millimeters
 
-// Per-page Label Dimensions (one label per page — DYMO 30256 shipping label)
-// Used when printing each barcode on its own page so the device name fits.
-export const IMEI_PAGE_LABEL_WIDTH_MM = 101;
-export const IMEI_PAGE_LABEL_HEIGHT_MM = 54;
+// Per-page label (one label per page) — same stock as single print (DYMO 30252)
+export const IMEI_PAGE_LABEL_WIDTH_MM = IMEI_LABEL_WIDTH_MM;
+export const IMEI_PAGE_LABEL_HEIGHT_MM = IMEI_LABEL_HEIGHT_MM;

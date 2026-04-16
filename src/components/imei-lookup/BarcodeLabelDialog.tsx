@@ -117,7 +117,7 @@ export function BarcodeLabelDialog({
               width: ${IMEI_LABEL_WIDTH_MM}mm;
               height: ${IMEI_LABEL_HEIGHT_MM}mm;
               box-sizing: border-box;
-              padding: 2mm 3mm;
+              padding: 1mm 1.5mm;
               display: flex;
               flex-direction: column;
               align-items: center;
@@ -125,7 +125,7 @@ export function BarcodeLabelDialog({
               gap: 1mm;
             }
             .device-name {
-              font-size: 10pt;
+              font-size: 8pt;
               font-weight: 700;
               font-family: Arial, sans-serif;
               text-align: center;
@@ -135,18 +135,18 @@ export function BarcodeLabelDialog({
               text-overflow: ellipsis;
             }
             .meta {
-              font-size: 8pt;
+              font-size: 7pt;
               font-family: Arial, sans-serif;
               text-align: center;
               color: #333;
             }
             .barcode-img {
               max-width: 100%;
-              max-height: 55%;
+              max-height: 50%;
               object-fit: contain;
             }
             .price {
-              font-size: 10pt;
+              font-size: 8pt;
               font-weight: 700;
               font-family: Arial, sans-serif;
               text-align: center;

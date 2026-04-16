@@ -154,12 +154,12 @@ export function BulkBarcodeLabelDialog({
               width: ${widthMm}mm;
               height: ${heightMm}mm;
               box-sizing: border-box;
-              padding: 3mm 4mm;
+              padding: 1mm 1.5mm;
               display: flex;
               flex-direction: column;
               align-items: center;
               justify-content: center;
-              gap: 1.5mm;
+              gap: 1mm;
               page-break-after: always;
               break-after: page;
               overflow: hidden;
@@ -169,7 +169,7 @@ export function BulkBarcodeLabelDialog({
               break-after: auto;
             }
             .device-name {
-              font-size: 11pt;
+              font-size: 8pt;
               font-weight: 700;
               font-family: Arial, sans-serif;
               text-align: center;
@@ -179,18 +179,18 @@ export function BulkBarcodeLabelDialog({
               text-overflow: ellipsis;
             }
             .meta {
-              font-size: 9pt;
+              font-size: 7pt;
               font-family: Arial, sans-serif;
               text-align: center;
               color: #333;
             }
             .barcode-img {
               max-width: 100%;
-              max-height: 55%;
+              max-height: 50%;
               object-fit: contain;
             }
             .price {
-              font-size: 11pt;
+              font-size: 8pt;
               font-weight: 700;
               font-family: Arial, sans-serif;
               text-align: center;
