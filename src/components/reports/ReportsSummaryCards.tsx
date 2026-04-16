@@ -66,7 +66,11 @@ export function ReportsSummaryCards({
         </p>
         <p className="text-xs text-muted-foreground mt-1">
           (Selling − Cost/unit) × Qty · Excl. HST ·{" "}
-          {isEstimatedProfitPending ? "…" : estimatedProfitStats.itemsWithData} items
+          {isEstimatedProfitPending
+            ? "…"
+            : estimatedProfitStats.itemsWithData === 0
+              ? "no on-hand units"
+              : `${estimatedProfitStats.itemsWithData} items`}
         </p>
       </div>
 

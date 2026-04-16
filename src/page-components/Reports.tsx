@@ -211,6 +211,8 @@ export default function Reports() {
     let totalProfit = 0;
     let itemsWithData = 0;
     filteredInventory.forEach((item) => {
+      const qty = Number.isFinite(item.quantity) ? item.quantity : 0;
+      if (qty <= 0) return;
       const costPerUnit = getCostPerUnitWithoutHst(
         item.purchasePrice,
         item.quantity,
@@ -219,7 +221,6 @@ export default function Reports() {
       );
       if (costPerUnit == null) return;
       const selling = Number.isFinite(item.sellingPrice) ? item.sellingPrice : 0;
-      const qty = Number.isFinite(item.quantity) ? item.quantity : 0;
       const profitDelta = (selling - costPerUnit) * qty;
       if (Number.isFinite(profitDelta)) {
         totalProfit += profitDelta;
@@ -229,11 +230,8 @@ export default function Reports() {
     return { totalProfit: Number.isFinite(totalProfit) ? totalProfit : 0, itemsWithData };
   }, [filteredInventory]);
 
-  const isEstimatedProfitPending = useMemo(() => {
-    if (inventoryLoading) return true;
-    if (filteredInventory.length === 0) return false;
-    return estimatedProfitStats.itemsWithData === 0;
-  }, [inventoryLoading, filteredInventory.length, estimatedProfitStats.itemsWithData]);
+  /** Only true while inventory is loading — not when on-hand qty is 0 (sold-out rows skip cost calc). */
+  const isEstimatedProfitPending = inventoryLoading;
 
   const profitFromOrdersStats = useMemo(() => {
     const completedOrders = filteredOrders.filter(
