@@ -127,10 +127,17 @@ export function BulkBarcodeLabelDialog({
         const metaLine = metaParts.join(" · ");
         const priceValue = showRetailPrice && customPrice.trim() ? parseFloat(customPrice) : null;
 
+        const textBlock =
+          deviceName || metaLine
+            ? `<div class="label-text">` +
+              (deviceName ? `<div class="device-name">${escapeHtml(deviceName)}</div>` : "") +
+              (metaLine ? `<div class="meta">${escapeHtml(metaLine)}</div>` : "") +
+              `</div>`
+            : "";
+
         return (
           `<section class="label">` +
-          (deviceName ? `<div class="device-name">${escapeHtml(deviceName)}</div>` : "") +
-          (metaLine ? `<div class="meta">${escapeHtml(metaLine)}</div>` : "") +
+          textBlock +
           `<img class="barcode-img" src="${src}" alt="barcode" />` +
           (priceValue != null && !isNaN(priceValue)
             ? `<div class="price">$${priceValue.toFixed(2)}</div>`
@@ -154,12 +161,12 @@ export function BulkBarcodeLabelDialog({
               width: ${widthMm}mm;
               height: ${heightMm}mm;
               box-sizing: border-box;
-              padding: 1mm 1.5mm;
+              padding: 0.75mm 2mm;
               display: flex;
-              flex-direction: column;
+              flex-direction: row;
               align-items: center;
-              justify-content: center;
-              gap: 1mm;
+              justify-content: space-between;
+              gap: 1.5mm;
               page-break-after: always;
               break-after: page;
               overflow: hidden;
@@ -168,32 +175,50 @@ export function BulkBarcodeLabelDialog({
               page-break-after: auto;
               break-after: auto;
             }
+            .label-text {
+              flex: 1 1 30%;
+              min-width: 0;
+              display: flex;
+              flex-direction: column;
+              justify-content: center;
+              gap: 0.25mm;
+            }
             .device-name {
-              font-size: 8pt;
+              font-size: 6pt;
               font-weight: 700;
               font-family: Arial, sans-serif;
-              text-align: center;
+              text-align: left;
+              line-height: 1.1;
               max-width: 100%;
               white-space: nowrap;
               overflow: hidden;
               text-overflow: ellipsis;
             }
             .meta {
-              font-size: 7pt;
+              font-size: 5pt;
               font-family: Arial, sans-serif;
-              text-align: center;
+              text-align: left;
               color: #333;
+              line-height: 1.1;
+              white-space: nowrap;
+              overflow: hidden;
+              text-overflow: ellipsis;
             }
             .barcode-img {
-              max-width: 100%;
-              max-height: 50%;
+              flex: 0 1 auto;
+              max-height: 96%;
+              max-width: 48%;
+              width: auto;
+              height: auto;
               object-fit: contain;
             }
             .price {
-              font-size: 8pt;
+              flex: 0 0 auto;
+              font-size: 7pt;
               font-weight: 700;
               font-family: Arial, sans-serif;
-              text-align: center;
+              text-align: right;
+              white-space: nowrap;
             }
           </style>
         </head>

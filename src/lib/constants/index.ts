@@ -29,10 +29,10 @@ export const INVENTORY_SORT_ORDER = {
   id: { ascending: true },
 } as const;
 
-// IMEI label stock: DYMO 30252 Address — 1-1/8" × 3-1/2" (width × height, portrait)
+// IMEI label stock: DYMO 30252 — 3-1/2" × 1-1/8" (width × height, landscape strip)
 const MM_PER_IN = 25.4;
-const DYMO_30252_WIDTH_IN = 1.125;
-const DYMO_30252_HEIGHT_IN = 3.5;
+const DYMO_30252_WIDTH_IN = 3.5;
+const DYMO_30252_HEIGHT_IN = 1.125;
 
 export const IMEI_LABEL_WIDTH_MM = DYMO_30252_WIDTH_IN * MM_PER_IN;
 export const IMEI_LABEL_HEIGHT_MM = DYMO_30252_HEIGHT_IN * MM_PER_IN;
