@@ -4,20 +4,12 @@ import { Database, Json } from "@/lib/database.types";
 import { supabase } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/context";
 import { useCompany } from "@/contexts/CompanyContext";
-import { useRealtimeContext } from "@/contexts/RealtimeContext";
 import { Order, OrderItem, OrderStatus } from "@/types/order";
-import {
-  ReactNode,
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { ReactNode, createContext, useCallback, useContext, useMemo } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query-keys";
-import { dbRowToOrder, ORDER_FIELDS } from "@/lib/supabase/queries";
+import { percentToRate } from "@/lib/tax";
+import { dbRowToOrder, fetchAllOrders, ORDER_FIELDS } from "@/lib/supabase/queries";
 import { createNotificationEvent } from "@/lib/notifications/client";
 import { NOTIFICATION_EVENT_TYPES } from "@/lib/notifications/types";
 
@@ -158,54 +150,24 @@ const buildOrderInsert = (
 };
 
 export const OrdersProvider = ({ children }: OrdersProviderProps) => {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const { user } = useAuth();
   const { companyId } = useCompany();
-  const { ordersVersion } = useRealtimeContext();
   const queryClient = useQueryClient();
 
-  // Load orders from Supabase — filtered by company_id
-  const loadOrders = useCallback(async () => {
-    if (!companyId) return;
-    try {
-      const { data, error } = await (supabase.from("orders") as any)
-        .select(ORDER_FIELDS)
-        .eq("company_id", companyId)
-        .order("created_at", { ascending: false });
+  // All orders for this company — replaces the old useState + useEffect + loadOrders.
+  // Realtime invalidation is handled centrally by use-realtime-invalidation.ts in Providers.tsx.
+  const { data: orders = [], isLoading } = useQuery({
+    queryKey: queryKeys.ordersAll(companyId),
+    queryFn: () => fetchAllOrders(companyId),
+    staleTime: 30_000,
+    enabled: Boolean(companyId),
+  });
 
-      if (error) {
-        setOrders([]);
-        return;
-      }
-
-      setOrders(data ? data.map(dbRowToOrder) : []);
-    } catch {
-      setOrders([]);
-    }
-  }, [companyId]);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const init = async () => {
-      setIsLoading(true);
-      await loadOrders();
-      if (isMounted) setIsLoading(false);
-    };
-
-    init();
-    return () => {
-      isMounted = false;
-    };
-  }, [loadOrders]);
-
-  // Reload orders when RealtimeProvider signals orders changes
-  useEffect(() => {
-    if (ordersVersion > 0) {
-      loadOrders();
-    }
-  }, [ordersVersion, loadOrders]);
+  /** Invalidates both the full list and the paginated pages. */
+  const invalidateOrders = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.ordersAll(companyId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.orders });
+  }, [companyId, queryClient]);
 
   const createOrder = useCallback(
     async (
@@ -241,7 +203,11 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
 
       if (data) {
         const createdOrder = dbRowToOrder(data);
-        setOrders((prev) => [createdOrder, ...prev]);
+        // Prepend to cache immediately; background sync happens via realtime invalidation.
+        queryClient.setQueryData<Order[]>(queryKeys.ordersAll(companyId), (old) => [
+          createdOrder,
+          ...(old ?? []),
+        ]);
         return createdOrder;
       }
 
@@ -269,7 +235,7 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
         updatedAt: newOrder.updated_at ?? new Date().toISOString(),
       };
     },
-    [companyId],
+    [companyId, queryClient],
   );
 
   const createManualOrder = useCallback(
@@ -288,7 +254,7 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
       }
 
       const subtotal = calculateOrderSubtotal(items);
-      const taxRate = hstPercent && hstPercent > 0 ? hstPercent / 100 : null;
+      const taxRate = hstPercent && hstPercent > 0 ? percentToRate(hstPercent) : null;
       const taxAmount = taxRate ? Math.round(subtotal * taxRate * 100) / 100 : null;
       const totalPrice = subtotal + (taxAmount ?? 0);
       const itemsJson: Json = items as unknown as Json;
@@ -325,7 +291,12 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
       }
 
       const createdOrder = dbRowToOrder(data);
-      setOrders((prev) => [createdOrder, ...prev]);
+
+      queryClient.setQueryData<Order[]>(queryKeys.ordersAll(companyId), (old) => [
+        createdOrder,
+        ...(old ?? []),
+      ]);
+
       if (companyId) {
         await createNotificationEvent({
           actorUserId: adminUserId,
@@ -344,7 +315,7 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
       }
       return createdOrder;
     },
-    [companyId],
+    [companyId, queryClient],
   );
 
   const updateManualOrder = useCallback(
@@ -353,7 +324,7 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
         throw new Error("Order must have at least one item");
       }
 
-      const taxRate = hstPercent != null && hstPercent > 0 ? hstPercent / 100 : null;
+      const taxRate = hstPercent != null && hstPercent > 0 ? percentToRate(hstPercent) : null;
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC not in generated Database types
       const { error: rpcError } = await (supabase as any).rpc("update_manual_sale_order", {
@@ -377,13 +348,15 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
       }
 
       const updatedOrder = dbRowToOrder(data);
-      await loadOrders();
-      queryClient.invalidateQueries({ queryKey: queryKeys.orders });
+
+      // Invalidate all related caches; inventory quantities may have changed too.
+      invalidateOrders();
       queryClient.invalidateQueries({ queryKey: queryKeys.inventory });
-      queryClient.invalidateQueries({ queryKey: ["paginated", "userOrders"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventoryAll(companyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.userOrdersBase });
       return updatedOrder;
     },
-    [loadOrders, queryClient],
+    [companyId, invalidateOrders, queryClient],
   );
 
   const patchManualSaleOrderDetails = useCallback(
@@ -432,10 +405,9 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
         throw new Error(error.message || "Failed to update order details");
       }
 
-      await loadOrders();
-      queryClient.invalidateQueries({ queryKey: queryKeys.orders });
+      invalidateOrders();
     },
-    [loadOrders, queryClient],
+    [invalidateOrders],
   );
 
   const getOrderById = useCallback(
@@ -478,7 +450,7 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
         (updateData as any).rejection_comment = null;
       }
 
-      const { data, error } = await (supabase.from("orders") as any)
+      const { error } = await (supabase.from("orders") as any)
         .update(updateData)
         .eq("id", orderId)
         .select()
@@ -486,10 +458,9 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
 
       if (error) throw error;
 
-      await loadOrders();
-      queryClient.invalidateQueries({ queryKey: queryKeys.orders });
+      invalidateOrders();
     },
-    [loadOrders, getOrderById, queryClient],
+    [getOrderById, invalidateOrders],
   );
 
   const deleteOrder = useCallback(
@@ -506,11 +477,11 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
         throw new Error("Order was already deleted.");
       }
 
-      await loadOrders();
-      queryClient.invalidateQueries({ queryKey: queryKeys.orders });
+      invalidateOrders();
       queryClient.invalidateQueries({ queryKey: queryKeys.inventory });
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventoryAll(companyId) });
     },
-    [loadOrders, queryClient],
+    [companyId, invalidateOrders, queryClient],
   );
 
   const getUserOrders = useCallback(
@@ -595,9 +566,9 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
 
       if (error) throw error;
 
-      await loadOrders();
+      invalidateOrders();
     },
-    [loadOrders, getOrderById],
+    [getOrderById, invalidateOrders],
   );
 
   const confirmInvoice = useCallback(
@@ -612,9 +583,9 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
 
       if (error) throw error;
 
-      await loadOrders();
+      invalidateOrders();
     },
-    [loadOrders],
+    [invalidateOrders],
   );
 
   const downloadInvoicePDF = useCallback(
@@ -678,6 +649,10 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
     [companyId],
   );
 
+  const refreshOrders = useCallback(async (): Promise<void> => {
+    await invalidateOrders();
+  }, [invalidateOrders]);
+
   const contextValue = useMemo(
     () => ({
       orders,
@@ -693,7 +668,7 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
       getUserOrders,
       getAllOrders,
       getOrderById,
-      refreshOrders: loadOrders,
+      refreshOrders,
       isLoading,
     }),
     [
@@ -711,7 +686,7 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
       getUserOrders,
       getAllOrders,
       getOrderById,
-      loadOrders,
+      refreshOrders,
     ],
   );
 

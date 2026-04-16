@@ -1,7 +1,7 @@
 "use client";
 
 import { KeyboardEvent, useState, useMemo, useCallback, useEffect } from "react";
-import { Check, ChevronsUpDown, Plus, Loader2, Package, Info, Palette } from "lucide-react";
+import { Plus, Loader2, Package, Info, Palette } from "lucide-react";
 import { ColourBreakdownDialog, type ColourRow } from "@/components/modals/ColourBreakdownDialog";
 import {
   ImeiColorMappingDialog,
@@ -10,6 +10,7 @@ import {
   type ImeiColorMapping,
 } from "@/components/modals/ImeiColorMappingDialog";
 import { toast } from "sonner";
+import { toastError } from "@/lib/utils/toast-helpers";
 import { cn } from "@/lib/utils";
 import { formatPrice } from "@/lib/utils";
 import { calculatePricePerUnit } from "@/data/inventory";
@@ -24,15 +25,6 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -42,14 +34,22 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Badge } from "@/components/ui/badge";
 import { useInventory } from "@/contexts/InventoryContext";
 import { useAuth } from "@/lib/auth/context";
 import { useCompany } from "@/contexts/CompanyContext";
 import { createNotificationEvent } from "@/lib/notifications/client";
 import { NOTIFICATION_EVENT_TYPES } from "@/lib/notifications/types";
 import { supabase } from "@/lib/supabase/client";
-import { type Grade, GRADES, GRADE_BADGE_LABELS, GRADE_LABELS } from "@/lib/constants/grades";
+import {
+  type Grade,
+  GRADES,
+  GRADE_BADGE_LABELS,
+  GRADE_LABELS,
+  GRADE_STYLES,
+} from "@/lib/constants/grades";
+import { BulkModePanel } from "@/components/modals/BulkModePanel";
+import { MergePreviewCard } from "@/components/modals/MergePreviewCard";
+import { ProductSearchCombobox } from "@/components/modals/ProductSearchCombobox";
 
 interface AddProductModalProps {
   open: boolean;
@@ -96,15 +96,6 @@ const defaultForm: ProductForm = {
   sellingPrice: "",
   imei: "",
   serialNumber: "",
-};
-
-const GRADE_STYLES: Record<string, string> = {
-  "Brand New Sealed": "bg-emerald-500/10 text-emerald-700 border-emerald-500/30",
-  "Brand New Open Box": "bg-teal-500/10 text-teal-700 border-teal-500/30",
-  A: "bg-emerald-500/10 text-emerald-700 border-emerald-500/30",
-  B: "bg-blue-500/10 text-blue-700 border-blue-500/30",
-  C: "bg-amber-500/10 text-amber-700 border-amber-500/30",
-  D: "bg-red-500/10 text-red-700 border-red-500/30",
 };
 
 export function AddProductModal({
@@ -529,7 +520,7 @@ export function AddProductModal({
         invalid,
       });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Bulk validation failed");
+      toastError(error, "Bulk validation failed");
     } finally {
       setIsBulkReviewing(false);
     }
@@ -589,7 +580,7 @@ export function AddProductModal({
       handleClose();
       onSuccess();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Bulk insert failed");
+      toastError(error, "Bulk insert failed");
     } finally {
       setIsBulkSaving(false);
     }
@@ -882,7 +873,7 @@ export function AddProductModal({
       handleClose();
       onSuccess();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to save product. Please try again.");
+      toastError(err, "Failed to save product. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -936,107 +927,16 @@ export function AddProductModal({
           {mode === "single" && step === "form" && (
             <div className="space-y-5">
               {/* ── Product search combobox ───────────────────────────────────── */}
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">Search Existing Products</Label>
-                <Popover open={comboboxOpen} onOpenChange={setComboboxOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      role="combobox"
-                      aria-expanded={comboboxOpen}
-                      className="w-full justify-between font-normal h-10"
-                    >
-                      <span
-                        className={cn(
-                          "truncate text-sm",
-                          !form.deviceName && "text-muted-foreground",
-                        )}
-                      >
-                        {form.deviceName || "Search by name, grade, storage…"}
-                      </span>
-                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    className="w-[var(--radix-popover-trigger-width)] p-0"
-                    align="start"
-                    side="bottom"
-                    onWheel={(e) => e.stopPropagation()}
-                  >
-                    <Command>
-                      <CommandInput placeholder="Type to filter…" className="h-9" />
-                      <CommandList className="max-h-60">
-                        <CommandEmpty>
-                          <div className="py-5 text-center space-y-1">
-                            <p className="text-sm font-medium text-foreground">No match found</p>
-                            <p className="text-xs text-muted-foreground">
-                              Fill in the form below to add a new product.
-                            </p>
-                          </div>
-                        </CommandEmpty>
-                        <CommandGroup
-                          heading={`${inventory.length} product${inventory.length !== 1 ? "s" : ""} in inventory`}
-                        >
-                          {inventory.map((item) => (
-                            <CommandItem
-                              key={item.id}
-                              value={`${item.deviceName} ${item.grade} ${item.storage} ${item.brand}`}
-                              onSelect={() => handleSelectExisting(item)}
-                              className="py-2 cursor-pointer"
-                            >
-                              <Check
-                                className={cn(
-                                  "mr-2 h-4 w-4 shrink-0 text-primary",
-                                  selectedExistingId === item.id ? "opacity-100" : "opacity-0",
-                                )}
-                              />
-                              <div className="flex flex-1 items-center justify-between min-w-0 gap-3">
-                                <div className="min-w-0">
-                                  <p className="text-sm font-medium truncate leading-tight">
-                                    {item.deviceName}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground mt-0.5">
-                                    {item.storage} · Qty:{" "}
-                                    <strong className="text-foreground">{item.quantity}</strong> ·{" "}
-                                    {formatPrice(item.sellingPrice)}
-                                  </p>
-                                </div>
-                                <span
-                                  className={cn(
-                                    "shrink-0 inline-flex items-center justify-center text-xs font-bold px-1.5 py-0.5 min-w-[1.5rem] rounded border",
-                                    GRADE_STYLES[item.grade],
-                                  )}
-                                >
-                                  {GRADE_BADGE_LABELS[item.grade as Grade]}
-                                </span>
-                              </div>
-                            </CommandItem>
-                          ))}
-                        </CommandGroup>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
-
-                {/* Selected product banner */}
-                {selectedExisting && (
-                  <div className="flex items-center gap-2 rounded-md border border-primary/25 bg-primary/5 px-3 py-2">
-                    <Check className="h-3.5 w-3.5 text-primary shrink-0" />
-                    <span className="text-xs text-muted-foreground flex-1 min-w-0">
-                      Restocking{" "}
-                      <strong className="text-foreground">{selectedExisting.deviceName}</strong> —
-                      Grade {selectedExisting.grade}, {selectedExisting.storage}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={handleClearSelection}
-                      className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors shrink-0"
-                    >
-                      Clear
-                    </button>
-                  </div>
-                )}
-              </div>
+              <ProductSearchCombobox
+                comboboxOpen={comboboxOpen}
+                setComboboxOpen={setComboboxOpen}
+                inventory={inventory}
+                selectedExisting={selectedExisting}
+                selectedExistingId={selectedExistingId}
+                deviceNameSearch={form.deviceName}
+                onSelectExisting={handleSelectExisting}
+                onClearSelection={handleClearSelection}
+              />
 
               <div className="relative">
                 <Separator />
@@ -1281,83 +1181,13 @@ export function AddProductModal({
 
               {/* ── Merge preview for restocking ──────────────────────────────── */}
               {selectedExisting && mergePreview && (
-                <div className="rounded-lg border border-border overflow-hidden">
-                  <div className="px-4 py-2 bg-muted/50 border-b border-border flex items-center justify-between">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      {mergePreview.isOutOfStock ? "Fresh Batch" : "Merge Preview"}
-                    </p>
-                    {mergePreview.isOutOfStock && (
-                      <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">
-                        Item was out of stock — existing cost not carried forward
-                      </span>
-                    )}
-                  </div>
-
-                  {mergePreview.isOutOfStock ? (
-                    <div className="p-4 grid grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                        <p className="text-xs text-muted-foreground">New Qty</p>
-                        <p className="text-sm font-bold tabular-nums">{mergePreview.totalQty}</p>
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-xs text-muted-foreground">Batch Cost</p>
-                        <p className="text-sm font-bold tabular-nums">
-                          {formatPrice(mergePreview.totalPP)}
-                        </p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="p-4 grid grid-cols-3 gap-3">
-                      <div className="space-y-1">
-                        <p className="text-xs text-muted-foreground">Current Qty</p>
-                        <p className="text-sm font-semibold tabular-nums">
-                          {selectedExistingEffective?.quantity ?? selectedExisting.quantity}
-                        </p>
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-xs text-muted-foreground">Adding</p>
-                        <p className="text-sm font-semibold text-primary tabular-nums">
-                          +{newQuantity}
-                        </p>
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-xs text-muted-foreground">New Total</p>
-                        <p className="text-sm font-bold tabular-nums">{mergePreview.totalQty}</p>
-                      </div>
-
-                      <div className="space-y-1">
-                        <p className="text-xs text-muted-foreground">Existing Cost</p>
-                        <p className="text-sm font-semibold tabular-nums">
-                          {formatPrice(selectedExisting.purchasePrice ?? 0)}
-                        </p>
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-xs text-muted-foreground">Batch Cost</p>
-                        <p className="text-sm font-semibold text-primary tabular-nums">
-                          +{formatPrice(newPurchasePrice)}
-                        </p>
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-xs text-muted-foreground">Total Cost</p>
-                        <p className="text-sm font-bold tabular-nums">
-                          {formatPrice(mergePreview.totalPP)}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between px-4 py-2.5 bg-muted/30 border-t border-border">
-                    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Info className="h-3.5 w-3.5" />
-                      {mergePreview.isOutOfStock
-                        ? "Price / Unit (incl. HST)"
-                        : "Avg. Price / Unit (incl. HST)"}
-                    </span>
-                    <span className="text-sm font-bold tabular-nums text-foreground">
-                      {formatPrice(mergePreview.avgPricePerUnit)}
-                    </span>
-                  </div>
-                </div>
+                <MergePreviewCard
+                  mergePreview={mergePreview}
+                  newQuantity={newQuantity}
+                  newPurchasePrice={newPurchasePrice}
+                  selectedExisting={selectedExisting}
+                  selectedExistingEffective={selectedExistingEffective}
+                />
               )}
 
               {/* ── Price/unit preview for new product ───────────────────────── */}
@@ -1468,250 +1298,23 @@ export function AddProductModal({
           )}
 
           {mode === "bulk" && (
-            <div className="space-y-4 pb-1">
-              <div className="rounded-lg border bg-muted/20 p-3 space-y-3">
-                <h4 className="text-sm font-semibold">Shared Product Configuration</h4>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="col-span-2 space-y-1.5">
-                    <Label htmlFor="bulk-device" className="text-sm font-medium">
-                      Device Name
-                    </Label>
-                    <Input
-                      id="bulk-device"
-                      placeholder="e.g. iPhone 8"
-                      value={form.deviceName}
-                      onChange={(event) => handleField("deviceName", event.target.value)}
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="bulk-brand" className="text-sm font-medium">
-                      Brand
-                    </Label>
-                    <Input
-                      id="bulk-brand"
-                      placeholder="e.g. Apple"
-                      value={form.brand}
-                      onChange={(event) => handleField("brand", event.target.value)}
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-sm font-medium">Grade</Label>
-                    <Select
-                      value={form.grade}
-                      onValueChange={(value) => handleField("grade", value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select grade" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {GRADES.map((gradeValue) => (
-                          <SelectItem key={gradeValue} value={gradeValue}>
-                            <span className="flex items-center gap-2">
-                              <span
-                                className={cn(
-                                  "inline-flex items-center justify-center rounded text-xs font-bold border px-1.5 py-0.5 min-w-[1.5rem]",
-                                  GRADE_STYLES[gradeValue],
-                                )}
-                              >
-                                {GRADE_BADGE_LABELS[gradeValue]}
-                              </span>
-                              {GRADE_LABELS[gradeValue]}
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="bulk-storage" className="text-sm font-medium">
-                      Storage
-                    </Label>
-                    <Input
-                      id="bulk-storage"
-                      placeholder="e.g. 64GB"
-                      value={form.storage}
-                      onChange={(event) => handleField("storage", event.target.value)}
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="bulk-hst" className="text-sm font-medium">
-                      HST %
-                    </Label>
-                    <Input
-                      id="bulk-hst"
-                      type="number"
-                      placeholder="13"
-                      value={form.hst}
-                      onChange={(event) => handleField("hst", event.target.value)}
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="bulk-purchase" className="text-sm font-medium">
-                      Purchase Price (per unit)
-                    </Label>
-                    <Input
-                      id="bulk-purchase"
-                      type="number"
-                      placeholder="0.00"
-                      value={form.purchasePrice}
-                      onChange={(event) => handleField("purchasePrice", event.target.value)}
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="bulk-selling" className="text-sm font-medium">
-                      Selling Price (per unit)
-                    </Label>
-                    <Input
-                      id="bulk-selling"
-                      type="number"
-                      placeholder="0.00"
-                      value={form.sellingPrice}
-                      onChange={(event) => handleField("sellingPrice", event.target.value)}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-lg border bg-background p-3 space-y-3">
-                <div className="flex items-center justify-between gap-2">
-                  <h4 className="text-sm font-semibold">Scan IMEI / Serial Numbers</h4>
-                  <Badge variant="secondary">{bulkRows.length} scanned</Badge>
-                </div>
-
-                <div className="flex gap-2">
-                  <Input
-                    id="bulk-scan"
-                    value={bulkScanInput}
-                    placeholder="Scan and press Enter"
-                    onChange={(event) => setBulkScanInput(event.target.value)}
-                    onKeyDown={handleBulkScanKeyDown}
-                    aria-label="Scan IMEI or serial number"
-                  />
-                  <Button type="button" variant="outline" onClick={handleBulkScanSubmit}>
-                    Add
-                  </Button>
-                </div>
-
-                {bulkRows.length > 0 ? (
-                  <div className="rounded-md border max-h-52 overflow-auto">
-                    <table className="w-full text-sm">
-                      <thead className="bg-muted/50 sticky top-0">
-                        <tr className="text-left">
-                          <th className="px-3 py-2 font-medium">Identifier</th>
-                          <th className="px-3 py-2 font-medium">Type</th>
-                          <th className="px-3 py-2 font-medium">Status</th>
-                          <th className="px-3 py-2 font-medium text-right">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {bulkRows.map((row) => (
-                          <tr key={row.id} className="border-t">
-                            <td className="px-3 py-2 font-mono text-xs">{row.identifier}</td>
-                            <td className="px-3 py-2">{row.imei ? "IMEI" : "Serial"}</td>
-                            <td className="px-3 py-2">
-                              {row.status === "pending" && "Pending review"}
-                              {row.status === "valid" && (
-                                <span className="text-emerald-600">Valid</span>
-                              )}
-                              {row.status === "invalid" && (
-                                <span className="text-destructive">
-                                  {row.reason ?? "Invalid row"}
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-3 py-2 text-right">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleRemoveBulkRow(row.id)}
-                              >
-                                Remove
-                              </Button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    Start scanning devices. Each scan adds one identifier row.
-                  </p>
-                )}
-
-                {bulkSummary && (
-                  <div className="rounded-md border bg-muted/20 p-3 text-sm">
-                    <p className="font-medium">Bulk Review Summary</p>
-                    <p className="text-muted-foreground mt-1">
-                      Total: {bulkSummary.total} | Valid: {bulkSummary.valid} | Invalid:{" "}
-                      {bulkSummary.invalid}
-                    </p>
-                  </div>
-                )}
-
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="flex-1"
-                    onClick={handleResetBulkRows}
-                    disabled={isBulkReviewing || isBulkSaving || bulkRows.length === 0}
-                  >
-                    Clear List
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="flex-1"
-                    onClick={handleBulkReview}
-                    disabled={isBulkReviewing || isBulkSaving || bulkRows.length === 0}
-                  >
-                    {isBulkReviewing ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Reviewing
-                      </>
-                    ) : (
-                      "Review Bulk List"
-                    )}
-                  </Button>
-                </div>
-
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="flex-1"
-                    onClick={handleClose}
-                    disabled={isBulkSaving}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="button"
-                    className="flex-1"
-                    onClick={handleBulkInsert}
-                    disabled={isBulkSaving || !bulkSummary || bulkSummary.valid === 0}
-                  >
-                    {isBulkSaving ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Adding
-                      </>
-                    ) : (
-                      "Confirm & Add Bulk Products"
-                    )}
-                  </Button>
-                </div>
-              </div>
-            </div>
+            <BulkModePanel
+              form={form}
+              onField={handleField}
+              bulkRows={bulkRows}
+              bulkScanInput={bulkScanInput}
+              setBulkScanInput={setBulkScanInput}
+              bulkSummary={bulkSummary}
+              isBulkReviewing={isBulkReviewing}
+              isBulkSaving={isBulkSaving}
+              onBulkScanKeyDown={handleBulkScanKeyDown}
+              onBulkScanSubmit={handleBulkScanSubmit}
+              onRemoveBulkRow={handleRemoveBulkRow}
+              onResetBulkRows={handleResetBulkRows}
+              onBulkReview={handleBulkReview}
+              onBulkInsert={handleBulkInsert}
+              onClose={handleClose}
+            />
           )}
         </div>
       </DialogContent>

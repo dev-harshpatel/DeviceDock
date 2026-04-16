@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
+import { toastError } from "@/lib/utils/toast-helpers";
 import {
   ArrowLeft,
   BadgeCheck,
@@ -314,8 +315,7 @@ export default function CompanySignup() {
       if (error) throw error;
       toast.success("Confirmation email resent! Check your inbox.");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to resend email";
-      toast.error(message);
+      toastError(error, "Failed to resend email");
     } finally {
       setIsResending(false);
     }

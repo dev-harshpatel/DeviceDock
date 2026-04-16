@@ -17,10 +17,7 @@ type TaxRateRow = {
 };
 
 const TAX_INFO_CACHE_TTL_MS = 5 * 60 * 1000;
-const taxInfoCache = new Map<
-  string,
-  { value: TaxInfoResult; cachedAtMs: number }
->();
+const taxInfoCache = new Map<string, { value: TaxInfoResult; cachedAtMs: number }>();
 
 /**
  * Get tax rate for a given location
@@ -32,7 +29,7 @@ const taxInfoCache = new Map<
 export async function getTaxRate(
   country: string,
   state: string,
-  city?: string | null
+  city?: string | null,
 ): Promise<number> {
   try {
     if (!country || !state) {
@@ -44,6 +41,31 @@ export async function getTaxRate(
   } catch (error) {
     return 0;
   }
+}
+
+/**
+ * Convert a percentage (e.g. 13) to a decimal rate (e.g. 0.13)
+ */
+export function percentToRate(pct: number): number {
+  return pct / 100;
+}
+
+/**
+ * Convert a decimal rate (e.g. 0.13) back to a percentage (e.g. 13)
+ */
+export function rateToPercent(rate: number): number {
+  return rate * 100;
+}
+
+/**
+ * Strip tax from a tax-inclusive price.
+ * @param inclPrice - Price that already includes tax
+ * @param hstPct    - Tax percentage (e.g. 13 for 13%)
+ * @returns Pre-tax price
+ */
+export function removeTax(inclPrice: number, hstPct: number): number {
+  if (hstPct <= 0) return inclPrice;
+  return inclPrice / (1 + hstPct / 100);
 }
 
 /**
@@ -62,10 +84,7 @@ export function calculateTax(subtotal: number, taxRate: number): number {
  * @param state - State or province name
  * @returns Tax type string
  */
-export async function getTaxType(
-  country: string,
-  state: string
-): Promise<string> {
+export async function getTaxType(country: string, state: string): Promise<string> {
   try {
     if (!country || !state) {
       return "Tax";
@@ -88,7 +107,7 @@ export async function getTaxType(
 export async function getTaxInfo(
   country: string,
   state: string,
-  city?: string | null
+  city?: string | null,
 ): Promise<TaxInfoResult> {
   if (!country || !state) {
     return { taxRate: 0, taxRatePercent: 0, taxType: "Tax" };
@@ -104,9 +123,7 @@ export async function getTaxInfo(
   }
 
   try {
-    const orFilter = normalizedCity
-      ? `city.eq.${normalizedCity},city.is.null`
-      : "city.is.null";
+    const orFilter = normalizedCity ? `city.eq.${normalizedCity},city.is.null` : "city.is.null";
 
     const { data, error } = await supabase
       .from("tax_rates")
@@ -124,10 +141,8 @@ export async function getTaxInfo(
 
     const rows = data as unknown as TaxRateRow[];
     const bestRow = normalizedCity
-      ? rows.find((r) => r.city === normalizedCity) ??
-        rows.find((r) => r.city === null) ??
-        null
-      : rows.find((r) => r.city === null) ?? null;
+      ? (rows.find((r) => r.city === normalizedCity) ?? rows.find((r) => r.city === null) ?? null)
+      : (rows.find((r) => r.city === null) ?? null);
 
     if (!bestRow) {
       const fallbackTaxType = country === "Canada" ? "GST/HST" : "Sales Tax";

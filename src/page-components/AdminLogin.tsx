@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
+import { toastError } from "@/lib/utils/toast-helpers";
 import { TOAST_MESSAGES } from "@/lib/constants/toast-messages";
 import { ArrowLeft, BadgeCheck, Loader2, Package } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -131,8 +132,7 @@ export default function AdminLogin() {
       if (error) throw error;
       toast.success("Confirmation email sent! Please check your inbox.");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to resend email";
-      toast.error(message);
+      toastError(error, "Failed to resend email");
     } finally {
       setIsResending(false);
     }

@@ -8,6 +8,7 @@ export * from "./mappers";
 
 // Domain-specific queries
 export * from "./inventory";
+export * from "./notifications";
 export * from "./orders";
 export * from "./users";
 export * from "./stats";

@@ -7,6 +7,8 @@ export const queryKeys = {
   orders: ["paginated", "orders"] as const,
   deletedOrders: ["paginated", "deletedOrders"] as const,
   userOrders: (userId: string) => ["paginated", "userOrders", userId] as const,
+  // Prefix for invalidating all userOrders queries regardless of userId
+  userOrdersBase: ["paginated", "userOrders"] as const,
   users: ["paginated", "users"] as const,
 
   // Detailed keys for caching specific page + filter combos
@@ -35,4 +37,25 @@ export const queryKeys = {
   companyMembers: (companyId: string) => ["company", companyId, "members"] as const,
 
   companyInvitations: (companyId: string) => ["company", companyId, "invitations"] as const,
+
+  // Filter options (brands, storage) — staleTime: Infinity, keyed by companyId
+  filterOptions: (companyId: string) => ["filterOptions", companyId] as const,
+
+  // Notification events feed — invalidated by notificationVersion realtime counter
+  notificationsFeed: (companyId: string) => ["notifications", "feed", companyId] as const,
+
+  // User email lookup — keyed by sorted, comma-joined user IDs; staleTime: Infinity
+  userEmails: (userIdsKey: string) => ["userEmails", userIdsKey] as const,
+
+  // Full (unpaginated) lists — used by contexts and "all data" consumers
+  // Key root differs from paginated so each can be invalidated independently.
+  inventoryAll: (companyId: string) => ["inventory", "all", companyId] as const,
+  ordersAll: (companyId: string) => ["orders", "all", companyId] as const,
+
+  // Single order detail — fetched on modal open; separate from paginated list cache
+  orderDetail: (id: string) => ["order", "detail", id] as const,
+
+  // Dashboard aggregate stats — fetched via RPC, cached for 5 minutes
+  inventoryStats: (companyId: string) => ["inventoryStats", companyId] as const,
+  orderStats: (companyId: string) => ["orderStats", companyId] as const,
 };

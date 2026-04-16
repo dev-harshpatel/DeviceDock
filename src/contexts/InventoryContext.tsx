@@ -5,19 +5,16 @@ import { Database } from "@/lib/database.types";
 import { supabase } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/context";
 import { useCompany } from "@/contexts/CompanyContext";
-import { useRealtimeContext } from "@/contexts/RealtimeContext";
-import {
-  ReactNode,
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { ReactNode, createContext, useCallback, useContext, useMemo } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/query-keys";
 import type { IdentifierSaleLookup } from "@/types/inventory-identifiers";
 import { UploadHistory, BulkInsertResult } from "@/types/upload";
-import { dbRowToInventoryItem, INVENTORY_ADMIN_FIELDS } from "@/lib/supabase/queries";
+import {
+  dbRowToInventoryItem,
+  fetchAllInventory,
+  INVENTORY_ADMIN_FIELDS,
+} from "@/lib/supabase/queries";
 import { BULK_INSERT_BATCH_SIZE, INVENTORY_SORT_ORDER } from "@/lib/constants";
 
 interface InventoryContextType {
@@ -118,56 +115,18 @@ function productToInsertRow(product: InventoryItem, companyId: string) {
 }
 
 export const InventoryProvider = ({ children }: InventoryProviderProps) => {
-  const [inventory, setInventory] = useState<InventoryItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const { user } = useAuth();
   const { companyId } = useCompany();
-  const { inventoryVersion } = useRealtimeContext();
+  const queryClient = useQueryClient();
 
-  // Load inventory from Supabase — always use admin fields (admin-only app)
-  const loadInventory = useCallback(async () => {
-    if (!companyId) return;
-    try {
-      const { data, error } = await (supabase.from("inventory") as any)
-        .select(INVENTORY_ADMIN_FIELDS)
-        .eq("company_id", companyId)
-        .order("created_at", INVENTORY_SORT_ORDER.created_at)
-        .order("id", INVENTORY_SORT_ORDER.id);
-
-      if (error) {
-        console.error("[InventoryContext] loadInventory error:", error.message, error);
-        setInventory([]);
-        return;
-      }
-
-      setInventory(data ? data.map(dbRowToInventoryItem) : []);
-    } catch (err) {
-      console.error("[InventoryContext] loadInventory exception:", err);
-      setInventory([]);
-    }
-  }, [companyId]);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const init = async () => {
-      setIsLoading(true);
-      await loadInventory();
-      if (isMounted) setIsLoading(false);
-    };
-
-    init();
-    return () => {
-      isMounted = false;
-    };
-  }, [loadInventory]);
-
-  // Reload inventory when RealtimeProvider signals inventory changes
-  useEffect(() => {
-    if (inventoryVersion > 0) {
-      loadInventory();
-    }
-  }, [inventoryVersion, loadInventory]);
+  // All inventory for this company — replaces the old useState + useEffect + loadInventory.
+  // Realtime invalidation is handled centrally by use-realtime-invalidation.ts in Providers.tsx.
+  const { data: inventory = [], isLoading } = useQuery({
+    queryKey: queryKeys.inventoryAll(companyId),
+    queryFn: () => fetchAllInventory(companyId),
+    staleTime: 30_000,
+    enabled: Boolean(companyId),
+  });
 
   const updateProduct = useCallback(
     async (id: string, updates: Partial<InventoryItem>) => {
@@ -196,18 +155,23 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
         throw new Error(error.message || "Failed to update product");
       }
 
-      setInventory((prev) =>
-        prev.map((item) =>
+      // Reflect the change in the cache immediately so consumers see it without waiting for
+      // the next background refetch (realtime will trigger a full sync shortly after).
+      queryClient.setQueryData<InventoryItem[]>(queryKeys.inventoryAll(companyId), (old) =>
+        (old ?? []).map((item) =>
           item.id === id ? { ...item, ...updates, lastUpdated: "Just now" } : item,
         ),
       );
     },
-    [companyId],
+    [companyId, queryClient],
   );
 
   const decreaseQuantity = useCallback(
     async (id: string, amount: number) => {
-      const item = inventory.find((i) => i.id === id);
+      // Read the current item from the cache at call time — avoids stale closure over inventory.
+      const currentInventory =
+        queryClient.getQueryData<InventoryItem[]>(queryKeys.inventoryAll(companyId)) ?? [];
+      const item = currentInventory.find((i) => i.id === id);
       if (!item) throw new Error("Product not found");
 
       const newQuantity = Math.max(0, item.quantity - amount);
@@ -229,33 +193,29 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
 
       if (error) throw error;
 
-      setInventory((prev) =>
-        prev.map((item) =>
-          item.id === id
+      queryClient.setQueryData<InventoryItem[]>(queryKeys.inventoryAll(companyId), (old) =>
+        (old ?? []).map((i) =>
+          i.id === id
             ? {
-                ...item,
+                ...i,
                 quantity: newQuantity,
                 lastUpdated: "Just now",
-                ...(newPurchasePrice !== null && {
-                  purchasePrice: newPurchasePrice,
-                }),
+                ...(newPurchasePrice !== null && { purchasePrice: newPurchasePrice }),
               }
-            : item,
+            : i,
         ),
       );
     },
-    [inventory],
+    [companyId, queryClient],
   );
 
   const resetInventory = useCallback(async () => {
-    setIsLoading(true);
-    await loadInventory();
-    setIsLoading(false);
-  }, [loadInventory]);
+    await queryClient.invalidateQueries({ queryKey: queryKeys.inventoryAll(companyId) });
+  }, [companyId, queryClient]);
 
   const refreshInventory = useCallback(async () => {
-    await loadInventory();
-  }, [loadInventory]);
+    await queryClient.invalidateQueries({ queryKey: queryKeys.inventoryAll(companyId) });
+  }, [companyId, queryClient]);
 
   const bulkInsertProducts = useCallback(
     async (products: InventoryItem[]): Promise<BulkInsertResult> => {
@@ -331,10 +291,12 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
         }
       }
 
-      await loadInventory();
+      // Invalidate both the full list and any paginated pages so the UI reflects new products.
+      await queryClient.invalidateQueries({ queryKey: queryKeys.inventoryAll(companyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventory });
       return result;
     },
-    [user?.id, companyId, loadInventory],
+    [user?.id, companyId, queryClient],
   );
 
   const addInventoryIdentifier = useCallback(

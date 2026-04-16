@@ -5,7 +5,6 @@ import { useCompany } from "@/contexts/CompanyContext";
 import { useInventory } from "@/contexts/InventoryContext";
 import { useAuth } from "@/lib/auth/context";
 import { useToast } from "@/hooks/use-toast";
-import { downloadSampleProductUploadTemplate } from "@/lib/export/sample-upload-template";
 import { mergeDatabaseIdentifierConflicts } from "@/lib/export/upload-identifier-validation";
 import {
   mapMergedUnitGroupToInventoryItem,
@@ -19,21 +18,12 @@ import {
 import { replaceInventoryColors } from "@/lib/inventory/inventory-colors";
 import { ParsedProduct, UploadHistory } from "@/types/upload";
 import { InventoryItem } from "@/data/inventory";
-import { UploadPreviewTable } from "@/components/tables/UploadPreviewTable";
 import { UploadHistoryTable } from "@/components/tables/UploadHistoryTable";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  AlertCircle,
-  CheckCircle2,
-  Download,
-  FileSpreadsheet,
-  Loader2,
-  Upload,
-  X,
-} from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase/client/browser";
-import { cn } from "@/lib/utils";
+import { UploadStatsCards } from "@/components/upload/UploadStatsCards";
+import { UploadFileCard } from "@/components/upload/UploadFileCard";
 
 export default function UploadProducts() {
   const {
@@ -114,10 +104,9 @@ export default function UploadProducts() {
 
   const handleFileSelect = useCallback(
     async (file: File) => {
-      // Validate file type
       const validTypes = [
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
-        "application/vnd.ms-excel", // .xls
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-excel",
       ];
       const validExtensions = [".xlsx", ".xls"];
 
@@ -173,20 +162,15 @@ export default function UploadProducts() {
       e.preventDefault();
       e.stopPropagation();
       setIsDragging(false);
-
       const file = e.dataTransfer.files[0];
-      if (file) {
-        handleFileSelect(file);
-      }
+      if (file) handleFileSelect(file);
     },
     [handleFileSelect],
   );
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      handleFileSelect(file);
-    }
+    if (file) handleFileSelect(file);
   };
 
   const handleClear = () => {
@@ -205,7 +189,6 @@ export default function UploadProducts() {
       });
       return;
     }
-
     if (!companyId) {
       toast({
         title: "Error",
@@ -216,7 +199,6 @@ export default function UploadProducts() {
     }
 
     const validProducts = parsedProducts.filter((p) => !p.errors || p.errors.length === 0);
-
     if (validProducts.length === 0) {
       toast({
         title: "No valid products",
@@ -245,9 +227,7 @@ export default function UploadProducts() {
         .select()
         .single();
 
-      if (uploadError) {
-        throw new Error(`Failed to create upload record: ${uploadError.message}`);
-      }
+      if (uploadError) throw new Error(`Failed to create upload record: ${uploadError.message}`);
 
       let successCount = 0;
       let failedCount = 0;
@@ -277,15 +257,11 @@ export default function UploadProducts() {
         const insertResult = await bulkInsertProducts([inventoryItem]);
         if (insertResult.success !== 1 || !insertResult.insertedIds?.[0]) {
           rowErrors.push(
-            `Row ${parsed.rowNumber ?? "?"}: ${
-              insertResult.errors[0] ?? "Inventory insert failed"
-            }`,
+            `Row ${parsed.rowNumber ?? "?"}: ${insertResult.errors[0] ?? "Inventory insert failed"}`,
           );
           return false;
         }
-
         const inventoryId = insertResult.insertedIds[0];
-
         try {
           for (const ident of parsed.identifiers) {
             await addInventoryIdentifier(
@@ -303,9 +279,7 @@ export default function UploadProducts() {
             .eq("id", inventoryId)
             .eq("company_id", companyId);
           rowErrors.push(
-            `Row ${parsed.rowNumber ?? "?"}: ${
-              identError instanceof Error ? identError.message : "Identifier save failed"
-            }`,
+            `Row ${parsed.rowNumber ?? "?"}: ${identError instanceof Error ? identError.message : "Identifier save failed"}`,
           );
           return false;
         }
@@ -331,15 +305,11 @@ export default function UploadProducts() {
             );
             continue;
           }
-
           const inventoryId = insertResult.insertedIds[0];
-
           try {
             for (const parsed of group) {
               const ident = parsed.identifiers[0];
-              if (!ident) {
-                throw new Error("Missing identifier for unit row");
-              }
+              if (!ident) throw new Error("Missing identifier for unit row");
               await addInventoryIdentifier(
                 inventoryId,
                 ident.imei,
@@ -347,12 +317,9 @@ export default function UploadProducts() {
                 ident.color ?? undefined,
               );
             }
-
             const colorRows = aggregateColorsFromUnitGroup(group);
-            if (colorRows.length > 0) {
+            if (colorRows.length > 0)
               await replaceInventoryColors(supabase, inventoryId, colorRows);
-            }
-
             successCount += 1;
           } catch (innerError) {
             await supabase
@@ -362,9 +329,7 @@ export default function UploadProducts() {
               .eq("company_id", companyId);
             failedCount += 1;
             rowErrors.push(
-              `Rows ${rowLabel}: ${
-                innerError instanceof Error ? innerError.message : "Save failed"
-              }`,
+              `Rows ${rowLabel}: ${innerError instanceof Error ? innerError.message : "Save failed"}`,
             );
           }
         } catch (groupError) {
@@ -386,17 +351,13 @@ export default function UploadProducts() {
         })
         .eq("id", uploadRecord.id);
 
-      if (updateError) {
-        throw new Error(`Failed to update upload record: ${updateError.message}`);
-      }
+      if (updateError) throw new Error(`Failed to update upload record: ${updateError.message}`);
 
       await loadUploadHistory();
 
       toast({
         title: failedCount === 0 ? "Upload successful" : "Upload finished with errors",
-        description: `${successCount} inventory line(s) created${
-          failedCount > 0 ? `, ${failedCount} failed` : ""
-        } (${parsedProducts.length} sheet row${parsedProducts.length !== 1 ? "s" : ""}).`,
+        description: `${successCount} inventory line(s) created${failedCount > 0 ? `, ${failedCount} failed` : ""} (${parsedProducts.length} sheet row${parsedProducts.length !== 1 ? "s" : ""}).`,
         variant: failedCount > 0 ? "destructive" : "default",
       });
 
@@ -442,197 +403,32 @@ export default function UploadProducts() {
 
       {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto min-h-0 -mx-4 lg:-mx-6 px-4 lg:px-6 space-y-6">
-        {/* Section 1: Overview/Statistics */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Products</CardTitle>
-              <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{totalProducts}</div>
-              <p className="text-xs text-muted-foreground">In database</p>
-            </CardContent>
-          </Card>
+        <UploadStatsCards
+          totalProducts={totalProducts}
+          totalUploads={totalUploads}
+          successRate={successRate}
+          totalSuccessful={totalSuccessful}
+          totalFailed={totalFailed}
+          lastUpload={lastUpload}
+        />
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Uploads</CardTitle>
-              <Upload className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{totalUploads}</div>
-              <p className="text-xs text-muted-foreground">Uploads performed</p>
-            </CardContent>
-          </Card>
+        <UploadFileCard
+          selectedFile={selectedFile}
+          parsedProducts={parsedProducts}
+          isParsing={isParsing}
+          isUploading={isUploading}
+          isDragging={isDragging}
+          validProductsCount={validProductsCount}
+          errorProductsCount={errorProductsCount}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          onFileInputChange={handleFileInputChange}
+          onClear={handleClear}
+          onUpload={handleUpload}
+        />
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Success Rate</CardTitle>
-              <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{successRate}%</div>
-              <p className="text-xs text-muted-foreground">
-                {totalSuccessful} successful, {totalFailed} failed
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Last Upload</CardTitle>
-              <AlertCircle className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {lastUpload
-                  ? new Date(lastUpload.createdAt).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                    })
-                  : "N/A"}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {lastUpload ? `${lastUpload.successfulInserts} products` : "No uploads yet"}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Section 2: File Upload & Preview */}
-        <Card>
-          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:space-y-0">
-            <div className="space-y-1.5">
-              <CardTitle>Upload Excel File</CardTitle>
-              <CardDescription>
-                Required: Device Name, Brand, Grade, Storage, Quantity, Purchase Price, Selling
-                Price, HST, IMEI, Serial Number. Optional: Color (per unit).{" "}
-                <strong className="text-foreground font-medium">Unit-row mode</strong> (recommended
-                for multiple units of the same SKU): use Quantity{" "}
-                <span className="font-mono text-xs">1</span>, one IMEI or one serial per row, same
-                Selling Price and HST for every row that merges — matching rows combine into a
-                single inventory line with summed purchase cost and aggregated colours.{" "}
-                <strong className="text-foreground font-medium">Legacy mode</strong>: Quantity can
-                be &gt; 1 with comma- or newline-separated IMEI/serial values in the cells; one
-                inventory line per sheet row. Format IMEI as Text in Excel to avoid rounding.
-              </CardDescription>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              className="shrink-0 gap-2"
-              onClick={() => downloadSampleProductUploadTemplate()}
-            >
-              <Download className="h-4 w-4" />
-              Download sample Excel
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {!selectedFile ? (
-              <div
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                className={cn(
-                  "border-2 border-dashed rounded-lg p-12 text-center transition-colors",
-                  isDragging
-                    ? "border-primary bg-primary/5"
-                    : "border-border hover:border-primary/50",
-                )}
-              >
-                {isParsing ? (
-                  <div className="flex flex-col items-center gap-4">
-                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                    <p className="text-sm text-muted-foreground">Parsing Excel file...</p>
-                  </div>
-                ) : (
-                  <>
-                    <Upload className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                    <p className="text-sm font-medium text-foreground mb-2">
-                      Drag and drop your Excel file here
-                    </p>
-                    <p className="text-xs text-muted-foreground mb-4">or</p>
-                    <label htmlFor="file-upload">
-                      <Button asChild variant="outline">
-                        <span>Browse Files</span>
-                      </Button>
-                      <input
-                        id="file-upload"
-                        type="file"
-                        accept=".xlsx,.xls"
-                        onChange={handleFileInputChange}
-                        className="hidden"
-                      />
-                    </label>
-                    <p className="text-xs text-muted-foreground mt-4">
-                      Supported formats: .xlsx, .xls
-                    </p>
-                  </>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <FileSpreadsheet className="h-5 w-5 text-primary" />
-                    <div>
-                      <p className="text-sm font-medium text-foreground">{selectedFile.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {(selectedFile.size / 1024).toFixed(2)} KB
-                      </p>
-                    </div>
-                  </div>
-                  <Button variant="ghost" size="icon" onClick={handleClear}>
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-
-                {parsedProducts.length > 0 && (
-                  <>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-foreground">
-                          {validProductsCount} products ready to upload
-                          {errorProductsCount > 0 && (
-                            <span className="text-destructive ml-2">
-                              ({errorProductsCount} with errors)
-                            </span>
-                          )}
-                        </p>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button variant="outline" onClick={handleClear} disabled={isUploading}>
-                          Clear
-                        </Button>
-                        <Button
-                          onClick={handleUpload}
-                          disabled={isUploading || validProductsCount === 0}
-                        >
-                          {isUploading ? (
-                            <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              Uploading...
-                            </>
-                          ) : (
-                            <>
-                              <Upload className="mr-2 h-4 w-4" />
-                              Upload to Database
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                    </div>
-
-                    <UploadPreviewTable products={parsedProducts} />
-                  </>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Section 3: Upload History */}
+        {/* Upload History */}
         <Card>
           <CardHeader>
             <CardTitle>Upload History</CardTitle>

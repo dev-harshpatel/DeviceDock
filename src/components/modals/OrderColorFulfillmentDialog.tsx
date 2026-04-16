@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { Trash2, Loader2, Palette, Plus } from "lucide-react";
 import { toast } from "sonner";
+import { toastError } from "@/lib/utils/toast-helpers";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -221,7 +222,7 @@ export function OrderColorFulfillmentDialog({
       await onSuccess();
       onOpenChange(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to fulfil order. Please try again.");
+      toastError(err, "Failed to fulfil order. Please try again.");
     } finally {
       setIsSubmitting(false);
     }

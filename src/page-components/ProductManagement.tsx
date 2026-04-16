@@ -7,15 +7,7 @@ import {
   defaultFilters,
   buildServerFilters,
 } from "@/components/common/FilterBar";
-import { Input } from "@/components/ui/input";
 import { PaginationControls } from "@/components/common/PaginationControls";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useQueryClient } from "@tanstack/react-query";
 import { useInventory } from "@/contexts/InventoryContext";
 import { useCompany } from "@/contexts/CompanyContext";
@@ -23,29 +15,20 @@ import { useDebounce } from "@/hooks/use-debounce";
 import { usePaginatedReactQuery } from "@/hooks/use-paginated-react-query";
 import { usePageParam } from "@/hooks/use-page-param";
 import { queryKeys } from "@/lib/query-keys";
-import { InventoryItem, calculatePricePerUnit, formatPrice } from "@/data/inventory";
+import { InventoryItem, calculatePricePerUnit } from "@/data/inventory";
 import { fetchPaginatedInventory } from "@/lib/supabase/queries";
 import { supabase } from "@/lib/supabase/client";
 import { useFilterOptions } from "@/hooks/use-filter-options";
 import { cn } from "@/lib/utils";
-import { Loader2, Palette, RotateCcw, Save, Trash2 } from "lucide-react";
+import { Loader2, RotateCcw } from "lucide-react";
 import { useState, useCallback } from "react";
 import { toast } from "sonner";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { toastError } from "@/lib/utils/toast-helpers";
 import { ColourBreakdownDialog, type ColourRow } from "@/components/modals/ColourBreakdownDialog";
-import { GRADES } from "@/lib/constants/grades";
 import { TOAST_MESSAGES } from "@/lib/constants/toast-messages";
 import { EmptyState } from "@/components/common/EmptyState";
-import { Switch } from "@/components/ui/switch";
+import { ProductTableRow } from "@/components/products/ProductTableRow";
+import { ProductDeleteDialog } from "@/components/products/ProductDeleteDialog";
 
 const TableLoadingOverlay = ({ label }: { label: string }) => (
   <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60 backdrop-blur-[1px]">
@@ -115,13 +98,6 @@ export default function ProductManagement() {
     }));
   };
 
-  const getFieldValue = (product: InventoryItem, field: keyof InventoryItem) => {
-    if (editedProducts[product.id]?.[field] !== undefined) {
-      return editedProducts[product.id][field];
-    }
-    return product[field];
-  };
-
   // ── Colour handlers ───────────────────────────────────────────────────────
   const fetchColorsForProduct = useCallback(
     async (productId: string) => {
@@ -184,7 +160,7 @@ export default function ProductManagement() {
         description: "Changes have been saved to inventory.",
       });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to save changes. Please try again.");
+      toastError(err, "Failed to save changes. Please try again.");
     }
   };
 
@@ -237,7 +213,7 @@ export default function ProductManagement() {
       });
       closeColourDialog();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to save colours. Please try again.");
+      toastError(err, "Failed to save colours. Please try again.");
       setColourDialog((prev) => ({ ...prev, isSaving: false }));
     }
   };
@@ -482,237 +458,28 @@ export default function ProductManagement() {
               </thead>
               <tbody className="divide-y divide-border">
                 {filteredItems.map((product, index) => {
-                  const hasEdits = !!editedProducts[product.id];
                   const isColorLoading = loadingColors.has(product.id);
                   const hasColours = (loadedColors[product.id]?.length ?? 0) > 0;
-
-                  const deviceName = getFieldValue(product, "deviceName") as string;
-                  const brand = getFieldValue(product, "brand") as string;
-                  const grade = getFieldValue(product, "grade") as string;
-                  const storage = getFieldValue(product, "storage") as string;
-                  const quantity = getFieldValue(product, "quantity") as number;
-                  const purchasePrice = (getFieldValue(product, "purchasePrice") ?? 0) as number;
-                  const hst = (getFieldValue(product, "hst") ?? 0) as number;
-                  const sellingPrice = getFieldValue(product, "sellingPrice") as number;
-                  const calculatedPricePerUnit = calculatePricePerUnit(
-                    purchasePrice,
-                    quantity,
-                    hst,
-                  );
                   const isActive = pendingToggles[product.id] ?? product.isActive ?? true;
                   const isToggling = togglingProducts.has(product.id);
 
                   return (
-                    <>
-                      {/* ── Main product row ───────────────────────────────── */}
-                      <tr
-                        key={product.id}
-                        className={cn(
-                          "transition-colors hover:bg-muted/50",
-                          index % 2 === 1 && "bg-muted/20",
-                          hasEdits && "bg-primary/5",
-                          !isActive && "opacity-50",
-                        )}
-                      >
-                        <td className="px-4 py-2">
-                          <Input
-                            value={deviceName}
-                            onChange={(e) =>
-                              handleFieldChange(product.id, "deviceName", e.target.value)
-                            }
-                            className="min-w-[200px] text-sm"
-                          />
-                        </td>
-                        <td className="px-3 py-2">
-                          <Input
-                            value={brand}
-                            onChange={(e) => handleFieldChange(product.id, "brand", e.target.value)}
-                            className="min-w-[120px] text-sm"
-                          />
-                        </td>
-                        <td className="px-3 py-2">
-                          <Select
-                            value={grade}
-                            onValueChange={(v) => handleFieldChange(product.id, "grade", v)}
-                          >
-                            <SelectTrigger className="min-w-[140px] text-sm">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {GRADES.map((g) => (
-                                <SelectItem key={g} value={g}>
-                                  {g}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </td>
-                        <td className="px-3 py-2">
-                          <Input
-                            value={storage}
-                            onChange={(e) =>
-                              handleFieldChange(product.id, "storage", e.target.value)
-                            }
-                            className="min-w-[100px] text-sm"
-                          />
-                        </td>
-                        <td className="px-3 py-2">
-                          <Input
-                            type="number"
-                            value={quantity ?? ""}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              handleFieldChange(
-                                product.id,
-                                "quantity",
-                                val === "" ? "" : parseInt(val) || 0,
-                              );
-                            }}
-                            onBlur={() => {
-                              if (!quantity && quantity !== 0)
-                                handleFieldChange(product.id, "quantity", 0);
-                            }}
-                            className="w-24 text-center text-sm"
-                            min="0"
-                          />
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="flex items-center justify-end gap-2">
-                            <span className="text-muted-foreground text-sm">$</span>
-                            <Input
-                              type="number"
-                              value={purchasePrice ?? ""}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                handleFieldChange(
-                                  product.id,
-                                  "purchasePrice",
-                                  val === "" ? "" : parseFloat(val) || 0,
-                                );
-                              }}
-                              onBlur={() => {
-                                if (!purchasePrice && purchasePrice !== 0)
-                                  handleFieldChange(product.id, "purchasePrice", 0);
-                              }}
-                              className="w-28 text-right text-sm"
-                              min="0"
-                              step="0.01"
-                            />
-                          </div>
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="flex items-center justify-end gap-2">
-                            <Input
-                              type="number"
-                              value={hst ?? ""}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                handleFieldChange(
-                                  product.id,
-                                  "hst",
-                                  val === "" ? "" : parseFloat(val) || 0,
-                                );
-                              }}
-                              onBlur={() => {
-                                if (!hst && hst !== 0) handleFieldChange(product.id, "hst", 0);
-                              }}
-                              className="w-20 text-right text-sm"
-                              min="0"
-                              step="0.01"
-                            />
-                            <span className="text-muted-foreground">%</span>
-                          </div>
-                        </td>
-                        <td className="px-3 py-2">
-                          <span className="text-sm text-muted-foreground font-medium">
-                            {formatPrice(calculatedPricePerUnit).replace(/\s*CAD$/i, "")}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="flex items-center justify-end gap-2">
-                            <span className="text-muted-foreground">$</span>
-                            <Input
-                              type="number"
-                              value={sellingPrice ?? ""}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                handleFieldChange(
-                                  product.id,
-                                  "sellingPrice",
-                                  val === "" ? "" : parseFloat(val) || 0,
-                                );
-                              }}
-                              onBlur={() => {
-                                if (!sellingPrice && sellingPrice !== 0)
-                                  handleFieldChange(product.id, "sellingPrice", 0);
-                              }}
-                              className="w-28 text-right text-sm"
-                              min="0"
-                              step="0.01"
-                            />
-                          </div>
-                        </td>
-                        <td className="px-4 py-2">
-                          <div className="flex items-center justify-center gap-2">
-                            {/* Colours button — opens dialog */}
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => openColourDialog(product.id)}
-                              disabled={isColorLoading}
-                              className={cn(
-                                "h-8 w-8 p-0 relative",
-                                hasColours
-                                  ? "text-primary"
-                                  : "text-muted-foreground hover:text-foreground",
-                              )}
-                              title="Manage colours"
-                            >
-                              {isColorLoading ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <Palette className="h-3.5 w-3.5" />
-                              )}
-                            </Button>
-
-                            {/* Save button */}
-                            <Button
-                              size="sm"
-                              variant={hasEdits ? "default" : "ghost"}
-                              onClick={() => handleSave(product.id)}
-                              disabled={!hasEdits}
-                              className={cn("gap-1.5", !hasEdits && "text-muted-foreground")}
-                              title={hasEdits ? "Save changes" : "No changes to save"}
-                            >
-                              <Save className="h-3.5 w-3.5" />
-                            </Button>
-
-                            {/* Active toggle */}
-                            <Switch
-                              checked={isActive}
-                              onCheckedChange={() => handleToggleActive(product)}
-                              disabled={isToggling}
-                              title={
-                                isActive ? "Listed — click to unlist" : "Unlisted — click to list"
-                              }
-                            />
-
-                            {/* Delete button — owner/manager only */}
-                            {canDelete && (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => handleDeleteClick(product)}
-                                className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                                title="Delete product"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    </>
+                    <ProductTableRow
+                      key={product.id}
+                      product={product}
+                      index={index}
+                      editedFields={editedProducts[product.id]}
+                      isColorLoading={isColorLoading}
+                      hasColours={hasColours}
+                      isActive={isActive}
+                      isToggling={isToggling}
+                      canDelete={canDelete}
+                      onFieldChange={handleFieldChange}
+                      onOpenColour={openColourDialog}
+                      onSave={handleSave}
+                      onToggleActive={handleToggleActive}
+                      onDelete={handleDeleteClick}
+                    />
                   );
                 })}
               </tbody>
@@ -742,8 +509,12 @@ export default function ProductManagement() {
       )}
 
       {/* Delete confirmation dialog */}
-      <AlertDialog
+      <ProductDeleteDialog
         open={deleteDialog.open}
+        product={deleteDialog.product}
+        orderCount={deleteDialog.orderCount}
+        isChecking={deleteDialog.isChecking}
+        isDeleting={deleteDialog.isDeleting}
         onOpenChange={(open) => {
           if (!open && !deleteDialog.isDeleting) {
             setDeleteDialog({
@@ -755,77 +526,8 @@ export default function ProductManagement() {
             });
           }
         }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {deleteDialog.isChecking
-                ? "Checking…"
-                : deleteDialog.orderCount && deleteDialog.orderCount > 0
-                  ? "Cannot delete this product"
-                  : `Delete "${deleteDialog.product?.deviceName}"?`}
-            </AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-2 text-sm text-muted-foreground">
-                {deleteDialog.isChecking && (
-                  <div className="flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Checking for associated orders…</span>
-                  </div>
-                )}
-
-                {!deleteDialog.isChecking &&
-                deleteDialog.orderCount &&
-                deleteDialog.orderCount > 0 ? (
-                  <>
-                    <p>
-                      This product appears in{" "}
-                      <strong className="text-foreground">{deleteDialog.orderCount}</strong> order
-                      {deleteDialog.orderCount !== 1 ? "s" : ""}. Deleting it would break those
-                      order records, so it is blocked.
-                    </p>
-                    <p>
-                      To remove this product from your inventory, you can{" "}
-                      <strong className="text-foreground">unlist it</strong> using the toggle — it
-                      will stay in order history but won&apos;t be visible to users.
-                    </p>
-                  </>
-                ) : !deleteDialog.isChecking ? (
-                  <p>
-                    This will permanently delete{" "}
-                    <strong className="text-foreground">{deleteDialog.product?.deviceName}</strong>{" "}
-                    along with all its colour records and IMEI/serial entries. This cannot be
-                    undone.
-                  </p>
-                ) : null}
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleteDialog.isDeleting}>Cancel</AlertDialogCancel>
-            {!deleteDialog.isChecking &&
-              (!deleteDialog.orderCount || deleteDialog.orderCount === 0) && (
-                <AlertDialogAction
-                  onClick={(e) => {
-                    e.preventDefault();
-                    handleDeleteConfirm();
-                  }}
-                  disabled={deleteDialog.isDeleting}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                >
-                  {deleteDialog.isDeleting ? (
-                    <span className="flex items-center gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Deleting…
-                    </span>
-                  ) : (
-                    "Delete permanently"
-                  )}
-                </AlertDialogAction>
-              )}
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        onConfirm={handleDeleteConfirm}
+      />
 
       {/* Colour breakdown dialog */}
       <ColourBreakdownDialog

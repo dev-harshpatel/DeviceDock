@@ -79,6 +79,30 @@ export const ORDER_FIELDS = [
   "profit",
 ].join(", ");
 
+// Lightweight field set for paginated list views — omits large/detail-only columns.
+// Invoice fields, addresses, and IMEI data are only needed when a single order modal opens.
+const ORDER_SUMMARY_FIELDS = [
+  "id",
+  "user_id",
+  "items",
+  "subtotal",
+  "tax_rate",
+  "tax_amount",
+  "total_price",
+  "status",
+  "created_at",
+  "updated_at",
+  "rejection_reason",
+  "rejection_comment",
+  "invoice_number",
+  "discount_amount",
+  "discount_type",
+  "shipping_amount",
+  "is_manual_sale",
+  "manual_customer_name",
+  "profit",
+].join(", ");
+
 export async function fetchPaginatedOrders(
   filters: OrdersFilters,
   range: { from: number; to: number },
@@ -91,7 +115,7 @@ export async function fetchPaginatedOrders(
 
     let query = supabase
       .from("orders")
-      .select(ORDER_FIELDS, { count: "exact" })
+      .select(ORDER_SUMMARY_FIELDS, { count: "exact" })
       .order("created_at", { ascending: false });
 
     if (companyId) {
@@ -117,7 +141,7 @@ export async function fetchPaginatedOrders(
   // No search - simple paginated query
   let query = supabase
     .from("orders")
-    .select(ORDER_FIELDS, { count: "exact" })
+    .select(ORDER_SUMMARY_FIELDS, { count: "exact" })
     .order("created_at", { ascending: false });
 
   if (companyId) {
@@ -137,6 +161,19 @@ export async function fetchPaginatedOrders(
     data: (data || []).map(dbRowToOrder),
     count: count || 0,
   };
+}
+
+/** Fetches the full Order detail for a single ID — used when a modal opens. */
+export async function fetchOrderById(id: string, companyId?: string): Promise<Order> {
+  let query = supabase.from("orders").select(ORDER_FIELDS).eq("id", id);
+
+  if (companyId) {
+    query = (query as any).eq("company_id", companyId);
+  }
+
+  const { data, error } = await query.single();
+  if (error) throw error;
+  return dbRowToOrder(data);
 }
 
 export async function fetchPaginatedDeletedOrders(
@@ -166,6 +203,22 @@ export async function fetchPaginatedDeletedOrders(
     ),
     count: count || 0,
   };
+}
+
+/**
+ * Fetches every order for a company — no pagination, no filters.
+ * Used by contexts and pages that need the full in-memory list
+ * (dashboard activity feed, reports, HST reconciliation, etc.)
+ */
+export async function fetchAllOrders(companyId: string): Promise<Order[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase.from("orders") as any)
+    .select(ORDER_FIELDS)
+    .eq("company_id", companyId)
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+  return data ? data.map(dbRowToOrder) : [];
 }
 
 export async function fetchPaginatedUserOrders(

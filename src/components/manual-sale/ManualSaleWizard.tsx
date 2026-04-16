@@ -7,6 +7,8 @@ import { useOrders } from "@/contexts/OrdersContext";
 import { useAuth } from "@/lib/auth/context";
 import { InventoryItem } from "@/data/inventory";
 import { queryKeys } from "@/lib/query-keys";
+import { percentToRate } from "@/lib/tax";
+import { toastError } from "@/lib/utils/toast-helpers";
 import { Order, OrderItem } from "@/types/order";
 import { DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -198,6 +200,15 @@ export function ManualSaleWizard({
     [identifierGroups],
   );
 
+  /** Units already chosen via IMEI/serial scan, per inventory row — reduces browse capacity. */
+  const scannedUnitsByInventoryId = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const g of identifierGroups) {
+      map[g.inventoryId] = (map[g.inventoryId] ?? 0) + g.units.length;
+    }
+    return map;
+  }, [identifierGroups]);
+
   /** When editing, add back quantities from this order so browse max qty matches pre-sale capacity. */
   const qtyBonusByItemId = useMemo(() => {
     if (!isEdit || !orderToEdit) return {} as Record<string, number>;
@@ -218,6 +229,16 @@ export function ManualSaleWizard({
     [qtyBonusByItemId],
   );
 
+  /** Max units selectable from the browse column for this SKU (stock minus already-scanned units). */
+  const getBrowseMaxQty = useCallback(
+    (item: InventoryItem): number => {
+      const stock = getEffectiveStock(item);
+      const scanned = scannedUnitsByInventoryId[item.id] ?? 0;
+      return Math.max(0, stock - scanned);
+    },
+    [getEffectiveStock, scannedUnitsByInventoryId],
+  );
+
   // ── Derived ───────────────────────────────────────────────────────────────
   const availableItems = useMemo(
     () =>
@@ -225,13 +246,42 @@ export function ManualSaleWizard({
         (item) =>
           item.isActive !== false &&
           getEffectiveStock(item) > 0 &&
+          (getBrowseMaxQty(item) > 0 || !!selectedItems[item.id]) &&
           (searchQuery === "" ||
             item.deviceName.toLowerCase().includes(searchQuery.toLowerCase()) ||
             item.brand.toLowerCase().includes(searchQuery.toLowerCase()) ||
             item.storage.toLowerCase().includes(searchQuery.toLowerCase())),
       ),
-    [getEffectiveStock, inventory, searchQuery],
+    [getBrowseMaxQty, getEffectiveStock, inventory, searchQuery, selectedItems],
   );
+
+  /** Keep browse quantities within (stock − scanned) when scans are added or removed. */
+  useEffect(() => {
+    setSelectedItems((prev) => {
+      let changed = false;
+      const next: Record<string, SelectedItem> = { ...prev };
+      for (const id of Object.keys(next)) {
+        const live = inventory.find((i) => i.id === id);
+        if (!live) {
+          delete next[id];
+          changed = true;
+          continue;
+        }
+        const browseMax = Math.max(
+          0,
+          getEffectiveStock(live) - (scannedUnitsByInventoryId[id] ?? 0),
+        );
+        if (browseMax <= 0) {
+          delete next[id];
+          changed = true;
+        } else if (next[id].quantity > browseMax) {
+          next[id] = { ...next[id], item: live, quantity: browseMax };
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [getEffectiveStock, inventory, scannedUnitsByInventoryId]);
 
   const didHydrateEditRef = useRef(false);
   const inventoryMergedForEditRef = useRef<string | null>(null);
@@ -434,7 +484,7 @@ export function ManualSaleWizard({
     [selectedItemsList, getEffectivePrice, identifierGroups, getEffectivePriceIdentGroup],
   );
 
-  const hstRate = Math.max(0, parseFloat(hstPercent) || 0) / 100;
+  const hstRate = percentToRate(Math.max(0, parseFloat(hstPercent) || 0));
   const hstAmount = subtotal * hstRate;
   const total = subtotal + hstAmount;
 
@@ -446,7 +496,13 @@ export function ManualSaleWizard({
         delete next[item.id];
         return next;
       }
-      return { ...prev, [item.id]: { item, quantity: 1 } };
+      const live = inventory.find((i) => i.id === item.id) ?? item;
+      const browseMax = getBrowseMaxQty(live);
+      if (browseMax < 1) {
+        toast.error("No units left to add from browse — already added via scan for this device.");
+        return prev;
+      }
+      return { ...prev, [item.id]: { item: live, quantity: 1 } };
     });
   };
 
@@ -454,9 +510,11 @@ export function ManualSaleWizard({
     setSelectedItems((prev) => {
       const current = prev[itemId];
       if (!current) return prev;
-      const maxQty = getEffectiveStock(current.item);
+      const live = inventory.find((i) => i.id === itemId) ?? current.item;
+      const maxQty = getBrowseMaxQty(live);
+      if (maxQty < 1) return prev;
       const newQty = Math.max(1, Math.min(maxQty, current.quantity + delta));
-      return { ...prev, [itemId]: { ...current, quantity: newQty } };
+      return { ...prev, [itemId]: { ...current, item: live, quantity: newQty } };
     });
   };
 
@@ -636,8 +694,13 @@ export function ManualSaleWizard({
         displayLabel: found.imei ?? found.serialNumber ?? q,
         color: found.color,
       };
+      const invId = found.item.id;
+      const live = inventory.find((i) => i.id === invId) ?? found.item;
+      const nextScannedCount = (scannedUnitsByInventoryId[invId] ?? 0) + 1;
+      const browseCap = Math.max(0, getEffectiveStock(live) - nextScannedCount);
+
       setIdentifierGroups((prev) => {
-        const idx = prev.findIndex((g) => g.inventoryId === found.item.id);
+        const idx = prev.findIndex((g) => g.inventoryId === invId);
         if (idx >= 0) {
           const next = [...prev];
           next[idx] = { ...next[idx], units: [...next[idx].units, unit] };
@@ -646,16 +709,32 @@ export function ManualSaleWizard({
         return [
           ...prev,
           {
-            inventoryId: found.item.id,
+            inventoryId: invId,
             item: found.item,
             units: [unit],
           },
         ];
       });
+      setSelectedItems((prevSel) => {
+        const line = prevSel[invId];
+        if (!line) return prevSel;
+        if (browseCap <= 0) {
+          const next = { ...prevSel };
+          delete next[invId];
+          return next;
+        }
+        if (line.quantity > browseCap) {
+          return {
+            ...prevSel,
+            [invId]: { ...line, item: live, quantity: browseCap },
+          };
+        }
+        return prevSel;
+      });
       setIdentifierQuery("");
       toast.success(`Added: ${unit.displayLabel}`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Lookup failed. Please try again.");
+      toastError(err, "Lookup failed. Please try again.");
     } finally {
       setIdentifierLookupLoading(false);
     }
@@ -764,7 +843,7 @@ export function ManualSaleWizard({
         toast.success(`Manual sale updated — Order #${updated.id.slice(-8).toUpperCase()}`);
         queryClient.invalidateQueries({ queryKey: queryKeys.inventory });
         queryClient.invalidateQueries({ queryKey: queryKeys.orders });
-        queryClient.invalidateQueries({ queryKey: ["paginated", "userOrders"] });
+        queryClient.invalidateQueries({ queryKey: queryKeys.userOrdersBase });
         onManualOrderUpdated?.(updated);
         handleClose();
         return;
@@ -790,7 +869,7 @@ export function ManualSaleWizard({
           try {
             await markInventoryIdentifierSold(oi.inventoryIdentifierId);
           } catch (identErr) {
-            toast.error(identErr instanceof Error ? identErr.message : "Identifier update failed");
+            toastError(identErr, "Identifier update failed");
             throw identErr;
           }
         }
@@ -807,7 +886,7 @@ export function ManualSaleWizard({
       toast.success(`Sale recorded — Order #${order.id.slice(-8).toUpperCase()}`);
       queryClient.invalidateQueries({ queryKey: queryKeys.inventory });
       queryClient.invalidateQueries({ queryKey: queryKeys.orders });
-      queryClient.invalidateQueries({ queryKey: ["paginated", "userOrders"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.userOrdersBase });
       handleClose();
     } catch {
       toast.error(
@@ -981,6 +1060,8 @@ export function ManualSaleWizard({
                 ) : (
                   availableItems.map((item) => {
                     const effStock = getEffectiveStock(item);
+                    const scannedForSku = scannedUnitsByInventoryId[item.id] ?? 0;
+                    const browseMax = getBrowseMaxQty(item);
                     const isSelected = !!selectedItems[item.id];
                     const selected = selectedItems[item.id];
                     return (
@@ -1015,7 +1096,11 @@ export function ManualSaleWizard({
                             <p className="text-xs text-muted-foreground">
                               {item.brand} • {item.storage}
                             </p>
-                            <p className="text-xs text-muted-foreground">{effStock} in stock</p>
+                            <p className="text-xs text-muted-foreground">
+                              {scannedForSku > 0
+                                ? `${browseMax} available for browse (${scannedForSku} scanned, ${effStock} in stock)`
+                                : `${effStock} in stock`}
+                            </p>
                           </div>
                           <div className="text-right flex-shrink-0">
                             <p className="font-semibold text-sm text-foreground">
@@ -1044,15 +1129,15 @@ export function ManualSaleWizard({
                               <Input
                                 type="number"
                                 min={1}
-                                max={effStock}
+                                max={browseMax}
                                 value={selected.quantity}
                                 onChange={(e) =>
-                                  handleQuantityInput(item.id, e.target.value, effStock)
+                                  handleQuantityInput(item.id, e.target.value, browseMax)
                                 }
                                 onBlur={(e) => {
                                   const parsed = parseInt(e.target.value, 10);
                                   if (isNaN(parsed) || parsed < 1)
-                                    handleQuantityInput(item.id, "1", effStock);
+                                    handleQuantityInput(item.id, "1", browseMax);
                                 }}
                                 className="h-7 w-16 text-center text-sm px-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                 onClick={(e) => e.stopPropagation()}
@@ -1062,7 +1147,7 @@ export function ManualSaleWizard({
                                 size="icon"
                                 className="h-6 w-6"
                                 onClick={() => handleQuantityChange(item.id, 1)}
-                                disabled={selected.quantity >= effStock}
+                                disabled={selected.quantity >= browseMax}
                               >
                                 <Plus className="h-3 w-3" />
                               </Button>

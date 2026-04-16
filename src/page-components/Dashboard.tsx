@@ -1,65 +1,35 @@
 "use client";
 
-import { useMemo, useEffect, useState } from "react";
-import {
-  Package,
-  TrendingUp,
-  AlertTriangle,
-  DollarSign,
-  ShoppingCart,
-  Clock,
-} from "lucide-react";
+import { useMemo } from "react";
+import { Package, TrendingUp, AlertTriangle, DollarSign, ShoppingCart, Clock } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { useOrders } from "@/contexts/OrdersContext";
-import { formatPrice } from "@/lib/utils";
+import { formatPrice, timeAgo } from "@/lib/utils";
 import { EmptyState } from "@/components/common/EmptyState";
 import { StatCard } from "@/components/common/StatCard";
 import { AdminDashboardSkeleton } from "@/components/skeletons/AdminDashboardSkeleton";
 import { fetchInventoryStats, fetchOrderStats } from "@/lib/supabase/queries";
-import type { InventoryStats, OrderStats } from "@/lib/supabase/queries";
+import { queryKeys } from "@/lib/query-keys";
 import { useCompany } from "@/contexts/CompanyContext";
 
 export default function Dashboard() {
   const { orders, isLoading: ordersLoading } = useOrders();
   const { companyId } = useCompany();
-  const [inventoryStats, setInventoryStats] = useState<InventoryStats | null>(
-    null
-  );
-  const [orderStats, setOrderStats] = useState<OrderStats | null>(null);
-  const [isLoadingStats, setIsLoadingStats] = useState(true);
 
-  // Fetch aggregate stats on mount
-  useEffect(() => {
-    const loadStats = async () => {
-      setIsLoadingStats(true);
-      try {
-        const [inventoryData, orderData] = await Promise.all([
-          fetchInventoryStats(companyId),
-          fetchOrderStats(companyId),
-        ]);
-        setInventoryStats(inventoryData);
-        setOrderStats(orderData);
-      } catch (error) {
-        console.error("Failed to load dashboard stats:", error);
-        // Set defaults on error
-        setInventoryStats({
-          totalDevices: 0,
-          totalUnits: 0,
-          totalValue: 0,
-          lowStockItems: 0,
-        });
-        setOrderStats({
-          totalOrders: 0,
-          pendingOrders: 0,
-          totalRevenue: 0,
-          completedOrders: 0,
-        });
-      } finally {
-        setIsLoadingStats(false);
-      }
-    };
+  // Single RPC per stat group — cached for 5 minutes, no refetch on window focus
+  const { data: inventoryStats, isLoading: inventoryStatsLoading } = useQuery({
+    queryKey: queryKeys.inventoryStats(companyId),
+    queryFn: () => fetchInventoryStats(companyId),
+    staleTime: 5 * 60_000,
+  });
 
-    loadStats();
-  }, [companyId]);
+  const { data: orderStats, isLoading: orderStatsLoading } = useQuery({
+    queryKey: queryKeys.orderStats(companyId),
+    queryFn: () => fetchOrderStats(companyId),
+    staleTime: 5 * 60_000,
+  });
+
+  const isLoadingStats = inventoryStatsLoading || orderStatsLoading;
 
   const stats = useMemo(() => {
     if (!inventoryStats || !orderStats) {
@@ -100,43 +70,22 @@ export default function Dashboard() {
 
     // Add recent orders
     const recentOrders = [...orders]
-      .sort(
-        (a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      )
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 3);
 
     recentOrders.forEach((order) => {
       const orderDate = new Date(order.createdAt);
-      const now = new Date();
-      const diffMs = now.getTime() - orderDate.getTime();
-      const diffMins = Math.floor(diffMs / 60000);
-      const diffHours = Math.floor(diffMs / 3600000);
-      const diffDays = Math.floor(diffMs / 86400000);
-
-      let timeAgo = "";
-      if (diffMins < 60) {
-        timeAgo = `${diffMins}m ago`;
-      } else if (diffHours < 24) {
-        timeAgo = `${diffHours}h ago`;
-      } else {
-        timeAgo = `${diffDays}d ago`;
-      }
-
       const items = Array.isArray(order.items) ? order.items : [];
       const firstItem = items[0];
       const deviceName =
         firstItem?.item?.deviceName ??
-        (firstItem?.item as { device_name?: string } | undefined)
-          ?.device_name ??
+        (firstItem?.item as { device_name?: string } | undefined)?.device_name ??
         (items.length > 1 ? "Multiple items" : "Order");
       const itemsCount = items.length;
       activities.push({
-        action: `New order ${
-          order.status === "pending" ? "received" : order.status
-        }`,
+        action: `New order ${order.status === "pending" ? "received" : order.status}`,
         device: deviceName + (itemsCount > 1 ? ` +${itemsCount - 1} more` : ""),
-        time: timeAgo,
+        time: timeAgo(orderDate),
         type: "order",
         timestamp: orderDate.getTime(),
       });
@@ -189,8 +138,7 @@ export default function Dashboard() {
           const qty = orderItem.quantity || 0;
           if (!itemId || qty <= 0) return;
 
-          const sellingPrice =
-            (item.sellingPrice ?? item.pricePerUnit ?? 0) as number;
+          const sellingPrice = (item.sellingPrice ?? item.pricePerUnit ?? 0) as number;
           const existing = map.get(itemId);
 
           if (existing) {
@@ -296,21 +244,12 @@ export default function Dashboard() {
             <div className="divide-y divide-border">
               {recentActivity.length > 0 ? (
                 recentActivity.map((activity, idx) => (
-                  <div
-                    key={idx}
-                    className="px-6 py-4 flex items-center justify-between"
-                  >
+                  <div key={idx} className="px-6 py-4 flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-foreground">
-                        {activity.action}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {activity.device}
-                      </p>
+                      <p className="text-sm font-medium text-foreground">{activity.action}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{activity.device}</p>
                     </div>
-                    <span className="text-xs text-muted-foreground">
-                      {activity.time}
-                    </span>
+                    <span className="text-xs text-muted-foreground">{activity.time}</span>
                   </div>
                 ))
               ) : (
@@ -332,21 +271,15 @@ export default function Dashboard() {
             <div className="divide-y divide-border">
               {topDevices.length > 0 ? (
                 topDevices.map((device, idx) => (
-                  <div
-                    key={device.id}
-                    className="px-6 py-4 flex items-center justify-between"
-                  >
+                  <div key={device.id} className="px-6 py-4 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <span className="text-xs font-medium text-muted-foreground w-5">
                         #{idx + 1}
                       </span>
                       <div>
-                        <p className="text-sm font-medium text-foreground">
-                          {device.deviceName}
-                        </p>
+                        <p className="text-sm font-medium text-foreground">{device.deviceName}</p>
                         <p className="text-xs text-muted-foreground mt-0.5">
-                          {device.quantity} units ×{" "}
-                          {formatPrice(device.sellingPrice)}
+                          {device.quantity} units × {formatPrice(device.sellingPrice)}
                         </p>
                       </div>
                     </div>

@@ -5,9 +5,8 @@ import { partitionParsedProductsForUpload } from "@/lib/export/upload-merge-grou
 import { formatPrice } from "@/lib/utils";
 import { GradeBadge } from "@/components/common/GradeBadge";
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface UploadPreviewTableProps {
   products: ParsedProduct[];
@@ -38,9 +37,7 @@ export function UploadPreviewTable({ products, className }: UploadPreviewTablePr
             Valid: <span className="font-medium">{validProducts.length}</span>
           </span>
           {invalidProducts.length > 0 && (
-            <span className="text-destructive">
-              Errors: <span className="font-medium">{invalidProducts.length}</span>
-            </span>
+            <span className="text-destructive font-medium">Errors: {invalidProducts.length}</span>
           )}
         </div>
         {validProducts.length > 0 && (
@@ -59,6 +56,29 @@ export function UploadPreviewTable({ products, className }: UploadPreviewTablePr
           </p>
         )}
       </div>
+
+      {/* Error summary banner — shown when any rows have validation errors */}
+      {invalidProducts.length > 0 && (
+        <div className="rounded-lg border border-destructive/50 bg-destructive/5 p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0" />
+            <p className="text-sm font-semibold text-destructive">
+              {invalidProducts.length} row{invalidProducts.length !== 1 ? "s" : ""} cannot be
+              uploaded — fix the issues below and re-upload the file.
+            </p>
+          </div>
+          <ul className="space-y-2">
+            {invalidProducts.map((p, i) => (
+              <li key={i} className="text-xs text-destructive/90 leading-relaxed">
+                <span className="font-semibold">
+                  Row {p.rowNumber ?? "?"} — {p.deviceName} {p.storage}:
+                </span>{" "}
+                {p.errors?.join(" · ")}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Desktop Table */}
       <div className="hidden md:block overflow-hidden rounded-lg border border-border bg-card">
@@ -121,28 +141,23 @@ export function UploadPreviewTable({ products, className }: UploadPreviewTablePr
                       {product.rowNumber || index + 1}
                     </td>
                     <td className="px-4 py-4">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-foreground text-sm">
-                          {product.deviceName}
-                        </span>
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-1.5">
+                          {hasErrors && (
+                            <AlertCircle className="h-3.5 w-3.5 text-destructive flex-shrink-0" />
+                          )}
+                          <span className="font-medium text-foreground text-sm">
+                            {product.deviceName}
+                          </span>
+                        </div>
                         {hasErrors && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <AlertCircle className="h-4 w-4 text-destructive flex-shrink-0" />
-                              </TooltipTrigger>
-                              <TooltipContent className="max-w-xs">
-                                <div className="space-y-1">
-                                  <p className="font-semibold">Validation Errors:</p>
-                                  <ul className="list-disc list-inside text-xs space-y-0.5">
-                                    {product.errors?.map((error, i) => (
-                                      <li key={i}>{error}</li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
+                          <ul className="space-y-0.5">
+                            {product.errors?.map((error, i) => (
+                              <li key={i} className="text-xs text-destructive leading-snug">
+                                {error}
+                              </li>
+                            ))}
+                          </ul>
                         )}
                       </div>
                     </td>
@@ -218,26 +233,10 @@ export function UploadPreviewTable({ products, className }: UploadPreviewTablePr
               <div className="flex items-start gap-3 mb-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <h3 className="font-medium text-foreground">{product.deviceName}</h3>
                     {hasErrors && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <AlertCircle className="h-4 w-4 text-destructive flex-shrink-0" />
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-xs">
-                            <div className="space-y-1">
-                              <p className="font-semibold">Validation Errors:</p>
-                              <ul className="list-disc list-inside text-xs space-y-0.5">
-                                {product.errors?.map((error, i) => (
-                                  <li key={i}>{error}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
+                      <AlertCircle className="h-4 w-4 text-destructive flex-shrink-0" />
                     )}
+                    <h3 className="font-medium text-foreground">{product.deviceName}</h3>
                   </div>
                   <span className="text-xs text-muted-foreground mt-1">
                     Row {product.rowNumber || index + 1}

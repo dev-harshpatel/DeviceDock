@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { createContext, useContext } from 'react';
-import type { Company, CompanyMembership, CompanyRole } from '@/types/company';
+import { createContext, useContext } from "react";
+import type { Company, CompanyMembership, CompanyRole } from "@/types/company";
 
 interface CompanyContextType {
   company: Company;
@@ -39,11 +39,11 @@ export function CompanyProvider({ company, membership, children }: CompanyProvid
     slug: company.slug,
     companyName: company.name,
     role,
-    isOwner: role === 'owner',
-    isManager: role === 'manager',
-    isInventoryAdmin: role === 'inventory_admin',
-    isAnalyst: role === 'analyst',
-    canWrite: role === 'owner' || role === 'manager' || role === 'inventory_admin',
+    isOwner: role === "owner",
+    isManager: role === "manager",
+    isInventoryAdmin: role === "inventory_admin",
+    isAnalyst: role === "analyst",
+    canWrite: role === "owner" || role === "manager" || role === "inventory_admin",
   };
 
   return <CompanyContext.Provider value={value}>{children}</CompanyContext.Provider>;
@@ -51,6 +51,11 @@ export function CompanyProvider({ company, membership, children }: CompanyProvid
 
 export function useCompany(): CompanyContextType {
   const ctx = useContext(CompanyContext);
-  if (!ctx) throw new Error('useCompany must be used within CompanyProvider');
+  if (!ctx) throw new Error("useCompany must be used within CompanyProvider");
   return ctx;
+}
+
+/** For hooks that run in the root layout (e.g. realtime bridge) where company may be absent. */
+export function useOptionalCompany(): CompanyContextType | undefined {
+  return useContext(CompanyContext);
 }

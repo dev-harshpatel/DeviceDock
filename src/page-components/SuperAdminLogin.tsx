@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
+import { toastError } from "@/lib/utils/toast-helpers";
 import { Loader2, ShieldCheck } from "lucide-react";
 
 export default function SuperAdminLogin() {
@@ -42,8 +43,7 @@ export default function SuperAdminLogin() {
         }
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Sign in failed";
-      toast.error(message);
+      toastError(error, "Sign in failed");
       setPassword("");
     } finally {
       setIsLoading(false);

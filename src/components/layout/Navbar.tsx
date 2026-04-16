@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import { Menu, LogOut, Loader2 } from "lucide-react";
 import { ThemeToggle } from "@/components/common/ThemeToggle";
@@ -18,6 +18,7 @@ import { useNavigation } from "@/contexts/NavigationContext";
 import { ROLE_LABELS } from "@/types/company";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { toastError } from "@/lib/utils/toast-helpers";
 import { TOAST_MESSAGES } from "@/lib/constants/toast-messages";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -42,9 +43,7 @@ export function Navbar({ onMenuClick, className }: NavbarProps) {
       startNavigation();
       router.push("/login");
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : TOAST_MESSAGES.LOGOUT_FAILED;
-      toast.error(errorMessage);
+      toastError(error, TOAST_MESSAGES.LOGOUT_FAILED);
       setIsLoggingOut(false);
     }
   };
@@ -60,24 +59,17 @@ export function Navbar({ onMenuClick, className }: NavbarProps) {
     <header
       className={cn(
         "sticky top-0 z-40 w-full min-w-0 border-b border-border bg-card/80 backdrop-blur-sm",
-        className
+        className,
       )}
     >
       <div className="flex h-16 items-center justify-between gap-4 px-4 lg:px-6 min-w-0">
         <div className="flex items-center gap-4 min-w-0 flex-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onMenuClick}
-            className="lg:hidden shrink-0"
-          >
+          <Button variant="ghost" size="icon" onClick={onMenuClick} className="lg:hidden shrink-0">
             <Menu className="h-5 w-5" />
           </Button>
 
           <div className="flex flex-col min-w-0">
-            <h1 className="text-lg font-semibold text-foreground truncate">
-              {companyName}
-            </h1>
+            <h1 className="text-lg font-semibold text-foreground truncate">{companyName}</h1>
           </div>
         </div>
 
@@ -96,12 +88,8 @@ export function Navbar({ onMenuClick, className }: NavbarProps) {
             <DropdownMenuContent className="w-56" align="end" forceMount>
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col space-y-1">
-                  <p className="text-sm font-medium leading-none">
-                    {user?.email || "User"}
-                  </p>
-                  <p className="text-xs leading-none text-muted-foreground">
-                    {ROLE_LABELS[role]}
-                  </p>
+                  <p className="text-sm font-medium leading-none">{user?.email || "User"}</p>
+                  <p className="text-xs leading-none text-muted-foreground">{ROLE_LABELS[role]}</p>
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />

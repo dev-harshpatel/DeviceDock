@@ -4,6 +4,7 @@
  */
 
 import { Document, Font, Image, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
+import { rateToPercent } from "@/lib/tax";
 import { InvoiceData } from "@/types/invoice";
 import { Order } from "@/types/order";
 import { GRADE_LABELS } from "@/lib/constants/grades";
@@ -496,7 +497,9 @@ export const InvoicePDFDocument = ({
             {/* Tax */}
             {order.taxAmount && order.taxRate && (
               <View style={styles.summaryRowLast}>
-                <Text style={styles.summaryLabel}>Tax ({(order.taxRate * 100).toFixed(2)}%):</Text>
+                <Text style={styles.summaryLabel}>
+                  Tax ({rateToPercent(order.taxRate).toFixed(2)}%):
+                </Text>
                 <Text style={styles.summaryValue}>{formatPrice(order.taxAmount)}</Text>
               </View>
             )}

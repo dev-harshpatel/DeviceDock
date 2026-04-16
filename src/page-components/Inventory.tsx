@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
@@ -13,9 +14,8 @@ import {
 } from "@/components/common/FilterBar";
 import { ExportActions } from "@/components/common/ExportActions";
 import { InventoryTable } from "@/components/tables/InventoryTable";
-import { PaginationControls } from "@/components/common/PaginationControls";
-import { AddProductModal } from "@/components/modals/AddProductModal";
 import { Loader } from "@/components/common/Loader";
+import { PaginationControls } from "@/components/common/PaginationControls";
 import { Button } from "@/components/ui/button";
 import { InventoryItem } from "@/data/inventory";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -26,6 +26,14 @@ import { fetchPaginatedInventory, fetchAllFilteredInventory } from "@/lib/supaba
 import { useFilterOptions } from "@/hooks/use-filter-options";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useInventory } from "@/contexts/InventoryContext";
+
+const AddProductModal = dynamic(
+  () =>
+    import("@/components/modals/AddProductModal").then((mod) => ({
+      default: mod.AddProductModal,
+    })),
+  { loading: () => null, ssr: false },
+);
 
 export default function Inventory() {
   const router = useRouter();

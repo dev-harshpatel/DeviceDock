@@ -227,6 +227,23 @@ export async function fetchInventoryByIds(
 }
 
 /**
+ * Fetches every inventory item for a company — no pagination, no filters.
+ * Used by contexts and pages that need the full in-memory list
+ * (reports, HST reconciliation, manual sale wizard, etc.)
+ */
+export async function fetchAllInventory(companyId: string): Promise<InventoryItem[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase.from("inventory") as any)
+    .select(INVENTORY_ADMIN_FIELDS)
+    .eq("company_id", companyId)
+    .order("created_at", INVENTORY_SORT_ORDER.created_at)
+    .order("id", INVENTORY_SORT_ORDER.id);
+
+  if (error) throw error;
+  return data ? data.map(dbRowToInventoryItem) : [];
+}
+
+/**
  * Look up a device by exact IMEI across all statuses.
  */
 export async function lookupIdentifierByImei(

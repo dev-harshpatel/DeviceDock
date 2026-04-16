@@ -1,4 +1,5 @@
 import { InventoryItem, getStockStatus } from "@/data/inventory";
+import { removeTax } from "@/lib/tax";
 import { formatPrice } from "@/lib/utils";
 import { EmptyState } from "@/components/common/EmptyState";
 import { GradeBadge } from "@/components/common/GradeBadge";
@@ -15,7 +16,7 @@ const getPricePerUnitWithoutTax = (item: InventoryItem): number => {
     return item.purchasePrice / item.quantity;
   }
   if (item.hst != null && item.hst > 0) {
-    return item.pricePerUnit / (1 + item.hst / 100);
+    return removeTax(item.pricePerUnit, item.hst);
   }
   return item.pricePerUnit;
 };
@@ -27,7 +28,12 @@ interface InventoryTableProps {
   showColorBreakdown?: boolean;
 }
 
-export function InventoryTable({ items, className, hasActiveFilters, showColorBreakdown }: InventoryTableProps) {
+export function InventoryTable({
+  items,
+  className,
+  hasActiveFilters,
+  showColorBreakdown,
+}: InventoryTableProps) {
   if (items.length === 0) {
     return (
       <EmptyState
@@ -47,7 +53,7 @@ export function InventoryTable({ items, className, hasActiveFilters, showColorBr
       <div
         className={cn(
           "hidden lg:flex lg:flex-col rounded-lg border border-border bg-card h-full overflow-hidden",
-          className
+          className,
         )}
       >
         <div className="flex-1 overflow-y-auto min-h-0">
@@ -101,8 +107,7 @@ export function InventoryTable({ items, className, hasActiveFilters, showColorBr
             <tbody className="divide-y divide-border">
               {items.map((item, index) => {
                 const status = getStockStatus(item.quantity);
-                const isLowStock =
-                  status === "low-stock" || status === "critical";
+                const isLowStock = status === "low-stock" || status === "critical";
 
                 return (
                   <tr
@@ -110,13 +115,11 @@ export function InventoryTable({ items, className, hasActiveFilters, showColorBr
                     className={cn(
                       "transition-colors hover:bg-table-hover",
                       index % 2 === 1 && "bg-table-zebra",
-                      isLowStock && "bg-destructive/[0.02]"
+                      isLowStock && "bg-destructive/[0.02]",
                     )}
                   >
                     <td className="px-4 py-2.5 text-center align-middle">
-                      <span className="font-medium text-foreground text-sm">
-                        {item.deviceName}
-                      </span>
+                      <span className="font-medium text-foreground text-sm">{item.deviceName}</span>
                     </td>
                     <td className="px-3 py-2.5 text-center align-middle">
                       <GradeBadge grade={item.grade} />
@@ -131,14 +134,12 @@ export function InventoryTable({ items, className, hasActiveFilters, showColorBr
                             "font-semibold text-sm",
                             status === "critical" && "text-destructive",
                             status === "low-stock" && "text-warning",
-                            status === "in-stock" && "text-foreground"
+                            status === "in-stock" && "text-foreground",
                           )}
                         >
                           {item.quantity}
                         </span>
-                        {showColorBreakdown && (
-                          <ColorBreakdownPopover inventoryId={item.id} />
-                        )}
+                        {showColorBreakdown && <ColorBreakdownPopover inventoryId={item.id} />}
                       </div>
                     </td>
                     <td className="px-3 py-2.5 text-center align-middle font-medium text-foreground text-sm">
@@ -153,9 +154,7 @@ export function InventoryTable({ items, className, hasActiveFilters, showColorBr
                       {formatPriceWithoutCurrencySuffix(item.pricePerUnit)}
                     </td>
                     <td className="px-3 py-2.5 text-center align-middle font-medium text-muted-foreground text-sm">
-                      {formatPriceWithoutCurrencySuffix(
-                        getPricePerUnitWithoutTax(item)
-                      )}
+                      {formatPriceWithoutCurrencySuffix(getPricePerUnitWithoutTax(item))}
                     </td>
                     <td className="px-3 py-2.5 text-center align-middle font-medium text-foreground text-sm">
                       {formatPriceWithoutCurrencySuffix(item.sellingPrice)}
@@ -182,7 +181,7 @@ export function InventoryTable({ items, className, hasActiveFilters, showColorBr
               key={item.id}
               className={cn(
                 "flex flex-col gap-1.5 p-2 bg-card rounded-lg border border-border",
-                isLowStock && "border-destructive/20 bg-destructive/[0.02]"
+                isLowStock && "border-destructive/20 bg-destructive/[0.02]",
               )}
             >
               {/* Row 1: Device name */}
@@ -194,23 +193,19 @@ export function InventoryTable({ items, className, hasActiveFilters, showColorBr
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                   <GradeBadge grade={item.grade} />
-                  <span className="text-xs text-muted-foreground shrink-0">
-                    {item.storage}
-                  </span>
+                  <span className="text-xs text-muted-foreground shrink-0">{item.storage}</span>
                   <div className="flex items-center gap-1 shrink-0">
                     <span
                       className={cn(
                         "font-semibold text-xs",
                         status === "critical" && "text-destructive",
                         status === "low-stock" && "text-warning",
-                        status === "in-stock" && "text-foreground"
+                        status === "in-stock" && "text-foreground",
                       )}
                     >
                       ×{item.quantity}
                     </span>
-                    {showColorBreakdown && (
-                      <ColorBreakdownPopover inventoryId={item.id} />
-                    )}
+                    {showColorBreakdown && <ColorBreakdownPopover inventoryId={item.id} />}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -246,9 +241,7 @@ export function InventoryTable({ items, className, hasActiveFilters, showColorBr
                 <span>
                   /unit (w/o tax):{" "}
                   <span className="text-foreground font-medium">
-                    {formatPriceWithoutCurrencySuffix(
-                      getPricePerUnitWithoutTax(item)
-                    )}
+                    {formatPriceWithoutCurrencySuffix(getPricePerUnitWithoutTax(item))}
                   </span>
                 </span>
               </div>

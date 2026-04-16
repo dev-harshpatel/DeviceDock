@@ -53,7 +53,9 @@
       "Bash(node -e \"const d=require\\('fs'\\).readFileSync\\('/dev/stdin','utf8'\\); JSON.parse\\(d\\).forEach\\(x=>console.log\\(x.path\\)\\)\")",
       "Bash(echo \"--exit: $?\")",
       "Bash(cmd /c \"npx tsc --noEmit 2>&1\")",
-      "Bash(cmd:*)"
+      "Bash(cmd:*)",
+      "Bash(echo \"exit:$?\")",
+      "Bash(node_modules/.bin/tsc --noEmit)"
     ]
   },
   "statusLine": {

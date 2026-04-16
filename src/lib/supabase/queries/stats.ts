@@ -1,6 +1,7 @@
 /**
  * Aggregate statistics queries
- * Performance-optimized queries for dashboard/reports
+ * Each stat group is a single RPC call that aggregates in Postgres,
+ * replacing the previous pattern of 2–4 sequential client-side queries.
  */
 
 import { supabase } from "../client/browser";
@@ -12,72 +13,38 @@ export interface InventoryStats {
   lowStockItems: number;
 }
 
+/** Raw shape returned by the get_inventory_stats RPC */
+interface InventoryStatsRow {
+  total_devices: number;
+  total_units: number;
+  total_value: number;
+  low_stock_items: number;
+}
+
 /**
- * Fetch aggregate inventory statistics
+ * Fetch aggregate inventory statistics via a single Postgres RPC.
+ * Previously: 2 sequential queries + JS aggregation.
+ * Now: 1 query, aggregation done server-side.
  */
 export async function fetchInventoryStats(companyId?: string): Promise<InventoryStats> {
-  console.log("[fetchInventoryStats] companyId:", companyId);
-
-  let countQuery = supabase
-    .from("inventory")
-    .select("id, quantity, selling_price", { count: "exact", head: false });
-
-  if (companyId) {
-    countQuery = (countQuery as any).eq("company_id", companyId);
+  if (!companyId) {
+    return { totalDevices: 0, totalUnits: 0, totalValue: 0, lowStockItems: 0 };
   }
 
-  const { data: countData, error: countError } = await countQuery;
-  if (countError) {
-    console.error(
-      "[fetchInventoryStats] error:",
-      countError.code,
-      countError.message,
-      countError.details,
-      countError.hint,
-    );
-    throw countError;
-  }
-  console.log("[fetchInventoryStats] rows returned:", countData?.length ?? 0);
+  // DB types aren't regenerated yet for these new functions — cast via any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any).rpc("get_inventory_stats", {
+    p_company_id: companyId,
+  });
 
-  const totalDevices = countData?.length || 0;
+  if (error) throw error;
 
-  const totalUnits = (
-    (countData || []) as Array<{
-      quantity: number | null;
-      selling_price: number | null;
-    }>
-  ).reduce((sum, row) => sum + (Number(row.quantity) || 0), 0);
-
-  const totalValue = (
-    (countData || []) as Array<{
-      quantity: number | null;
-      selling_price: number | null;
-    }>
-  ).reduce((sum, row) => {
-    const quantity = Number(row.quantity) || 0;
-    const sellingPrice = Number(row.selling_price) || 0;
-    return sum + quantity * sellingPrice;
-  }, 0);
-
-  let lowStockQuery = supabase
-    .from("inventory")
-    .select("id", { count: "exact", head: false })
-    .lte("quantity", 10);
-
-  if (companyId) {
-    lowStockQuery = (lowStockQuery as any).eq("company_id", companyId);
-  }
-
-  const { data: lowStockData, error: lowStockError } = await lowStockQuery;
-  if (lowStockError) throw lowStockError;
-
-  const lowStockItems = lowStockData?.length || 0;
-
+  const row = (data ?? {}) as InventoryStatsRow;
   return {
-    totalDevices,
-    totalUnits,
-    totalValue,
-    lowStockItems,
+    totalDevices: Number(row.total_devices ?? 0),
+    totalUnits: Number(row.total_units ?? 0),
+    totalValue: Number(row.total_value ?? 0),
+    lowStockItems: Number(row.low_stock_items ?? 0),
   };
 }
 
@@ -88,64 +55,36 @@ export interface OrderStats {
   completedOrders: number;
 }
 
+/** Raw shape returned by the get_order_stats RPC */
+interface OrderStatsRow {
+  total_orders: number;
+  pending_orders: number;
+  completed_orders: number;
+  total_revenue: number;
+}
+
 /**
- * Fetch aggregate order statistics
+ * Fetch aggregate order statistics via a single Postgres RPC.
+ * Previously: 4 sequential queries (count all, count pending, count completed, sum revenue).
+ * Now: 1 query, all aggregation done server-side.
  */
 export async function fetchOrderStats(companyId?: string): Promise<OrderStats> {
-  let totalQuery = supabase.from("orders").select("id", { count: "exact", head: true });
-
-  if (companyId) {
-    totalQuery = (totalQuery as any).eq("company_id", companyId);
+  if (!companyId) {
+    return { totalOrders: 0, pendingOrders: 0, totalRevenue: 0, completedOrders: 0 };
   }
 
-  const { count: totalOrders, error: totalError } = await totalQuery;
-  if (totalError) throw totalError;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any).rpc("get_order_stats", {
+    p_company_id: companyId,
+  });
 
-  let pendingQuery = supabase
-    .from("orders")
-    .select("id", { count: "exact", head: true })
-    .eq("status", "pending");
+  if (error) throw error;
 
-  if (companyId) {
-    pendingQuery = (pendingQuery as any).eq("company_id", companyId);
-  }
-
-  const { count: pendingOrders, error: pendingError } = await pendingQuery;
-  if (pendingError) throw pendingError;
-
-  let completedQuery = supabase
-    .from("orders")
-    .select("id", { count: "exact", head: true })
-    .eq("status", "completed");
-
-  if (companyId) {
-    completedQuery = (completedQuery as any).eq("company_id", companyId);
-  }
-
-  const { count: completedOrders, error: completedError } = await completedQuery;
-  if (completedError) throw completedError;
-
-  let revenueQuery = supabase
-    .from("orders")
-    .select("total_price")
-    .in("status", ["approved", "completed"]);
-
-  if (companyId) {
-    revenueQuery = (revenueQuery as any).eq("company_id", companyId);
-  }
-
-  const { data: revenueData, error: revenueError } = await revenueQuery;
-  if (revenueError) throw revenueError;
-
-  const totalRevenue = ((revenueData || []) as Array<{ total_price: number | null }>).reduce(
-    (sum, row) => sum + (Number(row.total_price) || 0),
-    0,
-  );
-
+  const row = (data ?? {}) as OrderStatsRow;
   return {
-    totalOrders: totalOrders || 0,
-    pendingOrders: pendingOrders || 0,
-    totalRevenue,
-    completedOrders: completedOrders || 0,
+    totalOrders: Number(row.total_orders ?? 0),
+    pendingOrders: Number(row.pending_orders ?? 0),
+    completedOrders: Number(row.completed_orders ?? 0),
+    totalRevenue: Number(row.total_revenue ?? 0),
   };
 }

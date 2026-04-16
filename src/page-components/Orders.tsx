@@ -2,41 +2,25 @@
 
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { useState, useEffect, useMemo, useCallback, useTransition } from "react";
+import { useState, useMemo, useCallback, useTransition } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Order, OrderStatus } from "@/types/order";
 import { ActiveOrderTableRow } from "@/components/orders/ActiveOrderTableRow";
 import { DeletedOrderTableRow } from "@/components/orders/DeletedOrderTableRow";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Archive,
-  Loader2,
-  RotateCcw,
-  Search,
-  ShoppingBag,
-  // TODO: Remove if Request Device feature is not required in later development
-  // PackageSearch,
-} from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { OrdersHeader } from "@/components/orders/OrdersHeader";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 // TODO: Remove if Request Device feature is not required in later development
 // import { AdminWishDetailsModal } from "@/components/modals/AdminWishDetailsModal";
 import { EmptyState } from "@/components/common/EmptyState";
 import { PaginationControls } from "@/components/common/PaginationControls";
 import { Loader } from "@/components/common/Loader";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useDebounce } from "@/hooks/use-debounce";
 import { usePaginatedReactQuery } from "@/hooks/use-paginated-react-query";
 import { usePageParam } from "@/hooks/use-page-param";
 import { queryKeys } from "@/lib/query-keys";
 import {
   DeletedOrder,
+  fetchOrderById,
   fetchPaginatedDeletedOrders,
   fetchPaginatedOrders,
   OrdersFilters,
@@ -58,12 +42,10 @@ export default function Orders() {
   const [isPendingManualSale, startManualSaleTransition] = useTransition();
   const { companyId, slug } = useCompany();
   const [activeTab, setActiveTab] = useState<"orders" | "deleted">("orders");
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<OrderStatus | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [userEmails, setUserEmails] = useState<Record<string, string>>({});
-  const [loadingEmails, setLoadingEmails] = useState(false);
 
   // TODO: Remove if Request Device feature is not required in later development
   // Pre-orders (wishes) state
@@ -157,60 +139,51 @@ export default function Orders() {
     filtersKey: companyId,
   });
 
-  // Create a stable key based on unique user IDs from current page to fetch emails
-  // Skip manual sales — they have customer info stored directly on the order
+  // Stable comma-joined key of sorted user IDs on the current page.
+  // Manual sales store customer info on the order itself, so they're excluded.
   const userIdsKey = useMemo(() => {
-    const uniqueUserIds = Array.from(
+    return Array.from(
       new Set(filteredOrders.filter((order) => !order.isManualSale).map((order) => order.userId)),
-    ).sort();
-    return uniqueUserIds.join(",");
+    )
+      .sort()
+      .join(",");
   }, [filteredOrders]);
 
-  // Fetch user emails for unique user IDs on the current page
-  useEffect(() => {
-    const fetchUserEmails = async () => {
-      if (!userIdsKey) return;
+  // Fetch emails for the current page's user IDs.
+  // staleTime: Infinity — email addresses don't change within a session.
+  // Each unique set of user IDs gets its own cache entry, so navigating between
+  // pages shows cached results instantly on revisit.
+  const { data: userEmails = {} } = useQuery({
+    queryKey: queryKeys.userEmails(userIdsKey),
+    queryFn: async () => {
+      const userIds = userIdsKey.split(",").filter(Boolean);
+      const response = await fetch("/api/users/emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userIds }),
+      });
+      if (!response.ok) return {} as Record<string, string>;
+      const json = await response.json();
+      return (json.emails ?? {}) as Record<string, string>;
+    },
+    staleTime: Infinity,
+    enabled: userIdsKey.length > 0,
+  });
 
-      const uniqueUserIds = userIdsKey.split(",").filter(Boolean);
-      const missingUserIds = uniqueUserIds.filter((userId) => !userEmails[userId]);
-
-      if (missingUserIds.length === 0) return;
-
-      setLoadingEmails(true);
-      try {
-        const response = await fetch("/api/users/emails", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ userIds: missingUserIds }),
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          setUserEmails((prev) => ({ ...prev, ...data.emails }));
-        }
-      } catch {
-        /* ignore email fetch failures */
-      } finally {
-        setLoadingEmails(false);
-      }
-    };
-
-    fetchUserEmails();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userIdsKey]);
+  // Fetch full order detail on demand when a row is clicked.
+  // The summary list omits invoice/address/IMEI fields to reduce payload;
+  // this query fetches only when a modal is actually opened.
+  const { data: selectedOrderDetail = null } = useQuery({
+    queryKey: queryKeys.orderDetail(selectedOrderId ?? ""),
+    queryFn: () => fetchOrderById(selectedOrderId!, companyId),
+    enabled: selectedOrderId !== null && modalOpen,
+    staleTime: 30 * 1000,
+  });
 
   const handleViewOrder = useCallback((order: Order) => {
-    setSelectedOrder(order);
+    setSelectedOrderId(order.id);
     setModalOpen(true);
   }, []);
-
-  useEffect(() => {
-    if (!modalOpen || !selectedOrder) return;
-    const fresh = filteredOrders.find((o) => o.id === selectedOrder.id);
-    if (fresh) setSelectedOrder(fresh);
-  }, [filteredOrders, modalOpen, selectedOrder?.id]);
 
   const handleResetFilter = () => {
     setStatusFilter("all");
@@ -272,95 +245,19 @@ export default function Orders() {
   return (
     <>
       <Tabs value={activeTab} onValueChange={handleTabChange} className="flex flex-col h-full">
-        {/* Sticky Header Section */}
-        <div className="sticky top-0 z-10 bg-background border-b border-border mb-4 -mx-4 lg:-mx-6 px-4 lg:px-6 pt-3 lg:pt-4 pb-3">
-          {/* Title row — compact, inline subtitle */}
-          <div className="flex items-baseline gap-3 mb-3">
-            <h2 className="text-2xl font-semibold text-foreground">Orders</h2>
-            <p className="text-sm text-muted-foreground">
-              {activeTab === "orders"
-                ? `${totalCount} ${hasActiveFilters ? "filtered" : "total"} orders`
-                : `${deletedTotal} deleted order${deletedTotal === 1 ? "" : "s"}`}
-            </p>
-          </div>
-
-          {/* Tabs + controls on one row */}
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-            <TabsList className="bg-muted/60 shrink-0 w-full sm:w-auto">
-              <TabsTrigger value="orders" className="gap-2 flex-1 sm:flex-none">
-                <ShoppingBag className="h-3.5 w-3.5" />
-                Orders
-              </TabsTrigger>
-              <TabsTrigger value="deleted" className="gap-2 flex-1 sm:flex-none">
-                <Archive className="h-3.5 w-3.5" />
-                Deleted Orders
-                {deletedTotal > 0 && (
-                  <Badge
-                    variant="secondary"
-                    className="ml-1 h-5 min-w-[20px] px-1 flex items-center justify-center text-[11px] font-semibold rounded-full"
-                  >
-                    {deletedTotal > 99 ? "99+" : deletedTotal}
-                  </Badge>
-                )}
-              </TabsTrigger>
-            </TabsList>
-
-            {/* Orders filters — pushed to the right on desktop */}
-            {activeTab === "orders" && (
-              <div className="flex items-center gap-2 flex-1 min-w-0">
-                <div className="relative flex-1 min-w-0 max-w-sm">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search by order ID, status..."
-                    value={searchQuery}
-                    onChange={handleSearchChange}
-                    className="pl-9 bg-background border-border"
-                  />
-                </div>
-                <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
-                  <SelectTrigger className="w-36 bg-background border-border">
-                    <SelectValue placeholder="Filter by Status" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-card border-border">
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="approved">Approved</SelectItem>
-                    <SelectItem value="rejected">Rejected</SelectItem>
-                    <SelectItem value="completed">Completed</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button
-                  type="button"
-                  onClick={handleOpenManualSale}
-                  disabled={isPendingManualSale}
-                  className="gap-2 shrink-0"
-                  aria-busy={isPendingManualSale}
-                >
-                  {isPendingManualSale ? (
-                    <Loader2 className="h-4 w-4 animate-spin shrink-0" aria-hidden />
-                  ) : (
-                    <ShoppingBag className="h-4 w-4 shrink-0" aria-hidden />
-                  )}
-                  <span className="hidden sm:inline">
-                    {isPendingManualSale ? "Opening…" : "Record Sale"}
-                  </span>
-                  <span className="sm:hidden">{isPendingManualSale ? "…" : "Sale"}</span>
-                </Button>
-                {hasActiveFilters && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleResetFilter}
-                    className="border-border shrink-0"
-                  >
-                    <RotateCcw className="h-4 w-4 mr-2" />
-                    Reset
-                  </Button>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
+        <OrdersHeader
+          activeTab={activeTab}
+          totalCount={totalCount}
+          deletedTotal={deletedTotal}
+          hasActiveFilters={hasActiveFilters}
+          statusFilter={statusFilter}
+          searchQuery={searchQuery}
+          isPendingManualSale={isPendingManualSale}
+          onSearchChange={handleSearchChange}
+          onStatusFilterChange={handleStatusFilterChange}
+          onOpenManualSale={handleOpenManualSale}
+          onResetFilter={handleResetFilter}
+        />
 
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto min-h-0 -mx-4 lg:-mx-6 px-4 lg:px-6">
@@ -502,7 +399,11 @@ export default function Orders() {
       </Tabs>
 
       {modalOpen && (
-        <OrderDetailsModal open={modalOpen} onOpenChange={setModalOpen} order={selectedOrder} />
+        <OrderDetailsModal
+          open={modalOpen}
+          onOpenChange={setModalOpen}
+          order={selectedOrderDetail}
+        />
       )}
 
       {/* TODO: Remove if Request Device feature is not required in later development */}
