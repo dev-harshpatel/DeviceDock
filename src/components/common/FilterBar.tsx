@@ -13,6 +13,17 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
+/** Server-side inventory ordering (paginated list). */
+export type InventorySortBy =
+  | "created_asc"
+  | "created_desc"
+  | "purchase_desc"
+  | "purchase_asc"
+  | "selling_stock_desc"
+  | "selling_stock_asc"
+  | "qty_desc"
+  | "qty_asc";
+
 export interface FilterValues {
   search: string;
   brand: string;
@@ -20,6 +31,7 @@ export interface FilterValues {
   storage: string;
   priceRange: string;
   stockStatus: string;
+  sortBy: InventorySortBy;
 }
 
 export const defaultFilters: FilterValues = {
@@ -29,12 +41,10 @@ export const defaultFilters: FilterValues = {
   storage: "all",
   priceRange: "all",
   stockStatus: "all",
+  sortBy: "created_asc",
 };
 
-export function buildServerFilters(
-  debouncedSearch: string,
-  filters: FilterValues
-): FilterValues {
+export function buildServerFilters(debouncedSearch: string, filters: FilterValues): FilterValues {
   return { ...filters, search: debouncedSearch };
 }
 
@@ -69,17 +79,13 @@ export function FilterBar({
     filters.grade !== "all" ||
     filters.storage !== "all" ||
     filters.priceRange !== "all" ||
-    filters.stockStatus !== "all";
+    filters.stockStatus !== "all" ||
+    filters.sortBy !== defaultFilters.sortBy;
 
   return (
     <>
       {/* Desktop Filter Bar — lg+ to match table breakpoint */}
-      <div
-        className={cn(
-          "hidden lg:flex items-center gap-2 flex-wrap",
-          className
-        )}
-      >
+      <div className={cn("hidden lg:flex items-center gap-2 flex-wrap", className)}>
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -90,10 +96,7 @@ export function FilterBar({
           />
         </div>
 
-        <Select
-          value={filters.brand}
-          onValueChange={(v) => handleChange("brand", v)}
-        >
+        <Select value={filters.brand} onValueChange={(v) => handleChange("brand", v)}>
           <SelectTrigger
             className="w-[130px] bg-background border-border"
             aria-label="Filter by brand"
@@ -110,10 +113,7 @@ export function FilterBar({
           </SelectContent>
         </Select>
 
-        <Select
-          value={filters.grade}
-          onValueChange={(v) => handleChange("grade", v)}
-        >
+        <Select value={filters.grade} onValueChange={(v) => handleChange("grade", v)}>
           <SelectTrigger
             className="w-[160px] bg-background border-border"
             aria-label="Filter by grade"
@@ -130,10 +130,7 @@ export function FilterBar({
           </SelectContent>
         </Select>
 
-        <Select
-          value={filters.storage}
-          onValueChange={(v) => handleChange("storage", v)}
-        >
+        <Select value={filters.storage} onValueChange={(v) => handleChange("storage", v)}>
           <SelectTrigger
             className="w-[130px] bg-background border-border"
             aria-label="Filter by storage"
@@ -150,10 +147,7 @@ export function FilterBar({
           </SelectContent>
         </Select>
 
-        <Select
-          value={filters.priceRange}
-          onValueChange={(v) => handleChange("priceRange", v)}
-        >
+        <Select value={filters.priceRange} onValueChange={(v) => handleChange("priceRange", v)}>
           <SelectTrigger
             className="w-[140px] bg-background border-border"
             aria-label="Filter by price range"
@@ -168,10 +162,7 @@ export function FilterBar({
           </SelectContent>
         </Select>
 
-        <Select
-          value={filters.stockStatus}
-          onValueChange={(v) => handleChange("stockStatus", v)}
-        >
+        <Select value={filters.stockStatus} onValueChange={(v) => handleChange("stockStatus", v)}>
           <SelectTrigger
             className="w-[140px] bg-background border-border"
             aria-label="Filter by stock status"
@@ -183,6 +174,28 @@ export function FilterBar({
             <SelectItem value="in-stock">In Stock</SelectItem>
             <SelectItem value="low-stock">Low Stock</SelectItem>
             <SelectItem value="critical">Critical</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select
+          value={filters.sortBy}
+          onValueChange={(v) => handleChange("sortBy", v as InventorySortBy)}
+        >
+          <SelectTrigger
+            className="w-[200px] bg-background border-border"
+            aria-label="Sort inventory"
+          >
+            <SelectValue placeholder="Sort" />
+          </SelectTrigger>
+          <SelectContent className="bg-card border-border max-h-[320px] overflow-y-auto">
+            <SelectItem value="created_asc">Date added (oldest first)</SelectItem>
+            <SelectItem value="created_desc">Date added (newest first)</SelectItem>
+            <SelectItem value="purchase_desc">Purchase value (high → low)</SelectItem>
+            <SelectItem value="purchase_asc">Purchase value (low → high)</SelectItem>
+            <SelectItem value="selling_stock_desc">Retail stock value (high → low)</SelectItem>
+            <SelectItem value="selling_stock_asc">Retail stock value (low → high)</SelectItem>
+            <SelectItem value="qty_desc">Quantity (high → low)</SelectItem>
+            <SelectItem value="qty_asc">Quantity (low → high)</SelectItem>
           </SelectContent>
         </Select>
 
@@ -213,168 +226,174 @@ export function FilterBar({
               className="pl-9 bg-card border-border"
             />
           </div>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => setMobileOpen(true)}
-          >
+          <Button variant="outline" size="icon" onClick={() => setMobileOpen(true)}>
             <Filter className="h-4 w-4" />
           </Button>
         </div>
 
         {/* Mobile Filter Modal */}
-        {mobileOpen && createPortal(
-          <div className="fixed inset-0 z-[200] bg-background/80 backdrop-blur-sm">
-            <div className="fixed inset-x-0 bottom-0 z-[201] bg-card border-t border-border rounded-t-xl flex flex-col max-h-[85vh] animate-fade-in">
-              {/* Header — never scrolls */}
-              <div className="flex items-center justify-between px-6 pt-6 pb-4 shrink-0">
-                <h3 className="text-lg font-semibold">Filters</h3>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setMobileOpen(false)}
-                >
-                  <X className="h-5 w-5" />
-                </Button>
-              </div>
+        {mobileOpen &&
+          createPortal(
+            <div className="fixed inset-0 z-[200] bg-background/80 backdrop-blur-sm">
+              <div className="fixed inset-x-0 bottom-0 z-[201] bg-card border-t border-border rounded-t-xl flex flex-col max-h-[85vh] animate-fade-in">
+                {/* Header — never scrolls */}
+                <div className="flex items-center justify-between px-6 pt-6 pb-4 shrink-0">
+                  <h3 className="text-lg font-semibold">Filters</h3>
+                  <Button variant="ghost" size="icon" onClick={() => setMobileOpen(false)}>
+                    <X className="h-5 w-5" />
+                  </Button>
+                </div>
 
-              {/* Scrollable filter list */}
-              <div className="overflow-y-auto flex-1 min-h-0 px-6 space-y-4 pb-2">
-                <div>
-                  <label className="text-sm font-medium mb-2 block">
-                    Brand
-                  </label>
-                  <Select
-                    value={filters.brand}
-                    onValueChange={(v) => handleChange("brand", v)}
-                  >
-                    <SelectTrigger
-                      className="w-full bg-background border-border"
-                      aria-label="Filter by brand"
+                {/* Scrollable filter list */}
+                <div className="overflow-y-auto flex-1 min-h-0 px-6 space-y-4 pb-2">
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Brand</label>
+                    <Select value={filters.brand} onValueChange={(v) => handleChange("brand", v)}>
+                      <SelectTrigger
+                        className="w-full bg-background border-border"
+                        aria-label="Filter by brand"
+                      >
+                        <SelectValue placeholder="Brand" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-card border-border max-h-[300px] overflow-y-auto">
+                        <SelectItem value="all">All Brands</SelectItem>
+                        {brands.map((brand) => (
+                          <SelectItem key={brand} value={brand}>
+                            {brand}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Grade</label>
+                    <Select value={filters.grade} onValueChange={(v) => handleChange("grade", v)}>
+                      <SelectTrigger
+                        className="w-full bg-background border-border"
+                        aria-label="Filter by grade"
+                      >
+                        <SelectValue placeholder="Grade" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-card border-border">
+                        <SelectItem value="all">All Grades</SelectItem>
+                        {GRADES.map((g) => (
+                          <SelectItem key={g} value={g}>
+                            {GRADE_LABELS[g]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Storage</label>
+                    <Select
+                      value={filters.storage}
+                      onValueChange={(v) => handleChange("storage", v)}
                     >
-                      <SelectValue placeholder="Brand" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-card border-border max-h-[300px] overflow-y-auto">
-                      <SelectItem value="all">All Brands</SelectItem>
-                      {brands.map((brand) => (
-                        <SelectItem key={brand} value={brand}>
-                          {brand}
+                      <SelectTrigger
+                        className="w-full bg-background border-border"
+                        aria-label="Filter by storage"
+                      >
+                        <SelectValue placeholder="Storage" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-card border-border max-h-[300px] overflow-y-auto">
+                        <SelectItem value="all">All Storage</SelectItem>
+                        {storageOptions.map((storage) => (
+                          <SelectItem key={storage} value={storage}>
+                            {storage}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Price Range</label>
+                    <Select
+                      value={filters.priceRange}
+                      onValueChange={(v) => handleChange("priceRange", v)}
+                    >
+                      <SelectTrigger
+                        className="w-full bg-background border-border"
+                        aria-label="Filter by price range"
+                      >
+                        <SelectValue placeholder="Price Range" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-card border-border">
+                        <SelectItem value="all">All Prices</SelectItem>
+                        <SelectItem value="under200">Under $200</SelectItem>
+                        <SelectItem value="200-400">$200 – $400</SelectItem>
+                        <SelectItem value="400+">$400+</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Stock Status</label>
+                    <Select
+                      value={filters.stockStatus}
+                      onValueChange={(v) => handleChange("stockStatus", v)}
+                    >
+                      <SelectTrigger
+                        className="w-full bg-background border-border"
+                        aria-label="Filter by stock status"
+                      >
+                        <SelectValue placeholder="Stock Status" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-card border-border">
+                        <SelectItem value="all">All Status</SelectItem>
+                        <SelectItem value="in-stock">In Stock</SelectItem>
+                        <SelectItem value="low-stock">Low Stock</SelectItem>
+                        <SelectItem value="critical">Critical</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Sort</label>
+                    <Select
+                      value={filters.sortBy}
+                      onValueChange={(v) => handleChange("sortBy", v as InventorySortBy)}
+                    >
+                      <SelectTrigger
+                        className="w-full bg-background border-border"
+                        aria-label="Sort inventory"
+                      >
+                        <SelectValue placeholder="Sort" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-card border-border max-h-[320px] overflow-y-auto">
+                        <SelectItem value="created_asc">Date added (oldest first)</SelectItem>
+                        <SelectItem value="created_desc">Date added (newest first)</SelectItem>
+                        <SelectItem value="purchase_desc">Purchase value (high → low)</SelectItem>
+                        <SelectItem value="purchase_asc">Purchase value (low → high)</SelectItem>
+                        <SelectItem value="selling_stock_desc">
+                          Retail stock value (high → low)
                         </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium mb-2 block">
-                    Grade
-                  </label>
-                  <Select
-                    value={filters.grade}
-                    onValueChange={(v) => handleChange("grade", v)}
-                  >
-                    <SelectTrigger
-                      className="w-full bg-background border-border"
-                      aria-label="Filter by grade"
-                    >
-                      <SelectValue placeholder="Grade" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-card border-border">
-                      <SelectItem value="all">All Grades</SelectItem>
-                      {GRADES.map((g) => (
-                        <SelectItem key={g} value={g}>
-                          {GRADE_LABELS[g]}
+                        <SelectItem value="selling_stock_asc">
+                          Retail stock value (low → high)
                         </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                        <SelectItem value="qty_desc">Quantity (high → low)</SelectItem>
+                        <SelectItem value="qty_asc">Quantity (low → high)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="text-sm font-medium mb-2 block">
-                    Storage
-                  </label>
-                  <Select
-                    value={filters.storage}
-                    onValueChange={(v) => handleChange("storage", v)}
-                  >
-                    <SelectTrigger
-                      className="w-full bg-background border-border"
-                      aria-label="Filter by storage"
-                    >
-                      <SelectValue placeholder="Storage" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-card border-border max-h-[300px] overflow-y-auto">
-                      <SelectItem value="all">All Storage</SelectItem>
-                      {storageOptions.map((storage) => (
-                        <SelectItem key={storage} value={storage}>
-                          {storage}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium mb-2 block">
-                    Price Range
-                  </label>
-                  <Select
-                    value={filters.priceRange}
-                    onValueChange={(v) => handleChange("priceRange", v)}
-                  >
-                    <SelectTrigger
-                      className="w-full bg-background border-border"
-                      aria-label="Filter by price range"
-                    >
-                      <SelectValue placeholder="Price Range" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-card border-border">
-                      <SelectItem value="all">All Prices</SelectItem>
-                      <SelectItem value="under200">Under $200</SelectItem>
-                      <SelectItem value="200-400">$200 – $400</SelectItem>
-                      <SelectItem value="400+">$400+</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium mb-2 block">
-                    Stock Status
-                  </label>
-                  <Select
-                    value={filters.stockStatus}
-                    onValueChange={(v) => handleChange("stockStatus", v)}
-                  >
-                    <SelectTrigger
-                      className="w-full bg-background border-border"
-                      aria-label="Filter by stock status"
-                    >
-                      <SelectValue placeholder="Stock Status" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-card border-border">
-                      <SelectItem value="all">All Status</SelectItem>
-                      <SelectItem value="in-stock">In Stock</SelectItem>
-                      <SelectItem value="low-stock">Low Stock</SelectItem>
-                      <SelectItem value="critical">Critical</SelectItem>
-                    </SelectContent>
-                  </Select>
+                {/* Action buttons — never scrolls */}
+                <div className="flex gap-3 px-6 pt-4 pb-6 shrink-0 border-t border-border">
+                  <Button variant="outline" className="flex-1" onClick={onReset}>
+                    Reset
+                  </Button>
+                  <Button className="flex-1" onClick={() => setMobileOpen(false)}>
+                    Apply
+                  </Button>
                 </div>
               </div>
-
-              {/* Action buttons — never scrolls */}
-              <div className="flex gap-3 px-6 pt-4 pb-6 shrink-0 border-t border-border">
-                <Button variant="outline" className="flex-1" onClick={onReset}>
-                  Reset
-                </Button>
-                <Button className="flex-1" onClick={() => setMobileOpen(false)}>
-                  Apply
-                </Button>
-              </div>
-            </div>
-          </div>,
-          document.body
-        )}
+            </div>,
+            document.body,
+          )}
       </div>
     </>
   );

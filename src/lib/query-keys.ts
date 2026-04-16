@@ -22,6 +22,7 @@ export const queryKeys = {
       filters.storage,
       filters.priceRange,
       filters.stockStatus,
+      filters.sortBy,
     ] as const,
 
   ordersPage: (page: number, filters: OrdersFilters) =>

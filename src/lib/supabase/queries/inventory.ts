@@ -9,7 +9,7 @@ import type { IdentifierFullLookup } from "@/types/inventory-identifiers";
 import { supabase } from "../client/browser";
 import { INVENTORY_SORT_ORDER } from "../../constants";
 import { dbRowToInventoryItem } from "./mappers";
-import type { FilterValues } from "@/components/common/FilterBar";
+import type { FilterValues, InventorySortBy } from "@/components/common/FilterBar";
 
 export type InventoryFilters = FilterValues;
 
@@ -91,6 +91,37 @@ function applyInventoryFilters(query: any, filters: InventoryFilters) {
   return query;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function applyInventorySort(query: any, sortBy: InventorySortBy) {
+  switch (sortBy) {
+    case "created_desc":
+      return query.order("created_at", { ascending: false }).order("id", { ascending: false });
+    case "purchase_desc":
+      return query
+        .order("purchase_price", { ascending: false, nullsFirst: false })
+        .order("id", { ascending: true });
+    case "purchase_asc":
+      return query
+        .order("purchase_price", { ascending: true, nullsFirst: false })
+        .order("id", { ascending: true });
+    case "selling_stock_desc":
+      return query
+        .order("selling_stock_value", { ascending: false })
+        .order("id", { ascending: true });
+    case "selling_stock_asc":
+      return query
+        .order("selling_stock_value", { ascending: true })
+        .order("id", { ascending: true });
+    case "qty_desc":
+      return query.order("quantity", { ascending: false }).order("id", { ascending: true });
+    case "qty_asc":
+      return query.order("quantity", { ascending: true }).order("id", { ascending: true });
+    case "created_asc":
+    default:
+      return query.order("created_at", { ascending: true }).order("id", { ascending: true });
+  }
+}
+
 export async function fetchPaginatedInventory(
   filters: InventoryFilters,
   range: { from: number; to: number },
@@ -100,13 +131,11 @@ export async function fetchPaginatedInventory(
 
   console.log("[fetchPaginatedInventory] companyId:", options?.companyId, "range:", range);
 
-  let query = supabase
-    .from("inventory")
-    .select(fields, { count: "exact" })
-    .order("created_at", INVENTORY_SORT_ORDER.created_at)
-    .order("id", INVENTORY_SORT_ORDER.id);
+  let query = supabase.from("inventory").select(fields, { count: "exact" });
 
   if (options?.companyId) {
+    // company_id column typing on generic client
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     query = (query as any).eq("company_id", options.companyId);
   }
 
@@ -115,6 +144,7 @@ export async function fetchPaginatedInventory(
   }
 
   query = applyInventoryFilters(query, filters);
+  query = applyInventorySort(query, filters.sortBy ?? "created_asc");
   query = query.range(range.from, range.to);
 
   const { data, count, error } = await query;
@@ -144,6 +174,7 @@ export async function fetchFilterOptions(companyId?: string): Promise<{
   let query = supabase.from("inventory").select("brand, storage");
 
   if (companyId) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     query = (query as any).eq("company_id", companyId);
   }
 
@@ -178,13 +209,10 @@ export async function fetchAllFilteredInventory(
 ): Promise<InventoryItem[]> {
   const fields = options?.includeAdminFields ? INVENTORY_ADMIN_FIELDS : INVENTORY_PUBLIC_FIELDS;
 
-  let query = supabase
-    .from("inventory")
-    .select(fields)
-    .order("created_at", INVENTORY_SORT_ORDER.created_at)
-    .order("id", INVENTORY_SORT_ORDER.id);
+  let query = supabase.from("inventory").select(fields);
 
   if (options?.companyId) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     query = (query as any).eq("company_id", options.companyId);
   }
 
@@ -193,6 +221,7 @@ export async function fetchAllFilteredInventory(
   }
 
   query = applyInventoryFilters(query, filters);
+  query = applyInventorySort(query, filters.sortBy ?? "created_asc");
 
   const { data, error } = await query;
   if (error) throw error;
@@ -217,6 +246,7 @@ export async function fetchInventoryByIds(
     .order("id", INVENTORY_SORT_ORDER.id);
 
   if (companyId) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     query = (query as any).eq("company_id", companyId);
   }
 

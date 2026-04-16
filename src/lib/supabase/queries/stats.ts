@@ -9,7 +9,10 @@ import { supabase } from "../client/browser";
 export interface InventoryStats {
   totalDevices: number;
   totalUnits: number;
-  totalValue: number;
+  /** Sum of `purchase_price` (tax-exclusive batch cost on hand). */
+  totalPurchaseValue: number;
+  /** Sum of `quantity × selling_price` (retail value of on-hand stock). */
+  totalSellingValue: number;
   lowStockItems: number;
 }
 
@@ -18,6 +21,7 @@ interface InventoryStatsRow {
   total_devices: number;
   total_units: number;
   total_value: number;
+  total_purchase_value?: number;
   low_stock_items: number;
 }
 
@@ -28,7 +32,13 @@ interface InventoryStatsRow {
  */
 export async function fetchInventoryStats(companyId?: string): Promise<InventoryStats> {
   if (!companyId) {
-    return { totalDevices: 0, totalUnits: 0, totalValue: 0, lowStockItems: 0 };
+    return {
+      totalDevices: 0,
+      totalUnits: 0,
+      totalPurchaseValue: 0,
+      totalSellingValue: 0,
+      lowStockItems: 0,
+    };
   }
 
   // DB types aren't regenerated yet for these new functions — cast via any
@@ -43,7 +53,8 @@ export async function fetchInventoryStats(companyId?: string): Promise<Inventory
   return {
     totalDevices: Number(row.total_devices ?? 0),
     totalUnits: Number(row.total_units ?? 0),
-    totalValue: Number(row.total_value ?? 0),
+    totalPurchaseValue: Number(row.total_purchase_value ?? 0),
+    totalSellingValue: Number(row.total_value ?? 0),
     lowStockItems: Number(row.low_stock_items ?? 0),
   };
 }

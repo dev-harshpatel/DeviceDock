@@ -116,7 +116,8 @@ export default function Inventory() {
       serverFilters.grade !== "all" ||
       serverFilters.storage !== "all" ||
       serverFilters.priceRange !== "all" ||
-      serverFilters.stockStatus !== "all",
+      serverFilters.stockStatus !== "all" ||
+      serverFilters.sortBy !== defaultFilters.sortBy,
     [serverFilters],
   );
 

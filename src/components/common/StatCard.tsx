@@ -9,6 +9,9 @@ export interface StatCardProps {
   icon: React.ReactNode;
   accent?: "primary" | "success" | "warning" | "destructive";
   description?: string;
+  /** When true, card fills height and vertically centers the row (e.g. dashboard metric tiles). */
+  fillHeight?: boolean;
+  className?: string;
 }
 
 const accentStyles = {
@@ -25,20 +28,29 @@ export const StatCard = memo(function StatCard({
   icon,
   accent = "primary",
   description,
+  fillHeight,
+  className,
 }: StatCardProps) {
   return (
-    <div className="p-6 bg-card rounded-lg border border-border shadow-soft">
-      <div className="flex items-start justify-between">
-        <div className="flex-1">
-          <p className="stat-card-title text-sm text-muted-foreground">
-            {title}
-          </p>
-          <p className="stat-card-value text-2xl font-semibold text-foreground mt-1">
+    <div
+      className={cn(
+        "rounded-lg border border-border bg-card p-6 shadow-soft",
+        fillHeight && "flex min-h-0 flex-col justify-center",
+        className,
+      )}
+    >
+      <div
+        className={cn(
+          "flex justify-between gap-3",
+          description || change ? "items-start" : "items-center",
+        )}
+      >
+        <div className="min-w-0 flex-1">
+          <p className="stat-card-title text-sm text-muted-foreground">{title}</p>
+          <p className="stat-card-value mt-1 min-w-0 break-words text-2xl font-semibold tabular-nums leading-tight text-foreground sm:break-normal sm:whitespace-nowrap">
             {value}
           </p>
-          {description && (
-            <p className="text-xs text-muted-foreground mt-1">{description}</p>
-          )}
+          {description && <p className="text-xs text-muted-foreground mt-1">{description}</p>}
           {change && (
             <div className="flex items-center gap-1 mt-2 text-sm">
               {change.positive ? (
@@ -46,22 +58,14 @@ export const StatCard = memo(function StatCard({
               ) : (
                 <ArrowDownRight className="h-4 w-4 text-destructive" />
               )}
-              <span
-                className={
-                  change.positive ? "text-success" : "text-destructive"
-                }
-              >
+              <span className={change.positive ? "text-success" : "text-destructive"}>
                 {change.value}
               </span>
               <span className="text-muted-foreground">vs last month</span>
             </div>
           )}
         </div>
-        <div
-          className={cn("p-3 rounded-lg flex-shrink-0", accentStyles[accent])}
-        >
-          {icon}
-        </div>
+        <div className={cn("p-3 rounded-lg flex-shrink-0", accentStyles[accent])}>{icon}</div>
       </div>
     </div>
   );
