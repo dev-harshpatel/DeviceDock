@@ -50,8 +50,10 @@ const styles = StyleSheet.create({
   },
   logo: {
     width: 140,
-    height: 100,
+    height: 70,
     marginBottom: 5,
+    objectFit: "contain",
+    objectPosition: "left",
   },
   companyName: {
     fontSize: 11,

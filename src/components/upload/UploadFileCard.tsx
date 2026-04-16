@@ -1,11 +1,24 @@
 "use client";
 
+import { useState } from "react";
+
+import { Download, FileSpreadsheet, Loader2, Upload, X } from "lucide-react";
+
+import { UploadPreviewTable } from "@/components/tables/UploadPreviewTable";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Download, FileSpreadsheet, Loader2, Upload, X } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  downloadSampleProductUploadTemplateLegacy,
+  downloadSampleProductUploadTemplateUnitRow,
+} from "@/lib/export/sample-upload-template";
 import { cn } from "@/lib/utils";
-import { UploadPreviewTable } from "@/components/tables/UploadPreviewTable";
-import { downloadSampleProductUploadTemplate } from "@/lib/export/sample-upload-template";
 import type { ParsedProduct } from "@/types/upload";
 
 interface UploadFileCardProps {
@@ -39,35 +52,76 @@ export function UploadFileCard({
   onClear,
   onUpload,
 }: UploadFileCardProps) {
+  const [sampleDialogOpen, setSampleDialogOpen] = useState(false);
+
+  const handleDownloadUnitRowSample = () => {
+    downloadSampleProductUploadTemplateUnitRow();
+    setSampleDialogOpen(false);
+  };
+
+  const handleDownloadLegacySample = () => {
+    downloadSampleProductUploadTemplateLegacy();
+    setSampleDialogOpen(false);
+  };
+
   return (
     <Card>
       <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:space-y-0">
         <div className="space-y-1.5">
           <CardTitle>Upload Excel File</CardTitle>
           <CardDescription>
-            Required: Device Name, Brand, Grade, Storage, Quantity, Purchase Price, Selling Price,
-            HST, IMEI, Serial Number. Optional: Color (per unit).{" "}
-            <strong className="text-foreground font-medium">Unit-row mode</strong> (recommended for
-            multiple units of the same SKU): use Quantity{" "}
-            <span className="font-mono text-xs">1</span>, one IMEI or one serial per row, same
-            Selling Price and HST for every row that merges — matching rows combine into a single
-            inventory line with summed purchase cost and aggregated colours.{" "}
-            <strong className="text-foreground font-medium">Legacy mode</strong>: Quantity can be
-            &gt; 1 with comma- or newline-separated IMEI/serial values in the cells; one inventory
-            line per sheet row. Format IMEI as Text in Excel to avoid rounding.
+            Include the required columns (device details, quantity, pricing, HST, IMEI, serial). You
+            can upload in unit-row mode or legacy mode — see the sample file for examples. Format
+            IMEI as Text in Excel to avoid rounding.
           </CardDescription>
         </div>
         <Button
           type="button"
           variant="outline"
           className="shrink-0 gap-2"
-          onClick={() => downloadSampleProductUploadTemplate()}
+          onClick={() => setSampleDialogOpen(true)}
         >
           <Download className="h-4 w-4" />
           Download sample Excel
         </Button>
       </CardHeader>
       <CardContent className="space-y-4">
+        <Dialog open={sampleDialogOpen} onOpenChange={setSampleDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Download sample Excel</DialogTitle>
+              <DialogDescription>
+                Pick a template. Both use the same columns; the example rows show how each mode
+                works.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-3 pt-1">
+              <button
+                type="button"
+                onClick={handleDownloadUnitRowSample}
+                className="flex flex-col gap-1 rounded-lg border border-border bg-card p-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span className="text-sm font-semibold text-foreground">Unit-row mode</span>
+                <span className="text-xs text-muted-foreground">
+                  One row per device (Quantity 1). Best when each unit has its own IMEI or serial.
+                </span>
+                <span className="text-xs font-medium text-primary pt-1">Download .xlsx</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleDownloadLegacySample}
+                className="flex flex-col gap-1 rounded-lg border border-border bg-card p-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span className="text-sm font-semibold text-foreground">Legacy mode</span>
+                <span className="text-xs text-muted-foreground">
+                  One sheet row per SKU with Quantity &gt; 1 and comma-separated IMEIs or serials.
+                </span>
+                <span className="text-xs font-medium text-primary pt-1">Download .xlsx</span>
+              </button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         {!selectedFile ? (
           <div
             onDragOver={onDragOver}

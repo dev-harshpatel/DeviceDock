@@ -25,6 +25,7 @@ import {
 import { useCompany } from "@/contexts/CompanyContext";
 import { useNotificationSettings } from "@/contexts/NotificationSettingsContext";
 import { ONTARIO_TIMEZONE } from "@/lib/constants";
+import { LogoCropModal } from "@/components/modals/LogoCropModal";
 
 interface CompanySettingsForm {
   companyName: string;
@@ -67,6 +68,8 @@ export default function Settings() {
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   /** Browser `<img>` cannot send auth; private buckets need a signed URL. */
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
+  /** Object-URL of the raw file selected by the user; drives the crop modal. */
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
   const [isSavingCompany, setIsSavingCompany] = useState(false);
   const [isSavingNotifSettings, setIsSavingNotifSettings] = useState(false);
 
@@ -170,9 +173,14 @@ export default function Settings() {
     fileInputRef.current?.click();
   };
 
-  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  /**
+   * Step 1 — file selected: validate then open the crop modal instead of
+   * uploading directly. SVGs are vector so they skip cropping.
+   */
+  const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    if (fileInputRef.current) fileInputRef.current.value = "";
 
     if (!companyId) {
       toast.error("Company not loaded. Please refresh and try again.");
@@ -181,7 +189,6 @@ export default function Settings() {
 
     if (companyForm.logoUrl) {
       toast.error(TOAST_MESSAGES.SETTINGS_LOGO_REMOVE_BEFORE_UPLOAD);
-      if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
 
@@ -190,32 +197,50 @@ export default function Settings() {
       return;
     }
 
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error(TOAST_MESSAGES.SETTINGS_IMAGE_SIZE);
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Image must be under 5 MB.");
       return;
     }
 
+    // SVGs are vector — skip canvas crop and upload directly.
+    if (file.type === "image/svg+xml") {
+      void handleCroppedUpload(file);
+      return;
+    }
+
+    // Raster images — open the crop modal.
+    const objectUrl = URL.createObjectURL(file);
+    setCropSrc(objectUrl);
+  };
+
+  /**
+   * Step 2 — user confirmed crop (or SVG bypassed): upload to Supabase Storage
+   * and persist the URL.
+   */
+  const handleCroppedUpload = async (blob: Blob | File) => {
+    if (!companyId) return;
     setIsUploadingLogo(true);
+    // Release the object-URL once we have the blob.
+    if (cropSrc) {
+      URL.revokeObjectURL(cropSrc);
+      setCropSrc(null);
+    }
 
     try {
-      const fileExt = file.name.split(".").pop();
-      const fileName = `${companyId}/logo-${Date.now()}.${fileExt}`;
+      const fileName = `${companyId}/logo-${Date.now()}.png`;
       const { error: uploadError } = await supabase.storage
         .from(COMPANY_LOGOS_BUCKET)
-        .upload(fileName, file, { cacheControl: "3600", upsert: true });
+        .upload(fileName, blob, { contentType: "image/png", cacheControl: "3600", upsert: true });
 
       if (uploadError) throw uploadError;
 
       const { data: urlData } = supabase.storage.from(COMPANY_LOGOS_BUCKET).getPublicUrl(fileName);
 
-      // Persist the new logo URL immediately via upsert
-      const { error: upsertError } = await supabase.from("company_settings").upsert(
-        {
-          company_id: companyId,
-          logo_url: urlData.publicUrl,
-        } as never,
-        { onConflict: "company_id" },
-      );
+      const { error: upsertError } = await supabase
+        .from("company_settings")
+        .upsert({ company_id: companyId, logo_url: urlData.publicUrl } as never, {
+          onConflict: "company_id",
+        });
 
       if (upsertError) throw upsertError;
 
@@ -226,7 +251,14 @@ export default function Settings() {
       toast.error("Failed to upload logo");
     } finally {
       setIsUploadingLogo(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  /** Discard the crop modal without uploading. */
+  const handleCropCancel = () => {
+    if (cropSrc) {
+      URL.revokeObjectURL(cropSrc);
+      setCropSrc(null);
     }
   };
 
@@ -345,14 +377,14 @@ export default function Settings() {
                 {companyForm.logoUrl ? (
                   <div className="relative">
                     {!logoPreviewUrl ? (
-                      <div className="w-24 h-24 border border-border rounded-lg flex items-center justify-center bg-muted/50">
-                        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                      <div className="w-40 h-16 border border-border rounded-lg flex items-center justify-center bg-muted/50">
+                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                       </div>
                     ) : (
                       <img
                         src={logoPreviewUrl}
                         alt="Company Logo"
-                        className="w-24 h-24 object-contain border border-border rounded-lg bg-background"
+                        className="w-40 h-16 object-contain border border-border rounded-lg bg-background p-1"
                       />
                     )}
                     <Button
@@ -367,15 +399,15 @@ export default function Settings() {
                     </Button>
                   </div>
                 ) : (
-                  <div className="w-24 h-24 border-2 border-dashed border-border rounded-lg flex items-center justify-center bg-muted/50">
-                    <Building2 className="h-8 w-8 text-muted-foreground" />
+                  <div className="w-40 h-16 border-2 border-dashed border-border rounded-lg flex items-center justify-center bg-muted/50">
+                    <Building2 className="h-6 w-6 text-muted-foreground" />
                   </div>
                 )}
                 <div className="flex-1">
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept="image/*"
+                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
                     onChange={handleLogoUpload}
                     className="hidden"
                     id="logo-upload"
@@ -400,7 +432,8 @@ export default function Settings() {
                     )}
                   </Button>
                   <p className="text-xs text-muted-foreground mt-2">
-                    Recommended: PNG or JPG, max 2MB
+                    PNG, JPG or SVG · max 5 MB · landscape or square logos work best on invoices
+                    (avoid tall portrait images)
                   </p>
                 </div>
               </div>
@@ -634,6 +667,18 @@ export default function Settings() {
           </Button>
         </div>
       </div>
+
+      {/* Logo crop modal — shown after a raster image is selected */}
+      {cropSrc && (
+        <LogoCropModal
+          open={Boolean(cropSrc)}
+          onOpenChange={(open) => {
+            if (!open) handleCropCancel();
+          }}
+          imageSrc={cropSrc}
+          onConfirm={handleCroppedUpload}
+        />
+      )}
     </div>
   );
 }

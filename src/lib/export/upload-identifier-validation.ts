@@ -292,16 +292,17 @@ export const mergeDatabaseIdentifierConflicts = async (
     }
   }
 
-  const existingImei = new Set<string>();
-  const existingSerial = new Set<string>();
+  // Map of lowercase identifier → status; covers ALL statuses so sold devices
+  // are blocked from being re-uploaded just like in-stock ones.
+  const existingImei = new Map<string, string>();
+  const existingSerial = new Map<string, string>();
 
   for (const batch of chunkArray([...imeiValues], CHUNK)) {
     if (batch.length === 0) continue;
     const { data, error: imeiQueryError } = await db
       .from("inventory_identifiers")
-      .select("imei")
+      .select("imei, status")
       .eq("company_id", companyId)
-      .in("status", ["in_stock", "reserved"])
       .not("imei", "is", null)
       .in("imei", batch);
 
@@ -310,8 +311,8 @@ export const mergeDatabaseIdentifierConflicts = async (
       throw new Error(`Could not verify IMEI uniqueness: ${imeiQueryError.message}`);
     }
     for (const row of data ?? []) {
-      const r = row as { imei: string | null };
-      if (r.imei) existingImei.add(r.imei.toLowerCase());
+      const r = row as { imei: string | null; status: string };
+      if (r.imei) existingImei.set(r.imei.toLowerCase(), r.status);
     }
   }
 
@@ -319,9 +320,8 @@ export const mergeDatabaseIdentifierConflicts = async (
     if (batch.length === 0) continue;
     const { data, error: serialQueryError } = await db
       .from("inventory_identifiers")
-      .select("serial_number")
+      .select("serial_number, status")
       .eq("company_id", companyId)
-      .in("status", ["in_stock", "reserved"])
       .not("serial_number", "is", null)
       .in("serial_number", batch);
 
@@ -333,8 +333,8 @@ export const mergeDatabaseIdentifierConflicts = async (
       throw new Error(`Could not verify serial uniqueness: ${serialQueryError.message}`);
     }
     for (const row of data ?? []) {
-      const r = row as { serial_number: string | null };
-      if (r.serial_number) existingSerial.add(r.serial_number.toLowerCase());
+      const r = row as { serial_number: string | null; status: string };
+      if (r.serial_number) existingSerial.set(r.serial_number.toLowerCase(), r.status);
     }
   }
 
@@ -342,11 +342,25 @@ export const mergeDatabaseIdentifierConflicts = async (
     if (product.errors && product.errors.length > 0) return product;
     const extra: string[] = [];
     for (const ident of product.identifiers) {
-      if (ident.imei && existingImei.has(ident.imei.toLowerCase())) {
-        extra.push(`IMEI ${ident.imei} already exists in your inventory.`);
+      if (ident.imei) {
+        const status = existingImei.get(ident.imei.toLowerCase());
+        if (status !== undefined) {
+          extra.push(
+            status === "sold"
+              ? `IMEI ${ident.imei} has already been sold and cannot be re-added.`
+              : `IMEI ${ident.imei} already exists in your inventory (${status}).`,
+          );
+        }
       }
-      if (ident.serialNumber && existingSerial.has(ident.serialNumber.toLowerCase())) {
-        extra.push(`Serial ${ident.serialNumber} already exists in your inventory.`);
+      if (ident.serialNumber) {
+        const status = existingSerial.get(ident.serialNumber.toLowerCase());
+        if (status !== undefined) {
+          extra.push(
+            status === "sold"
+              ? `Serial ${ident.serialNumber} has already been sold and cannot be re-added.`
+              : `Serial ${ident.serialNumber} already exists in your inventory (${status}).`,
+          );
+        }
       }
     }
     if (extra.length === 0) return product;
