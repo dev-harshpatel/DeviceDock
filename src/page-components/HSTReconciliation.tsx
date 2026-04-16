@@ -189,6 +189,14 @@ export default function HSTReconciliation() {
     [salesHSTRows, avgPurchaseRate],
   );
 
+  /** Sum of “Saving” from Rate Difference Analysis (hypothetical tax at avg purchase rate − collected). */
+  const totalRateBenchmarkSaving = useMemo(() => {
+    return rateMismatches.reduce((sum, row) => {
+      const atAvgPurchaseRate = row.subtotal * (avgPurchaseRate / 100);
+      return sum + (atAvgPurchaseRate - row.hstCollected);
+    }, 0);
+  }, [rateMismatches, avgPurchaseRate]);
+
   const timelineData = useMemo(() => {
     const byMonth = new Map<string, { hstPaid: number; hstCollected: number }>();
     purchaseHSTRows.forEach((r) => {
@@ -265,6 +273,8 @@ export default function HSTReconciliation() {
               totalSalesSubtotal={totalSalesSubtotal}
               itcEffectivePercent={itcEffectivePercent}
               collectedEffectivePercent={collectedEffectivePercent}
+              avgPurchaseRate={avgPurchaseRate}
+              totalRateBenchmarkSaving={totalRateBenchmarkSaving}
             />
 
             <HSTRateBreakdown
