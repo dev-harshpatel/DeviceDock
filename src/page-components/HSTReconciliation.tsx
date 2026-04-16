@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { AlertCircle } from "lucide-react";
 import { useInventory } from "@/contexts/InventoryContext";
 import { useOrders } from "@/contexts/OrdersContext";
 import { AdminHSTSkeleton } from "@/components/skeletons/AdminHSTSkeleton";
@@ -80,6 +81,18 @@ export default function HSTReconciliation() {
     [purchaseHSTRows],
   );
 
+  /** Rows with HST % but no tax-exclusive purchase base cannot produce ITC dollars. */
+  const hasMissingPurchaseBaseForItc = useMemo(
+    () =>
+      inventory.some(
+        (item) =>
+          item.hst != null &&
+          item.hst > 0 &&
+          (item.purchasePrice == null || item.purchasePrice <= 0),
+      ),
+    [inventory],
+  );
+
   // ── HST Collected from Sales (Output Tax) ────────────────────────────────
   // Only count approved / completed orders
   const salesHSTRows = useMemo<SalesHSTRow[]>(() => {
@@ -110,6 +123,23 @@ export default function HSTReconciliation() {
     () => salesHSTRows.reduce((sum, r) => sum + r.hstCollected, 0),
     [salesHSTRows],
   );
+
+  const totalSalesSubtotal = useMemo(
+    () => salesHSTRows.reduce((sum, r) => sum + r.subtotal, 0),
+    [salesHSTRows],
+  );
+
+  /** Aggregate ITC % on purchase base (for summary display). */
+  const itcEffectivePercent = useMemo(() => {
+    if (totalPurchaseBase <= 1e-9) return null;
+    return (totalHSTPaid / totalPurchaseBase) * 100;
+  }, [totalHSTPaid, totalPurchaseBase]);
+
+  /** Aggregate effective tax % on sales subtotals. */
+  const collectedEffectivePercent = useMemo(() => {
+    if (totalSalesSubtotal <= 1e-9) return null;
+    return (totalHSTCollected / totalSalesSubtotal) * 100;
+  }, [totalHSTCollected, totalSalesSubtotal]);
 
   // Positive = you owe CRA; Negative = CRA owes you a refund
   const netHSTPosition = totalHSTCollected - totalHSTPaid;
@@ -143,11 +173,16 @@ export default function HSTReconciliation() {
       .sort((a, b) => b.rate - a.rate);
   }, [salesHSTRows]);
 
-  const avgPurchaseRate =
-    purchaseRateBreakdown.length > 0
-      ? purchaseRateBreakdown.reduce((sum, r) => sum + r.rate * r.baseAmount, 0) /
-        (totalPurchaseBase || 1)
-      : 13;
+  /** Weighted by purchase base when &gt; 0; otherwise simple average of rates (e.g. base missing). */
+  const avgPurchaseRate = useMemo(() => {
+    if (purchaseRateBreakdown.length === 0) return 13;
+    if (totalPurchaseBase > 1e-9) {
+      return (
+        purchaseRateBreakdown.reduce((sum, r) => sum + r.rate * r.baseAmount, 0) / totalPurchaseBase
+      );
+    }
+    return purchaseRateBreakdown.reduce((sum, r) => sum + r.rate, 0) / purchaseRateBreakdown.length;
+  }, [purchaseRateBreakdown, totalPurchaseBase]);
 
   const rateMismatches = useMemo(
     () => salesHSTRows.filter((r) => r.taxRatePercent > 0 && r.taxRatePercent < avgPurchaseRate),
@@ -187,10 +222,32 @@ export default function HSTReconciliation() {
             <div>
               <h2 className="text-2xl font-semibold text-foreground">HST Reconciliation</h2>
               <p className="text-sm text-muted-foreground mt-1">
-                Track HST paid on purchases (Input Tax Credits) vs HST collected from sales, and
-                calculate your net CRA remittance position.
+                Net remittance is a <span className="text-foreground font-medium">dollar</span>{" "}
+                amount: HST collected on sales minus input tax credits (ITCs) on purchases. It is
+                not a simple “rate gap” (for example 13% vs 10%). Purchase ITCs use each inventory
+                row’s{" "}
+                <span className="text-foreground font-medium">tax-exclusive Purchase Price</span> ×
+                HST %.
               </p>
             </div>
+
+            {hasMissingPurchaseBaseForItc && (
+              <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/40 rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      Purchase base missing for ITCs
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      At least one inventory item has an HST rate but Purchase Price (tax-exclusive
+                      batch cost) is empty or zero. ITCs are calculated as Purchase Price × HST%, so
+                      credits show $0 until you enter the correct purchase base on those products.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <HSTFilterBar
               dateRange={dateRange}
@@ -205,6 +262,9 @@ export default function HSTReconciliation() {
               purchaseCount={purchaseHSTRows.length}
               salesCount={salesHSTRows.length}
               totalPurchaseBase={totalPurchaseBase}
+              totalSalesSubtotal={totalSalesSubtotal}
+              itcEffectivePercent={itcEffectivePercent}
+              collectedEffectivePercent={collectedEffectivePercent}
             />
 
             <HSTRateBreakdown
