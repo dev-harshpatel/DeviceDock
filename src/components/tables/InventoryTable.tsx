@@ -139,7 +139,12 @@ export function InventoryTable({
                         >
                           {item.quantity}
                         </span>
-                        {showColorBreakdown && <ColorBreakdownPopover inventoryId={item.id} />}
+                        {showColorBreakdown && (
+                          <ColorBreakdownPopover
+                            inventoryId={item.id}
+                            stockQuantity={item.quantity}
+                          />
+                        )}
                       </div>
                     </td>
                     <td className="px-3 py-2.5 text-center align-middle font-medium text-foreground text-sm">
@@ -205,7 +210,9 @@ export function InventoryTable({
                     >
                       ×{item.quantity}
                     </span>
-                    {showColorBreakdown && <ColorBreakdownPopover inventoryId={item.id} />}
+                    {showColorBreakdown && (
+                      <ColorBreakdownPopover inventoryId={item.id} stockQuantity={item.quantity} />
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">

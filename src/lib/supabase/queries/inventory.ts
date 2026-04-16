@@ -273,6 +273,149 @@ export async function fetchAllInventory(companyId: string): Promise<InventoryIte
   return data ? data.map(dbRowToInventoryItem) : [];
 }
 
+// ── IMEI / Identifier list ────────────────────────────────────────────────
+
+export interface IdentifierListItem {
+  identifierId: string;
+  imei: string | null;
+  serialNumber: string | null;
+  status: string;
+  soldAt: string | null;
+  color: string | null;
+  deviceName: string;
+  brand: string;
+  grade: string;
+  storage: string;
+}
+
+export interface IdentifierFilters {
+  search: string;
+  grade: string;
+  storage: string;
+  status: string;
+}
+
+export const defaultIdentifierFilters: IdentifierFilters = {
+  search: "",
+  grade: "all",
+  storage: "all",
+  status: "all",
+};
+
+/**
+ * Fetch a paginated list of inventory identifiers (IMEIs), joined with their
+ * parent inventory item for device/grade/storage info.
+ *
+ * Filters on device name, grade, and storage are resolved in two steps:
+ *  1. Find matching inventory_ids from the inventory table.
+ *  2. Filter identifiers by those IDs (plus any status filter).
+ *
+ * This avoids relying on PostgREST embedded-resource filter syntax, which can
+ * be fragile with aliased joins on loosely-typed clients.
+ */
+export async function fetchPaginatedIdentifiers(
+  companyId: string,
+  filters: IdentifierFilters,
+  range: { from: number; to: number },
+): Promise<PaginatedResult<IdentifierListItem>> {
+  const hasInventoryFilters =
+    filters.search.trim() || filters.grade !== "all" || filters.storage !== "all";
+
+  // Step 1 — resolve inventory IDs when inventory-level filters are active
+  let inventoryIds: string[] | null = null;
+  if (hasInventoryFilters) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let invQ = (supabase.from("inventory") as any)
+      .select("id")
+      .eq("company_id", companyId)
+      .eq("is_active", true);
+
+    if (filters.search.trim()) {
+      invQ = invQ.ilike("device_name", `%${filters.search.trim()}%`);
+    }
+    if (filters.grade !== "all") {
+      invQ = invQ.eq("grade", filters.grade);
+    }
+    if (filters.storage !== "all") {
+      invQ = invQ.eq("storage", filters.storage);
+    }
+
+    const { data: invData, error: invErr } = await invQ;
+    if (invErr) throw invErr;
+
+    inventoryIds = ((invData ?? []) as Array<{ id: string }>).map((r) => r.id);
+    if (inventoryIds.length === 0) return { data: [], count: 0 };
+  }
+
+  // Step 2 — query identifiers
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let q = (supabase.from("inventory_identifiers") as any)
+    .select("id, imei, serial_number, status, sold_at, color, inventory_id", { count: "exact" })
+    .eq("company_id", companyId);
+
+  if (inventoryIds !== null) {
+    q = q.in("inventory_id", inventoryIds);
+  }
+  if (filters.status !== "all") {
+    q = q.eq("status", filters.status);
+  }
+
+  q = q.order("created_at", { ascending: false }).range(range.from, range.to);
+
+  const { data: rows, count, error } = await q;
+  if (error) throw error;
+
+  const identifierRows = (rows ?? []) as Array<{
+    id: string;
+    imei: string | null;
+    serial_number: string | null;
+    status: string;
+    sold_at: string | null;
+    color: string | null;
+    inventory_id: string;
+  }>;
+
+  if (identifierRows.length === 0) return { data: [], count: count ?? 0 };
+
+  // Step 3 — fetch inventory details for the unique inventory_ids in this page
+  const uniqueInvIds = Array.from(new Set(identifierRows.map((r) => r.inventory_id)));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: invDetails, error: invDetailErr } = await (supabase.from("inventory") as any)
+    .select("id, device_name, brand, grade, storage")
+    .in("id", uniqueInvIds);
+
+  if (invDetailErr) throw invDetailErr;
+
+  const invMap = new Map<
+    string,
+    { device_name: string; brand: string; grade: string; storage: string }
+  >();
+  for (const inv of invDetails ?? []) {
+    invMap.set(
+      inv.id as string,
+      inv as { device_name: string; brand: string; grade: string; storage: string },
+    );
+  }
+
+  const data: IdentifierListItem[] = identifierRows.map((row) => {
+    const inv = invMap.get(row.inventory_id);
+    return {
+      identifierId: row.id,
+      imei: row.imei,
+      serialNumber: row.serial_number,
+      status: row.status ?? "in_stock",
+      soldAt: row.sold_at,
+      color: row.color,
+      deviceName: inv?.device_name ?? "—",
+      brand: inv?.brand ?? "—",
+      grade: inv?.grade ?? "—",
+      storage: inv?.storage ?? "—",
+    };
+  });
+
+  return { data, count: count ?? 0 };
+}
+
 /**
  * Look up a device by exact IMEI across all statuses.
  */

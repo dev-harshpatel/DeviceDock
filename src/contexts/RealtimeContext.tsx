@@ -5,6 +5,8 @@ import { supabase } from "@/lib/supabase/client";
 
 interface RealtimeContextType {
   inventoryVersion: number;
+  /** Bumps on any `inventory_identifiers` change (IMEI list cache invalidation). */
+  inventoryIdentifiersVersion: number;
   notificationVersion: number;
   ordersVersion: number;
   userProfilesVersion: number;
@@ -18,6 +20,7 @@ interface RealtimeProviderProps {
 
 export function RealtimeProvider({ children }: RealtimeProviderProps) {
   const [inventoryVersion, setInventoryVersion] = useState(0);
+  const [inventoryIdentifiersVersion, setInventoryIdentifiersVersion] = useState(0);
   const [notificationVersion, setNotificationVersion] = useState(0);
   const [ordersVersion, setOrdersVersion] = useState(0);
   const [userProfilesVersion, setUserProfilesVersion] = useState(0);
@@ -27,6 +30,15 @@ export function RealtimeProvider({ children }: RealtimeProviderProps) {
       .channel("realtime-inventory")
       .on("postgres_changes", { event: "*", schema: "public", table: "inventory" }, () =>
         setInventoryVersion((prev) => prev + 1),
+      )
+      .subscribe();
+
+    const inventoryIdentifiersChannel = supabase
+      .channel("realtime-inventory-identifiers")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "inventory_identifiers" },
+        () => setInventoryIdentifiersVersion((prev) => prev + 1),
       )
       .subscribe();
 
@@ -53,6 +65,7 @@ export function RealtimeProvider({ children }: RealtimeProviderProps) {
 
     return () => {
       supabase.removeChannel(inventoryChannel);
+      supabase.removeChannel(inventoryIdentifiersChannel);
       supabase.removeChannel(notificationChannel);
       supabase.removeChannel(ordersChannel);
       supabase.removeChannel(userProfilesChannel);
@@ -61,7 +74,13 @@ export function RealtimeProvider({ children }: RealtimeProviderProps) {
 
   return (
     <RealtimeContext.Provider
-      value={{ inventoryVersion, notificationVersion, ordersVersion, userProfilesVersion }}
+      value={{
+        inventoryVersion,
+        inventoryIdentifiersVersion,
+        notificationVersion,
+        ordersVersion,
+        userProfilesVersion,
+      }}
     >
       {children}
     </RealtimeContext.Provider>
@@ -70,6 +89,7 @@ export function RealtimeProvider({ children }: RealtimeProviderProps) {
 
 const DEFAULT_REALTIME: RealtimeContextType = {
   inventoryVersion: 0,
+  inventoryIdentifiersVersion: 0,
   notificationVersion: 0,
   ordersVersion: 0,
   userProfilesVersion: 0,

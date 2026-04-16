@@ -11,6 +11,12 @@ export const queryKeys = {
   userOrdersBase: ["paginated", "userOrders"] as const,
   users: ["paginated", "users"] as const,
 
+  /** Paginated IMEI / serial identifier list (IMEI Lookup → All IMEIs) */
+  identifiersList: ["paginated", "identifiers"] as const,
+
+  identifiersPage: (companyId: string, page: number, filtersKey: string) =>
+    [...queryKeys.identifiersList, companyId, page, filtersKey] as const,
+
   // Detailed keys for caching specific page + filter combos
   inventoryPage: (page: number, filters: InventoryFilters) =>
     [

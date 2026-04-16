@@ -4,19 +4,20 @@ import { useEffect, useState } from "react";
 import { Palette, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  fetchPositiveInventoryColors,
+  type InventoryColorQuantityRow,
+} from "@/lib/inventory/inventory-colors";
 import { supabase } from "@/lib/supabase/client";
-
-interface ColorEntry {
-  color: string;
-  quantity: number;
-}
 
 interface ColorBreakdownPopoverProps {
   inventoryId: string;
+  /** When zero, colour breakdown is hidden — aggregate rows may be stale if stock was sold outside colour-aware flows. */
+  stockQuantity: number;
 }
 
-export function ColorBreakdownPopover({ inventoryId }: ColorBreakdownPopoverProps) {
-  const [colors, setColors] = useState<ColorEntry[] | null>(null);
+export function ColorBreakdownPopover({ inventoryId, stockQuantity }: ColorBreakdownPopoverProps) {
+  const [colors, setColors] = useState<InventoryColorQuantityRow[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -24,7 +25,8 @@ export function ColorBreakdownPopover({ inventoryId }: ColorBreakdownPopoverProp
   useEffect(() => {
     setColors(null);
     setError(null);
-  }, [inventoryId]);
+    setOpen(false);
+  }, [inventoryId, stockQuantity]);
 
   const handleOpen = async (nextOpen: boolean) => {
     setOpen(nextOpen);
@@ -32,19 +34,18 @@ export function ColorBreakdownPopover({ inventoryId }: ColorBreakdownPopoverProp
     setIsLoading(true);
     setError(null);
     try {
-      const { data, error: fetchError } = await (supabase as any)
-        .from("inventory_colors")
-        .select("color, quantity")
-        .eq("inventory_id", inventoryId)
-        .order("color");
-      if (fetchError) throw fetchError;
-      setColors(data ?? []);
+      const rows = await fetchPositiveInventoryColors(supabase, inventoryId);
+      setColors(rows);
     } catch {
       setError("Could not load colour data.");
     } finally {
       setIsLoading(false);
     }
   };
+
+  if (stockQuantity <= 0) {
+    return null;
+  }
 
   return (
     <Popover open={open} onOpenChange={handleOpen}>

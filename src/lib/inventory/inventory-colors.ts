@@ -56,6 +56,33 @@ export const replaceInventoryColors = async (
   if (clearError) throw clearError;
 };
 
+/** Removes all aggregate colour rows for a SKU (e.g. when stock hits zero). */
+export const deleteAllInventoryColors = async (
+  supabase: any,
+  inventoryId: string,
+): Promise<void> => {
+  const { error } = await supabase
+    .from("inventory_colors")
+    .delete()
+    .eq("inventory_id", inventoryId);
+  if (error) throw error;
+};
+
+/** Aggregate colour rows with quantity &gt; 0 for SKU-level display. */
+export const fetchPositiveInventoryColors = async (
+  supabase: any,
+  inventoryId: string,
+): Promise<InventoryColorQuantityRow[]> => {
+  const { data, error } = await supabase
+    .from("inventory_colors")
+    .select("color, quantity")
+    .eq("inventory_id", inventoryId)
+    .gt("quantity", 0)
+    .order("color");
+  if (error) throw error;
+  return ((data ?? []) as InventoryColorQuantityRow[]).filter((row) => row.quantity > 0);
+};
+
 /**
  * Merges additive colour quantities into existing DB rows (restock / additive flows).
  */

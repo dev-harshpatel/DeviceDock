@@ -1,19 +1,20 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
-import { Search, ScanLine, Tag, Printer, X, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { List, Loader2, Printer, ScanLine, Search, Tag, X } from "lucide-react";
 import { toast } from "sonner";
 import { useCompany } from "@/contexts/CompanyContext";
-import { lookupIdentifierByImei } from "@/lib/supabase/queries/inventory";
+import { fetchFilterOptions, lookupIdentifierByImei } from "@/lib/supabase/queries/inventory";
 import { TOAST_MESSAGES } from "@/lib/constants/toast-messages";
 import { formatPrice } from "@/lib/utils/formatters";
 import { cn } from "@/lib/utils";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/common/EmptyState";
 import { BarcodeLabelDialog } from "@/components/imei-lookup/BarcodeLabelDialog";
 import { BulkBarcodeLabelDialog } from "@/components/imei-lookup/BulkBarcodeLabelDialog";
+import { ImeiListTab } from "@/components/imei-lookup/ImeiListTab";
 import type { IdentifierFullLookup } from "@/types/inventory-identifiers";
 
 interface BulkImeiEntry {
@@ -74,6 +75,15 @@ function DetailField({ label, value }: DetailFieldProps) {
 export default function ImeiLookup() {
   const { companyId } = useCompany();
   const [activeTab, setActiveTab] = useState<string>("single");
+  const [storageOptions, setStorageOptions] = useState<string[]>([]);
+
+  // Fetch storage options once for the "All IMEIs" tab filter
+  useEffect(() => {
+    if (!companyId) return;
+    fetchFilterOptions(companyId)
+      .then(({ storageOptions: opts }) => setStorageOptions(opts))
+      .catch(() => {});
+  }, [companyId]);
 
   // ── Single Lookup state ──
   const [query, setQuery] = useState("");
@@ -218,7 +228,7 @@ export default function ImeiLookup() {
   }));
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col flex-1 min-h-0 h-full">
       {/* Header */}
       <div className="shrink-0 space-y-4 pb-4">
         <div className="flex items-center gap-3">
@@ -235,7 +245,11 @@ export default function ImeiLookup() {
       </div>
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col flex-1 min-h-0">
+      <Tabs
+        value={activeTab}
+        onValueChange={setActiveTab}
+        className="flex flex-col flex-1 min-h-0 overflow-hidden"
+      >
         <TabsList className="bg-muted/60 shrink-0 w-fit justify-start">
           <TabsTrigger value="single" className="gap-2 flex-1 sm:flex-none">
             <Search className="h-3.5 w-3.5" />
@@ -249,6 +263,10 @@ export default function ImeiLookup() {
                 {bulkCount}
               </span>
             )}
+          </TabsTrigger>
+          <TabsTrigger value="all" className="gap-2 flex-1 sm:flex-none">
+            <List className="h-3.5 w-3.5" />
+            All IMEIs
           </TabsTrigger>
         </TabsList>
 
@@ -463,6 +481,13 @@ export default function ImeiLookup() {
               </div>
             )}
           </div>
+        </TabsContent>
+        {/* ── All IMEIs Tab — flex layout so table scrolls and pagination stays pinned (inventory / edit products pattern) ── */}
+        <TabsContent
+          value="all"
+          className="mt-4 flex flex-1 flex-col min-h-0 overflow-hidden outline-none data-[state=inactive]:hidden"
+        >
+          {companyId && <ImeiListTab companyId={companyId} storageOptions={storageOptions} />}
         </TabsContent>
       </Tabs>
 

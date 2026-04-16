@@ -16,6 +16,7 @@ import {
   INVENTORY_ADMIN_FIELDS,
 } from "@/lib/supabase/queries";
 import { BULK_INSERT_BATCH_SIZE, INVENTORY_SORT_ORDER } from "@/lib/constants";
+import { deleteAllInventoryColors } from "@/lib/inventory/inventory-colors";
 
 interface InventoryContextType {
   inventory: InventoryItem[];
@@ -155,6 +156,10 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
         throw new Error(error.message || "Failed to update product");
       }
 
+      if (updates.quantity === 0) {
+        await deleteAllInventoryColors(supabase, id);
+      }
+
       // Reflect the change in the cache immediately so consumers see it without waiting for
       // the next background refetch (realtime will trigger a full sync shortly after).
       queryClient.setQueryData<InventoryItem[]>(queryKeys.inventoryAll(companyId), (old) =>
@@ -192,6 +197,10 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
       const { error } = await (supabase.from("inventory") as any).update(updateData).eq("id", id);
 
       if (error) throw error;
+
+      if (newQuantity === 0) {
+        await deleteAllInventoryColors(supabase, id);
+      }
 
       queryClient.setQueryData<InventoryItem[]>(queryKeys.inventoryAll(companyId), (old) =>
         (old ?? []).map((i) =>

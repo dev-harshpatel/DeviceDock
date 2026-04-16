@@ -10,11 +10,17 @@ export function useRealtimeInvalidation() {
   const queryClient = useQueryClient();
   const company = useOptionalCompany();
   const companyId = company?.companyId;
-  const { inventoryVersion, notificationVersion, ordersVersion, userProfilesVersion } =
-    useRealtimeContext();
+  const {
+    inventoryVersion,
+    inventoryIdentifiersVersion,
+    notificationVersion,
+    ordersVersion,
+    userProfilesVersion,
+  } = useRealtimeContext();
 
   const initialRef = useRef({
     inventory: inventoryVersion,
+    identifiers: inventoryIdentifiersVersion,
     notifications: notificationVersion,
     orders: ordersVersion,
     users: userProfilesVersion,
@@ -24,10 +30,16 @@ export function useRealtimeInvalidation() {
     if (inventoryVersion === initialRef.current.inventory) return;
     queryClient.invalidateQueries({ queryKey: queryKeys.inventory });
     queryClient.invalidateQueries({ queryKey: ["inventory", "all"] });
+    queryClient.invalidateQueries({ queryKey: queryKeys.identifiersList });
     if (companyId) {
       queryClient.invalidateQueries({ queryKey: queryKeys.inventoryStats(companyId) });
     }
   }, [inventoryVersion, companyId, queryClient]);
+
+  useEffect(() => {
+    if (inventoryIdentifiersVersion === initialRef.current.identifiers) return;
+    queryClient.invalidateQueries({ queryKey: queryKeys.identifiersList });
+  }, [inventoryIdentifiersVersion, queryClient]);
 
   useEffect(() => {
     if (notificationVersion === initialRef.current.notifications) return;
