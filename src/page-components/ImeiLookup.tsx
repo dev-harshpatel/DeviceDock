@@ -5,6 +5,7 @@ import { List, Loader2, Printer, ScanLine, Search, Tag, X } from "lucide-react";
 import { toast } from "sonner";
 import { useCompany } from "@/contexts/CompanyContext";
 import { fetchFilterOptions, lookupIdentifierByImei } from "@/lib/supabase/queries/inventory";
+import { useIdentifierMap } from "@/hooks/use-identifier-map";
 import { TOAST_MESSAGES } from "@/lib/constants/toast-messages";
 import { formatPrice } from "@/lib/utils/formatters";
 import { cn } from "@/lib/utils";
@@ -15,7 +16,7 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { BarcodeLabelDialog } from "@/components/imei-lookup/BarcodeLabelDialog";
 import { BulkBarcodeLabelDialog } from "@/components/imei-lookup/BulkBarcodeLabelDialog";
 import { ImeiListTab } from "@/components/imei-lookup/ImeiListTab";
-import type { IdentifierFullLookup } from "@/types/inventory-identifiers";
+import type { IdentifierFullLookup, IdentifierSaleLookup } from "@/types/inventory-identifiers";
 
 interface BulkImeiEntry {
   imei: string;
@@ -72,8 +73,14 @@ function DetailField({ label, value }: DetailFieldProps) {
   );
 }
 
+/** Convert an in-memory map hit (no soldAt) to the full lookup shape. */
+function saleLookupToFull(r: IdentifierSaleLookup): IdentifierFullLookup {
+  return { ...r, soldAt: null };
+}
+
 export default function ImeiLookup() {
   const { companyId } = useCompany();
+  const { lookup: lookupFromMap } = useIdentifierMap();
   const [activeTab, setActiveTab] = useState<string>("single");
   const [storageOptions, setStorageOptions] = useState<string[]>([]);
 
@@ -109,6 +116,15 @@ export default function ImeiLookup() {
     setSearched(true);
 
     try {
+      // Try in-memory map first (O(1), no network). Map only holds in_stock/reserved,
+      // so sold/returned/damaged devices fall through to the DB query.
+      const mapHit = lookupFromMap(trimmed);
+      if (mapHit) {
+        setResult(saleLookupToFull(mapHit));
+        setIsLoading(false);
+        return;
+      }
+
       const data = await lookupIdentifierByImei(companyId, trimmed);
       setResult(data);
       if (!data) {
@@ -119,7 +135,7 @@ export default function ImeiLookup() {
     } finally {
       setIsLoading(false);
     }
-  }, [query, companyId]);
+  }, [query, companyId, lookupFromMap]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -165,35 +181,40 @@ export default function ImeiLookup() {
     setIsBulkLoading(true);
     setBulkInput("");
 
-    const entries: BulkImeiEntry[] = [];
-    for (const imei of newImeis) {
-      try {
-        const data = await lookupIdentifierByImei(companyId, imei);
-        entries.push({
-          imei,
-          deviceName: data?.item.deviceName ?? null,
-          grade: data?.item.grade ?? null,
-          storage: data?.item.storage ?? null,
-          color: data?.color ?? null,
-          sellingPrice: data?.item.sellingPrice ?? null,
-        });
-      } catch {
-        entries.push({
-          imei,
-          deviceName: null,
-          grade: null,
-          storage: null,
-          color: null,
-          sellingPrice: null,
-        });
-      }
-    }
+    // Resolve all IMEIs in parallel: map hit (instant) or DB fallback per miss.
+    const entries = await Promise.all(
+      newImeis.map(async (imei): Promise<BulkImeiEntry> => {
+        try {
+          const mapHit = lookupFromMap(imei);
+          const data = mapHit
+            ? saleLookupToFull(mapHit)
+            : await lookupIdentifierByImei(companyId, imei);
+          return {
+            imei,
+            deviceName: data?.item.deviceName ?? null,
+            grade: data?.item.grade ?? null,
+            storage: data?.item.storage ?? null,
+            color: data?.color ?? null,
+            sellingPrice: data?.item.sellingPrice ?? null,
+          };
+        } catch {
+          return {
+            imei,
+            deviceName: null,
+            grade: null,
+            storage: null,
+            color: null,
+            sellingPrice: null,
+          };
+        }
+      }),
+    );
 
     setBulkEntries((prev) => [...prev, ...entries]);
     setIsBulkLoading(false);
     // Restore focus so the user can immediately scan/type the next IMEI.
     bulkInputRef.current?.focus();
-  }, [bulkInput, bulkEntries, companyId]);
+  }, [bulkInput, bulkEntries, companyId, lookupFromMap]);
 
   const handleBulkKeyDown = useCallback(
     (e: React.KeyboardEvent) => {

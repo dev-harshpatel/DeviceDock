@@ -33,13 +33,18 @@ export function useRealtimeInvalidation() {
     queryClient.invalidateQueries({ queryKey: queryKeys.identifiersList });
     if (companyId) {
       queryClient.invalidateQueries({ queryKey: queryKeys.inventoryStats(companyId) });
+      // Invalidate the in-memory identifier map so sold/updated devices are reflected immediately.
+      queryClient.invalidateQueries({ queryKey: queryKeys.identifierMapAll(companyId) });
     }
   }, [inventoryVersion, companyId, queryClient]);
 
   useEffect(() => {
     if (inventoryIdentifiersVersion === initialRef.current.identifiers) return;
     queryClient.invalidateQueries({ queryKey: queryKeys.identifiersList });
-  }, [inventoryIdentifiersVersion, queryClient]);
+    if (companyId) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.identifierMapAll(companyId) });
+    }
+  }, [inventoryIdentifiersVersion, companyId, queryClient]);
 
   useEffect(() => {
     if (notificationVersion === initialRef.current.notifications) return;
