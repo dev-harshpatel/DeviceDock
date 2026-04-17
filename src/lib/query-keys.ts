@@ -14,6 +14,9 @@ export const queryKeys = {
   /** Paginated IMEI / serial identifier list (IMEI Lookup → All IMEIs) */
   identifiersList: ["paginated", "identifiers"] as const,
 
+  /** Full (unpaginated) identifier map for O(1) in-memory lookup — keyed by companyId */
+  identifierMapAll: (companyId: string) => ["identifiers", "map", companyId] as const,
+
   identifiersPage: (companyId: string, page: number, filtersKey: string) =>
     [...queryKeys.identifiersList, companyId, page, filtersKey] as const,
 

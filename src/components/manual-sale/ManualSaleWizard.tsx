@@ -44,6 +44,7 @@ import type {
   IdentifierScanGroup,
   ScannedIdentifierUnit,
 } from "@/components/manual-sale/manual-sale-types";
+import { useIdentifierMap } from "@/hooks/use-identifier-map";
 import { supabase } from "@/lib/supabase/client";
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
@@ -142,6 +143,7 @@ export function ManualSaleWizard({
     markInventoryIdentifierSold,
     revertInventoryIdentifierSold,
   } = useInventory();
+  const { lookup: lookupFromMap } = useIdentifierMap();
   const { createManualOrder, patchManualSaleOrderDetails, updateManualOrder } = useOrders();
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -672,67 +674,173 @@ export function ManualSaleWizard({
       toast.error("Enter an IMEI or serial number.");
       return;
     }
+
+    const queries = q
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const lookupOpts =
+      isEdit && allowedSoldIdentifierIdsRef.current.length > 0
+        ? { allowSoldIdentifierIds: allowedSoldIdentifierIdsRef.current }
+        : undefined;
+
+    /**
+     * Try in-memory map first (O(1), no network). Falls back to DB only when
+     * the map misses — this covers edit mode (sold identifiers not in map) and
+     * the cold window before the map has loaded.
+     */
+    const resolveIdentifier = async (raw: string) => {
+      const hit = lookupFromMap(raw);
+      if (hit) return hit;
+      return lookupIdentifierForSale(raw, lookupOpts);
+    };
+
     setIdentifierLookupLoading(true);
     try {
-      const found = await lookupIdentifierForSale(
-        q,
-        isEdit && allowedSoldIdentifierIdsRef.current.length > 0
-          ? { allowSoldIdentifierIds: allowedSoldIdentifierIdsRef.current }
-          : undefined,
-      );
-      if (!found) {
-        toast.error("No unit found with that IMEI or serial number.");
-        return;
-      }
-      if (identifierUnitsFlat.some((l) => l.inventoryIdentifierId === found.identifierId)) {
-        toast.error("This unit is already added to this sale.");
-        return;
-      }
-      const unit: ScannedIdentifierUnit = {
-        id: crypto.randomUUID(),
-        inventoryIdentifierId: found.identifierId,
-        displayLabel: found.imei ?? found.serialNumber ?? q,
-        color: found.color,
-      };
-      const invId = found.item.id;
-      const live = inventory.find((i) => i.id === invId) ?? found.item;
-      const nextScannedCount = (scannedUnitsByInventoryId[invId] ?? 0) + 1;
-      const browseCap = Math.max(0, getEffectiveStock(live) - nextScannedCount);
+      if (queries.length === 1) {
+        // ── Single IMEI — map-first then DB fallback ────────────────────
+        const found = await resolveIdentifier(queries[0]);
+        if (!found) {
+          toast.error("No unit found with that IMEI or serial number.");
+          return;
+        }
+        if (identifierUnitsFlat.some((l) => l.inventoryIdentifierId === found.identifierId)) {
+          toast.error("This unit is already added to this sale.");
+          return;
+        }
+        const unit: ScannedIdentifierUnit = {
+          id: crypto.randomUUID(),
+          inventoryIdentifierId: found.identifierId,
+          displayLabel: found.imei ?? found.serialNumber ?? queries[0],
+          color: found.color,
+        };
+        const invId = found.item.id;
+        const live = inventory.find((i) => i.id === invId) ?? found.item;
+        const nextScannedCount = (scannedUnitsByInventoryId[invId] ?? 0) + 1;
+        const browseCap = Math.max(0, getEffectiveStock(live) - nextScannedCount);
 
-      setIdentifierGroups((prev) => {
-        const idx = prev.findIndex((g) => g.inventoryId === invId);
-        if (idx >= 0) {
-          const next = [...prev];
-          next[idx] = { ...next[idx], units: [...next[idx].units, unit] };
-          return next;
+        setIdentifierGroups((prev) => {
+          const idx = prev.findIndex((g) => g.inventoryId === invId);
+          if (idx >= 0) {
+            const next = [...prev];
+            next[idx] = { ...next[idx], units: [...next[idx].units, unit] };
+            return next;
+          }
+          return [...prev, { inventoryId: invId, item: found.item, units: [unit] }];
+        });
+        setSelectedItems((prevSel) => {
+          const line = prevSel[invId];
+          if (!line) return prevSel;
+          if (browseCap <= 0) {
+            const next = { ...prevSel };
+            delete next[invId];
+            return next;
+          }
+          if (line.quantity > browseCap) {
+            return { ...prevSel, [invId]: { ...line, item: live, quantity: browseCap } };
+          }
+          return prevSel;
+        });
+        setIdentifierQuery("");
+        toast.success(`Added: ${unit.displayLabel}`);
+      } else {
+        // ── Multiple comma-separated IMEIs — batch lookup ───────────────
+        type BatchResult = {
+          found: NonNullable<Awaited<ReturnType<typeof lookupIdentifierForSale>>>;
+          unit: ScannedIdentifierUnit;
+        };
+
+        const results: BatchResult[] = [];
+        const notFound: string[] = [];
+        const duplicates: string[] = [];
+        const failed: string[] = [];
+        // Track IDs added within this batch to catch intra-batch duplicates
+        const batchAddedIds = new Set<string>();
+
+        for (const rawQ of queries) {
+          try {
+            const found = await resolveIdentifier(rawQ);
+            if (!found) {
+              notFound.push(rawQ);
+              continue;
+            }
+            if (
+              identifierUnitsFlat.some((l) => l.inventoryIdentifierId === found.identifierId) ||
+              batchAddedIds.has(found.identifierId)
+            ) {
+              duplicates.push(rawQ);
+              continue;
+            }
+            batchAddedIds.add(found.identifierId);
+            results.push({
+              found,
+              unit: {
+                id: crypto.randomUUID(),
+                inventoryIdentifierId: found.identifierId,
+                displayLabel: found.imei ?? found.serialNumber ?? rawQ,
+                color: found.color,
+              },
+            });
+          } catch {
+            failed.push(rawQ);
+          }
         }
-        return [
-          ...prev,
-          {
-            inventoryId: invId,
-            item: found.item,
-            units: [unit],
-          },
-        ];
-      });
-      setSelectedItems((prevSel) => {
-        const line = prevSel[invId];
-        if (!line) return prevSel;
-        if (browseCap <= 0) {
-          const next = { ...prevSel };
-          delete next[invId];
-          return next;
+
+        if (results.length > 0) {
+          // Count additions per inventoryId to adjust browse caps
+          const addedCountByInvId = new Map<string, number>();
+          for (const { found } of results) {
+            const id = found.item.id;
+            addedCountByInvId.set(id, (addedCountByInvId.get(id) ?? 0) + 1);
+          }
+
+          setIdentifierGroups((prev) => {
+            let next = [...prev];
+            for (const { found, unit } of results) {
+              const invId = found.item.id;
+              const idx = next.findIndex((g) => g.inventoryId === invId);
+              if (idx >= 0) {
+                next[idx] = { ...next[idx], units: [...next[idx].units, unit] };
+              } else {
+                next = [...next, { inventoryId: invId, item: found.item, units: [unit] }];
+              }
+            }
+            return next;
+          });
+
+          setSelectedItems((prevSel) => {
+            const next = { ...prevSel };
+            for (const [invId, addCount] of addedCountByInvId) {
+              const live =
+                inventory.find((i) => i.id === invId) ??
+                results.find((r) => r.found.item.id === invId)!.found.item;
+              const nextScanned = (scannedUnitsByInventoryId[invId] ?? 0) + addCount;
+              const browseCap = Math.max(0, getEffectiveStock(live) - nextScanned);
+              const line = next[invId];
+              if (line) {
+                if (browseCap <= 0) {
+                  delete next[invId];
+                } else if (line.quantity > browseCap) {
+                  next[invId] = { ...line, item: live, quantity: browseCap };
+                }
+              }
+            }
+            return next;
+          });
+
+          setIdentifierQuery("");
+          toast.success(`Added ${results.length} unit${results.length > 1 ? "s" : ""}`);
         }
-        if (line.quantity > browseCap) {
-          return {
-            ...prevSel,
-            [invId]: { ...line, item: live, quantity: browseCap },
-          };
+        if (notFound.length > 0) {
+          toast.error(`Not found: ${notFound.join(", ")}`);
         }
-        return prevSel;
-      });
-      setIdentifierQuery("");
-      toast.success(`Added: ${unit.displayLabel}`);
+        if (duplicates.length > 0) {
+          toast.error(`Already in sale: ${duplicates.join(", ")}`);
+        }
+        if (failed.length > 0) {
+          toast.error(`Lookup failed for: ${failed.join(", ")}`);
+        }
+      }
     } catch (err) {
       toastError(err, "Lookup failed. Please try again.");
     } finally {
@@ -934,12 +1042,13 @@ export function ManualSaleWizard({
                     Sell by IMEI or serial
                   </div>
                   <p className="text-xs text-muted-foreground leading-relaxed">
-                    Exact match only. Must be in stock. Mixes with browse selections on the right.
+                    Exact match only. Must be in stock. Paste comma-separated IMEIs to add multiple
+                    at once.
                   </p>
                 </div>
                 <div className="flex gap-2">
                   <Input
-                    placeholder="Type or scan IMEI / serial"
+                    placeholder="IMEI / serial — or paste multiple comma-separated"
                     value={identifierQuery}
                     onChange={(e) => setIdentifierQuery(e.target.value)}
                     onKeyDown={(e) => {

@@ -297,15 +297,35 @@ export const mergeDatabaseIdentifierConflicts = async (
   const existingImei = new Map<string, string>();
   const existingSerial = new Map<string, string>();
 
-  for (const batch of chunkArray([...imeiValues], CHUNK)) {
-    if (batch.length === 0) continue;
-    const { data, error: imeiQueryError } = await db
-      .from("inventory_identifiers")
-      .select("imei, status")
-      .eq("company_id", companyId)
-      .not("imei", "is", null)
-      .in("imei", batch);
+  // Fire all IMEI batches and all serial batches in parallel (two Promise.all in parallel).
+  const [imeiResults, serialResults] = await Promise.all([
+    Promise.all(
+      chunkArray([...imeiValues], CHUNK)
+        .filter((b) => b.length > 0)
+        .map((batch) =>
+          db
+            .from("inventory_identifiers")
+            .select("imei, status")
+            .eq("company_id", companyId)
+            .not("imei", "is", null)
+            .in("imei", batch),
+        ),
+    ),
+    Promise.all(
+      chunkArray([...serialValues], CHUNK)
+        .filter((b) => b.length > 0)
+        .map((batch) =>
+          db
+            .from("inventory_identifiers")
+            .select("serial_number, status")
+            .eq("company_id", companyId)
+            .not("serial_number", "is", null)
+            .in("serial_number", batch),
+        ),
+    ),
+  ]);
 
+  for (const { data, error: imeiQueryError } of imeiResults) {
     if (imeiQueryError) {
       console.error("[upload] inventory_identifiers IMEI check failed:", imeiQueryError.message);
       throw new Error(`Could not verify IMEI uniqueness: ${imeiQueryError.message}`);
@@ -316,15 +336,7 @@ export const mergeDatabaseIdentifierConflicts = async (
     }
   }
 
-  for (const batch of chunkArray([...serialValues], CHUNK)) {
-    if (batch.length === 0) continue;
-    const { data, error: serialQueryError } = await db
-      .from("inventory_identifiers")
-      .select("serial_number, status")
-      .eq("company_id", companyId)
-      .not("serial_number", "is", null)
-      .in("serial_number", batch);
-
+  for (const { data, error: serialQueryError } of serialResults) {
     if (serialQueryError) {
       console.error(
         "[upload] inventory_identifiers serial check failed:",

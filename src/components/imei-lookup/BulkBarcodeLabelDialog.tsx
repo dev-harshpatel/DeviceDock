@@ -129,30 +129,27 @@ export function BulkBarcodeLabelDialog({
 
         const hasText = !!(deviceName || metaLine);
         const hasPrice = priceValue != null && !isNaN(priceValue);
-        const gridTemplateColumns =
-          hasText && hasPrice
-            ? "minmax(0, 1fr) minmax(0, 1.15fr) auto"
-            : hasText && !hasPrice
-              ? "minmax(0, 1fr) minmax(0, 1.15fr)"
-              : !hasText && hasPrice
-                ? "minmax(0, 1.15fr) auto"
-                : "minmax(0, 1fr)";
 
-        const textBlock =
-          deviceName || metaLine
-            ? `<div class="label-text">` +
-              (deviceName ? `<div class="device-name">${escapeHtml(deviceName)}</div>` : "") +
-              (metaLine ? `<div class="meta">${escapeHtml(metaLine)}</div>` : "") +
+        // Use split (space-between) layout when price is shown; centered otherwise.
+        const topClass = hasPrice ? "label-top-split" : "label-top-centered";
+        const textClass = hasPrice ? "label-text" : "label-text-centered";
+        const topBlock =
+          hasText || hasPrice
+            ? `<div class="${topClass}">` +
+              (hasText
+                ? `<div class="${textClass}">` +
+                  (deviceName ? `<div class="device-name">${escapeHtml(deviceName)}</div>` : "") +
+                  (metaLine ? `<div class="meta">${escapeHtml(metaLine)}</div>` : "") +
+                  `</div>`
+                : "") +
+              (hasPrice ? `<div class="price">$${(priceValue as number).toFixed(2)}</div>` : "") +
               `</div>`
             : "";
 
         return (
-          `<section class="label" style="grid-template-columns: ${gridTemplateColumns}">` +
-          textBlock +
+          `<section class="label">` +
+          topBlock +
           `<div class="barcode-wrap"><img class="barcode-img" src="${src}" alt="barcode" /></div>` +
-          (priceValue != null && !isNaN(priceValue)
-            ? `<div class="price">$${priceValue.toFixed(2)}</div>`
-            : "") +
           `</section>`
         );
       })
@@ -172,10 +169,11 @@ export function BulkBarcodeLabelDialog({
               width: ${widthMm}mm;
               height: ${heightMm}mm;
               box-sizing: border-box;
-              padding: 0.75mm 2mm;
-              display: grid;
-              align-items: center;
-              column-gap: 1.5mm;
+              padding: 0.75mm 1.5mm 0.5mm;
+              display: flex;
+              flex-direction: column;
+              justify-content: center;
+              gap: 0.5mm;
               page-break-after: always;
               break-after: page;
               overflow: hidden;
@@ -184,56 +182,72 @@ export function BulkBarcodeLabelDialog({
               page-break-after: auto;
               break-after: auto;
             }
+            /* Shared top-row base */
+            .label-top-centered, .label-top-split {
+              display: flex;
+              align-items: center;
+              gap: 1.5mm;
+              flex-shrink: 0;
+              width: 100%;
+            }
+            /* No price → center the text block */
+            .label-top-centered { justify-content: center; }
+            /* Price present → text left, price right */
+            .label-top-split { justify-content: space-between; }
             .label-text {
-              min-width: 0;
               display: flex;
               flex-direction: column;
-              justify-content: center;
-              align-self: center;
-              gap: 0.25mm;
+              gap: 0.2mm;
+              min-width: 0;
+              flex: 1;
+            }
+            .label-text-centered {
+              display: flex;
+              flex-direction: column;
+              gap: 0.2mm;
+              min-width: 0;
+              align-items: center;
             }
             .device-name {
-              font-size: 6pt;
+              font-size: 7.5pt;
               font-weight: 700;
               font-family: Arial, sans-serif;
-              text-align: left;
-              line-height: 1.1;
-              max-width: 100%;
+              line-height: 1.2;
               white-space: nowrap;
               overflow: hidden;
               text-overflow: ellipsis;
             }
+            .label-text-centered .device-name,
+            .label-text-centered .meta { text-align: center; }
             .meta {
-              font-size: 5pt;
+              font-size: 6.5pt;
               font-family: Arial, sans-serif;
-              text-align: left;
               color: #333;
-              line-height: 1.1;
+              line-height: 1.2;
               white-space: nowrap;
-              overflow: hidden;
-              text-overflow: ellipsis;
             }
             .barcode-wrap {
-              min-width: 0;
+              flex: 1;
               min-height: 0;
-              height: 100%;
               display: flex;
               align-items: center;
               justify-content: center;
+              overflow: hidden;
             }
             .barcode-img {
-              max-width: 100%;
-              max-height: 100%;
-              width: auto;
+              width: 100%;
               height: auto;
+              display: block;
+              max-height: 100%;
               object-fit: contain;
             }
             .price {
-              font-size: 7pt;
+              font-size: 7.5pt;
               font-weight: 700;
               font-family: Arial, sans-serif;
-              text-align: right;
               white-space: nowrap;
+              text-align: right;
+              flex-shrink: 0;
               align-self: center;
             }
           </style>
@@ -280,8 +294,8 @@ export function BulkBarcodeLabelDialog({
                     height: IMEI_BARCODE_HEIGHT,
                     displayValue: true,
                     font: "Arial",
-                    fontSize: 12,
-                    margin: 6,
+                    fontSize: 10,
+                    margin: 4,
                   });
                 } catch {
                   // Invalid input — canvas stays blank

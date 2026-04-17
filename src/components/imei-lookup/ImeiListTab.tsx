@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Filter, RotateCcw, Search, X } from "lucide-react";
+import { Copy, Filter, RotateCcw, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { GRADES, GRADE_LABELS } from "@/lib/constants/grades";
 import { TOAST_MESSAGES } from "@/lib/constants/toast-messages";
@@ -18,6 +18,7 @@ import { usePaginatedReactQuery } from "@/hooks/use-paginated-react-query";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Select,
   SelectContent,
@@ -57,6 +58,51 @@ function StatusBadge({ status }: { status: string }) {
     >
       {label}
     </span>
+  );
+}
+
+interface CopyIdentifierValueProps {
+  ariaLabel: string;
+  tooltipLabel: string;
+  value: string | null;
+}
+
+function CopyIdentifierValue({ ariaLabel, tooltipLabel, value }: CopyIdentifierValueProps) {
+  const trimmed = value?.trim() ?? "";
+
+  const handleCopy = async () => {
+    if (!trimmed) return;
+    try {
+      await navigator.clipboard.writeText(trimmed);
+      toast.success("Copied to clipboard");
+    } catch {
+      toast.error(TOAST_MESSAGES.ERROR_TRY_AGAIN);
+    }
+  };
+
+  if (!trimmed) {
+    return <span className="text-muted-foreground">—</span>;
+  }
+
+  return (
+    <div className="flex items-center gap-1 min-w-0">
+      <span className="font-mono text-xs text-foreground truncate">{trimmed}</span>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+            onClick={handleCopy}
+            aria-label={ariaLabel}
+          >
+            <Copy className="h-3.5 w-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="top">{tooltipLabel}</TooltipContent>
+      </Tooltip>
+    </div>
   );
 }
 
@@ -390,11 +436,19 @@ export function ImeiListTab({ companyId, storageOptions }: ImeiListTabProps) {
                         key={item.identifierId}
                         className="hover:bg-table-hover transition-colors"
                       >
-                        <td className="px-4 py-3 font-mono text-xs text-foreground">
-                          {item.imei ?? <span className="text-muted-foreground">—</span>}
+                        <td className="px-4 py-3">
+                          <CopyIdentifierValue
+                            ariaLabel="Copy IMEI"
+                            tooltipLabel="Copy IMEI"
+                            value={item.imei}
+                          />
                         </td>
-                        <td className="px-4 py-3 font-mono text-xs text-foreground">
-                          {item.serialNumber ?? <span className="text-muted-foreground">—</span>}
+                        <td className="px-4 py-3">
+                          <CopyIdentifierValue
+                            ariaLabel="Copy Sr. No."
+                            tooltipLabel="Copy Sr. No."
+                            value={item.serialNumber}
+                          />
                         </td>
                         <td className="px-4 py-3">
                           <div className="font-medium text-foreground">{item.deviceName}</div>
@@ -429,15 +483,21 @@ export function ImeiListTab({ companyId, storageOptions }: ImeiListTabProps) {
                     <StatusBadge status={item.status} />
                   </div>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-xs text-muted-foreground">IMEI</p>
-                      <p className="font-mono text-xs text-foreground">{item.imei ?? "—"}</p>
+                      <CopyIdentifierValue
+                        ariaLabel="Copy IMEI"
+                        tooltipLabel="Copy IMEI"
+                        value={item.imei}
+                      />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-xs text-muted-foreground">Serial #</p>
-                      <p className="font-mono text-xs text-foreground">
-                        {item.serialNumber ?? "—"}
-                      </p>
+                      <CopyIdentifierValue
+                        ariaLabel="Copy Sr. No."
+                        tooltipLabel="Copy Sr. No."
+                        value={item.serialNumber}
+                      />
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Grade</p>
