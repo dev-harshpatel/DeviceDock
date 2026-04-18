@@ -24,6 +24,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -72,6 +73,7 @@ interface ProductForm {
   sellingPrice: string;
   imei: string;
   serialNumber: string;
+  damageNote: string;
 }
 
 type BulkRowStatus = "pending" | "valid" | "invalid";
@@ -96,6 +98,7 @@ const defaultForm: ProductForm = {
   sellingPrice: "",
   imei: "",
   serialNumber: "",
+  damageNote: "",
 };
 
 export function AddProductModal({
@@ -300,6 +303,7 @@ export function AddProductModal({
       sellingPrice: item.sellingPrice.toString(),
       imei: "",
       serialNumber: "",
+      damageNote: "",
     });
     setComboboxOpen(false);
   }, []);
@@ -712,6 +716,8 @@ export function AddProductModal({
       }
       // ────────────────────────────────────────────────────────────────────────
 
+      const damageNoteValue = form.damageNote.trim() || null;
+
       if (selectedExisting && hasIdentifier) {
         // ── Case 1: Scan a new unit of an existing device configuration ──────
         // Increment the shared quantity counter and register the new identifier.
@@ -737,6 +743,7 @@ export function AddProductModal({
             identifier.imei,
             identifier.serialNumber,
             getColorForIdentifier(identifier.imei, identifier.serialNumber),
+            damageNoteValue,
           );
         }
         savedInventoryId = selectedExisting.id;
@@ -808,6 +815,7 @@ export function AddProductModal({
               identifier.imei,
               identifier.serialNumber,
               getColorForIdentifier(identifier.imei, identifier.serialNumber),
+              damageNoteValue,
             );
           }
         }
@@ -1086,6 +1094,29 @@ export function AddProductModal({
                   </Select>
                 </div>
 
+                {/* Damage Note — D grade only */}
+                {form.grade === "D" && (
+                  <div className="col-span-2 space-y-1.5">
+                    <Label
+                      htmlFor="ap-damage-note"
+                      className="text-sm font-medium text-destructive"
+                    >
+                      Damage Note
+                    </Label>
+                    <Textarea
+                      id="ap-damage-note"
+                      placeholder="Describe the damage (e.g. cracked screen, faulty charging port, back glass broken…)"
+                      value={form.damageNote}
+                      onChange={(e) => handleField("damageNote", e.target.value)}
+                      rows={3}
+                      className="resize-none text-sm border-destructive/40 focus-visible:ring-destructive/30"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      This note will be stored per unit and shown in the IMEI list and on orders.
+                    </p>
+                  </div>
+                )}
+
                 {/* Storage */}
                 <div className="space-y-1.5">
                   <Label htmlFor="ap-storage" className="text-sm font-medium">
@@ -1266,6 +1297,16 @@ export function AddProductModal({
                     <dt className="text-muted-foreground">Selling Price</dt>
                     <dd className="font-medium">{formatPrice(Number(form.sellingPrice) || 0)}</dd>
                   </div>
+                  {form.grade === "D" && (
+                    <div className="col-span-2 space-y-1">
+                      <dt className="text-muted-foreground text-destructive">Damage Note</dt>
+                      <dd className="font-medium text-sm">
+                        {form.damageNote.trim() || (
+                          <span className="text-muted-foreground italic">None provided</span>
+                        )}
+                      </dd>
+                    </div>
+                  )}
                 </dl>
                 {warnBothImeiAndSerialForSingleQuantity && (
                   <p

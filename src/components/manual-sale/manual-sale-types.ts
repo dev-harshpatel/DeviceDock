@@ -5,6 +5,7 @@ export interface ScannedIdentifierUnit {
   inventoryIdentifierId: string;
   displayLabel: string;
   color?: string | null;
+  damageNote?: string | null;
 }
 
 /** Scanned units grouped by inventory row (same device / grade / storage). */

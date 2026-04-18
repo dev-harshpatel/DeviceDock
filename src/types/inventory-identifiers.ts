@@ -7,6 +7,7 @@ export interface IdentifierSaleLookup {
   serialNumber: string | null;
   status: string;
   color: string | null;
+  damageNote: string | null;
   item: InventoryItem;
 }
 
@@ -18,5 +19,6 @@ export interface IdentifierFullLookup {
   status: string;
   soldAt: string | null;
   color: string | null;
+  damageNote: string | null;
   item: InventoryItem;
 }

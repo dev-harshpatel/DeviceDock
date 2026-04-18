@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { AlertCircle, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+const hasDamageNotes = (products: ParsedProduct[]) => products.some((p) => p.damageNote);
+
 interface UploadPreviewTableProps {
   products: ParsedProduct[];
   className?: string;
@@ -21,6 +23,7 @@ export function UploadPreviewTable({ products, className }: UploadPreviewTablePr
   const validProducts = products.filter((p) => !p.errors || p.errors.length === 0);
   const invalidProducts = products.filter((p) => p.errors && p.errors.length > 0);
   const { legacyRows, unitGroups } = partitionParsedProductsForUpload(validProducts);
+  const showDamageNoteCol = hasDamageNotes(products);
   const inventoryLinesAfterUpload = legacyRows.length + unitGroups.length;
   const unitRowSheetCount = validProducts.filter((p) => p.parseMode === "unit_row").length;
 
@@ -119,6 +122,11 @@ export function UploadPreviewTable({ products, className }: UploadPreviewTablePr
                 <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-4">
                   Color
                 </th>
+                {showDamageNoteCol && (
+                  <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-4">
+                    Damage Note
+                  </th>
+                )}
                 <th className="text-center text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-4">
                   Row format
                 </th>
@@ -201,6 +209,17 @@ export function UploadPreviewTable({ products, className }: UploadPreviewTablePr
                         ? product.identifiers[0].color
                         : product.colorCellRaw?.trim() || "—"}
                     </td>
+                    {showDamageNoteCol && (
+                      <td className="px-4 py-4 text-sm max-w-[180px]">
+                        {product.damageNote ? (
+                          <span className="text-destructive leading-snug line-clamp-2">
+                            {product.damageNote}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                    )}
                     <td className="px-4 py-4 text-center">
                       <Badge
                         variant="secondary"
@@ -314,6 +333,12 @@ export function UploadPreviewTable({ products, className }: UploadPreviewTablePr
                   </Badge>
                 </div>
               </div>
+              {product.damageNote && (
+                <div className="mt-3 flex items-start gap-1.5 rounded border border-destructive/30 bg-destructive/10 px-2.5 py-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0 mt-0.5" />
+                  <p className="text-xs text-destructive leading-snug">{product.damageNote}</p>
+                </div>
+              )}
             </div>
           );
         })}

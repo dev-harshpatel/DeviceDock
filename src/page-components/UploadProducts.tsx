@@ -271,6 +271,7 @@ export default function UploadProducts() {
               ident.imei,
               ident.serialNumber,
               ident.color ?? undefined,
+              ident.damageNote ?? parsed.damageNote ?? undefined,
             );
           }
           return true;
@@ -317,6 +318,7 @@ export default function UploadProducts() {
                 ident.imei,
                 ident.serialNumber,
                 ident.color ?? undefined,
+                ident.damageNote ?? parsed.damageNote ?? undefined,
               );
             }
             const colorRows = aggregateColorsFromUnitGroup(group);

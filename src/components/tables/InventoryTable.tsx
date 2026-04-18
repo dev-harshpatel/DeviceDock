@@ -5,6 +5,7 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { GradeBadge } from "@/components/common/GradeBadge";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { ColorBreakdownPopover } from "@/components/common/ColorBreakdownPopover";
+import { ClickableGradeBadge } from "@/components/common/ClickableGradeBadge";
 import { cn } from "@/lib/utils";
 
 const formatPriceWithoutCurrencySuffix = (value: number): string => {
@@ -122,7 +123,11 @@ export function InventoryTable({
                       <span className="font-medium text-foreground text-sm">{item.deviceName}</span>
                     </td>
                     <td className="px-3 py-2.5 text-center align-middle">
-                      <GradeBadge grade={item.grade} />
+                      <ClickableGradeBadge
+                        grade={item.grade}
+                        inventoryId={item.id}
+                        deviceName={item.deviceName}
+                      />
                     </td>
                     <td className="px-3 py-2.5 text-center align-middle text-sm text-foreground">
                       {item.storage}
@@ -197,7 +202,11 @@ export function InventoryTable({
               {/* Row 2: Grade, Storage, Qty, Status, Selling Price */}
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
-                  <GradeBadge grade={item.grade} />
+                  <ClickableGradeBadge
+                    grade={item.grade}
+                    inventoryId={item.id}
+                    deviceName={item.deviceName}
+                  />
                   <span className="text-xs text-muted-foreground shrink-0">{item.storage}</span>
                   <div className="flex items-center gap-1 shrink-0">
                     <span
