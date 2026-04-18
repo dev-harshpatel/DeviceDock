@@ -17,7 +17,9 @@ async function fetchAllActiveIdentifiers(companyId: string): Promise<IdentifierS
   // because they are not valid for a new sale.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase.from("inventory_identifiers") as any)
-    .select(`id, imei, serial_number, status, color, inventory!inner(${INVENTORY_ADMIN_FIELDS})`)
+    .select(
+      `id, imei, serial_number, status, color, damage_note, inventory!inner(${INVENTORY_ADMIN_FIELDS})`,
+    )
     .eq("company_id", companyId)
     .in("status", ["in_stock", "reserved"]);
 
@@ -30,6 +32,7 @@ async function fetchAllActiveIdentifiers(companyId: string): Promise<IdentifierS
     serialNumber: (row.serial_number as string | null) ?? null,
     status: String(row.status ?? "in_stock"),
     color: (row.color as string | null) ?? null,
+    damageNote: (row.damage_note as string | null) ?? null,
     item: dbRowToInventoryItem(row.inventory),
   }));
 }

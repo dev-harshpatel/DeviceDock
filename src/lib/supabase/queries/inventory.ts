@@ -282,6 +282,7 @@ export interface IdentifierListItem {
   status: string;
   soldAt: string | null;
   color: string | null;
+  damageNote: string | null;
   deviceName: string;
   brand: string;
   grade: string;
@@ -350,7 +351,9 @@ export async function fetchPaginatedIdentifiers(
   // Step 2 — query identifiers
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let q = (supabase.from("inventory_identifiers") as any)
-    .select("id, imei, serial_number, status, sold_at, color, inventory_id", { count: "exact" })
+    .select("id, imei, serial_number, status, sold_at, color, damage_note, inventory_id", {
+      count: "exact",
+    })
     .eq("company_id", companyId);
 
   if (inventoryIds !== null) {
@@ -372,6 +375,7 @@ export async function fetchPaginatedIdentifiers(
     status: string;
     sold_at: string | null;
     color: string | null;
+    damage_note: string | null;
     inventory_id: string;
   }>;
 
@@ -406,6 +410,7 @@ export async function fetchPaginatedIdentifiers(
       status: row.status ?? "in_stock",
       soldAt: row.sold_at,
       color: row.color,
+      damageNote: row.damage_note,
       deviceName: inv?.device_name ?? "—",
       brand: inv?.brand ?? "—",
       grade: inv?.grade ?? "—",
@@ -428,7 +433,7 @@ export async function lookupIdentifierByImei(
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: row, error } = await (supabase.from("inventory_identifiers") as any)
-    .select("id, inventory_id, imei, serial_number, status, sold_at, color")
+    .select("id, inventory_id, imei, serial_number, status, sold_at, color, damage_note")
     .eq("company_id", companyId)
     .eq("imei", trimmed)
     .maybeSingle();
@@ -472,6 +477,7 @@ export async function lookupIdentifierByImei(
     status: String(row.status ?? "in_stock"),
     soldAt: (row.sold_at as string | null) ?? null,
     color,
+    damageNote: (row.damage_note as string | null) ?? null,
     item: dbRowToInventoryItem(invRow),
   };
 }

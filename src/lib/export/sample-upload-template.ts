@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 
-/** Column order matches `parseExcelFile` in `parser.ts` (IMEI / Serial / optional Color). */
+/** Column order matches `parseExcelFile` in `parser.ts` (IMEI / Serial / optional Color / optional Damage Note). */
 const SAMPLE_HEADERS = [
   "Device Name",
   "Brand",
@@ -13,6 +13,7 @@ const SAMPLE_HEADERS = [
   "IMEI",
   "Serial Number",
   "Color",
+  "Damage Note",
 ] as const;
 
 const COLUMN_WIDTHS = [
@@ -27,16 +28,32 @@ const COLUMN_WIDTHS = [
   { wch: 36 },
   { wch: 16 },
   { wch: 12 },
+  { wch: 30 },
 ];
 
 /**
  * Three unit-rows (Qty 1 each) for the same SKU — merge into one inventory line.
  * Purchase Price differs per row to show that total batch cost = sum ($500 + $510 + $490 = $1500).
+ * Fourth row is a D-grade example showing the optional Damage Note column.
  */
 const UNIT_ROW_SAMPLE_ROWS: (string | number)[][] = [
-  ["Google Pixel 8", "Google", "A", "128GB", 1, 500, 699, 13, "123456789012341", "", "Black"],
-  ["Google Pixel 8", "Google", "A", "128GB", 1, 510, 699, 13, "123456789012342", "", "Black"],
-  ["Google Pixel 8", "Google", "A", "128GB", 1, 490, 699, 13, "123456789012343", "", "White"],
+  ["Google Pixel 8", "Google", "A", "128GB", 1, 500, 699, 13, "123456789012341", "", "Black", ""],
+  ["Google Pixel 8", "Google", "A", "128GB", 1, 510, 699, 13, "123456789012342", "", "Black", ""],
+  ["Google Pixel 8", "Google", "A", "128GB", 1, 490, 699, 13, "123456789012343", "", "White", ""],
+  [
+    "Google Pixel 8",
+    "Google",
+    "D",
+    "128GB",
+    1,
+    200,
+    399,
+    13,
+    "123456789012344",
+    "",
+    "Black",
+    "Cracked back glass, battery health 78%",
+  ],
 ];
 
 /** One sheet row, Quantity 3, comma-separated IMEIs (legacy). */
@@ -53,6 +70,7 @@ const LEGACY_SAMPLE_ROWS: (string | number)[][] = [
     "123456789012341, 123456789012342, 123456789012343",
     "",
     "Black",
+    "",
   ],
 ];
 

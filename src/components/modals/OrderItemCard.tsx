@@ -1,6 +1,6 @@
-import { Palette } from "lucide-react";
+import { AlertTriangle, Palette } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { GradeBadge } from "@/components/common/GradeBadge";
+import { ClickableGradeBadge } from "@/components/common/ClickableGradeBadge";
 import { formatPrice } from "@/lib/utils";
 import type { OrderItem } from "@/types/order";
 
@@ -12,6 +12,8 @@ interface OrderItemCardProps {
   fetchedIdentifierLabels?: Record<string, string>;
   /** Fetched per-unit colours keyed by inventoryIdentifierId */
   fetchedIdentifierColors?: Record<string, string>;
+  /** Fetched damage notes keyed by inventoryIdentifierId */
+  fetchedIdentifierDamageNotes?: Record<string, string>;
 }
 
 export function OrderItemCard({
@@ -19,6 +21,7 @@ export function OrderItemCard({
   colorAssignments = {},
   fetchedIdentifierLabels = {},
   fetchedIdentifierColors = {},
+  fetchedIdentifierDamageNotes = {},
 }: OrderItemCardProps) {
   const { item, quantity, identifierLabel, inventoryIdentifierId } = orderItem;
   const itemColors = colorAssignments[item.id] ?? [];
@@ -31,6 +34,10 @@ export function OrderItemCard({
     ? fetchedIdentifierColors[inventoryIdentifierId]
     : undefined;
 
+  const resolvedDamageNote = inventoryIdentifierId
+    ? fetchedIdentifierDamageNotes[inventoryIdentifierId]
+    : undefined;
+
   const unitPrice = item.sellingPrice ?? item.pricePerUnit ?? 0;
 
   return (
@@ -39,7 +46,13 @@ export function OrderItemCard({
         <div className="flex-1">
           <h4 className="font-medium text-foreground">{item.deviceName || "Unknown Device"}</h4>
           <div className="flex items-center gap-2 mt-2 flex-wrap">
-            {item.grade && <GradeBadge grade={item.grade} />}
+            {item.grade && (
+              <ClickableGradeBadge
+                grade={item.grade}
+                inventoryId={item.id}
+                deviceName={item.deviceName || "this device"}
+              />
+            )}
             <Badge variant="outline" className="text-xs">
               {item.storage || "N/A"}
             </Badge>
@@ -59,6 +72,13 @@ export function OrderItemCard({
                   {resolvedColor}
                 </span>
               )}
+            </div>
+          )}
+
+          {resolvedDamageNote && (
+            <div className="flex items-start gap-1.5 mt-2 rounded border border-destructive/30 bg-destructive/10 px-2.5 py-1.5">
+              <AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0 mt-0.5" />
+              <p className="text-xs text-destructive leading-snug">{resolvedDamageNote}</p>
             </div>
           )}
 

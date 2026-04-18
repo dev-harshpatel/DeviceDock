@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { GradeBadge } from "@/components/common/GradeBadge";
+import { ClickableGradeBadge } from "@/components/common/ClickableGradeBadge";
 import { formatPrice } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -685,13 +686,11 @@ export function ManualSaleWizard({
         : undefined;
 
     /**
-     * Try in-memory map first (O(1), no network). Falls back to DB only when
-     * the map misses — this covers edit mode (sold identifiers not in map) and
-     * the cold window before the map has loaded.
+     * Always validate via DB so we catch stale map entries (e.g. a unit sold
+     * moments ago whose realtime event hasn't arrived yet). The map is kept for
+     * the IMEI assignment panel; the scan step must have authoritative status.
      */
     const resolveIdentifier = async (raw: string) => {
-      const hit = lookupFromMap(raw);
-      if (hit) return hit;
       return lookupIdentifierForSale(raw, lookupOpts);
     };
 
@@ -713,6 +712,7 @@ export function ManualSaleWizard({
           inventoryIdentifierId: found.identifierId,
           displayLabel: found.imei ?? found.serialNumber ?? queries[0],
           color: found.color,
+          damageNote: found.damageNote,
         };
         const invId = found.item.id;
         const live = inventory.find((i) => i.id === invId) ?? found.item;
@@ -779,6 +779,7 @@ export function ManualSaleWizard({
                 inventoryIdentifierId: found.identifierId,
                 displayLabel: found.imei ?? found.serialNumber ?? rawQ,
                 color: found.color,
+                damageNote: found.damageNote,
               },
             });
           } catch {
@@ -1091,7 +1092,11 @@ export function ManualSaleWizard({
                           <p className="font-medium text-foreground truncate">
                             {group.item.deviceName}
                           </p>
-                          <GradeBadge grade={group.item.grade} />
+                          <ClickableGradeBadge
+                            grade={group.item.grade}
+                            inventoryId={group.item.id}
+                            deviceName={group.item.deviceName}
+                          />
                           <span className="text-xs font-semibold text-primary tabular-nums ml-auto">
                             Qty {group.units.length}
                           </span>
@@ -1105,13 +1110,21 @@ export function ManualSaleWizard({
                               key={unit.id}
                               className="flex items-center justify-between gap-2 text-xs"
                             >
-                              <div className="flex items-center gap-1.5 min-w-0">
+                              <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                                 <span className="font-mono text-foreground truncate">
                                   {unit.displayLabel}
                                 </span>
                                 {unit.color && (
                                   <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-medium shrink-0">
                                     {unit.color}
+                                  </span>
+                                )}
+                                {unit.damageNote && (
+                                  <span
+                                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-destructive/10 text-destructive text-[10px] font-medium border border-destructive/20 shrink-0 max-w-[160px] truncate"
+                                    title={unit.damageNote}
+                                  >
+                                    ⚠ {unit.damageNote}
                                   </span>
                                 )}
                               </div>
@@ -1200,7 +1213,11 @@ export function ManualSaleWizard({
                               <p className="font-medium text-sm text-foreground">
                                 {item.deviceName}
                               </p>
-                              <GradeBadge grade={item.grade} />
+                              <ClickableGradeBadge
+                                grade={item.grade}
+                                inventoryId={item.id}
+                                deviceName={item.deviceName}
+                              />
                             </div>
                             <p className="text-xs text-muted-foreground">
                               {item.brand} • {item.storage}
@@ -1342,7 +1359,11 @@ export function ManualSaleWizard({
                     >
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-semibold text-sm text-foreground">{item.deviceName}</p>
-                        <GradeBadge grade={item.grade} />
+                        <ClickableGradeBadge
+                          grade={item.grade}
+                          inventoryId={item.id}
+                          deviceName={item.deviceName}
+                        />
                         <span className="text-xs text-muted-foreground">
                           {item.brand} · {item.storage}
                         </span>
@@ -1546,7 +1567,11 @@ export function ManualSaleWizard({
                         <p className="font-semibold text-sm text-foreground">
                           {group.item.deviceName}
                         </p>
-                        <GradeBadge grade={group.item.grade} />
+                        <ClickableGradeBadge
+                          grade={group.item.grade}
+                          inventoryId={group.item.id}
+                          deviceName={group.item.deviceName}
+                        />
                         <span className="text-xs font-medium text-foreground">
                           Scanned qty: {qty}
                         </span>

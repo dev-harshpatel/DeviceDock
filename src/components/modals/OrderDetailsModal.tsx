@@ -94,6 +94,9 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
   const [fetchedIdentifierColors, setFetchedIdentifierColors] = useState<Record<string, string>>(
     {},
   );
+  const [fetchedIdentifierDamageNotes, setFetchedIdentifierDamageNotes] = useState<
+    Record<string, string>
+  >({});
 
   const orderId = order?.id;
   const orderStatus = order?.status;
@@ -105,6 +108,7 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
     if (!open || !order) {
       setFetchedIdentifierLabels({});
       setFetchedIdentifierColors({});
+      setFetchedIdentifierDamageNotes({});
       return;
     }
     const items = Array.isArray(order.items) ? order.items : [];
@@ -116,7 +120,7 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
 
     (supabase as any)
       .from("inventory_identifiers")
-      .select("id, imei, serial_number, color")
+      .select("id, imei, serial_number, color, damage_note")
       .in("id", allIdentifierIds)
       .then(
         ({
@@ -128,18 +132,22 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
                 imei: string | null;
                 serial_number: string | null;
                 color: string | null;
+                damage_note: string | null;
               }[]
             | null;
         }) => {
           if (!data) return;
           const labelMap: Record<string, string> = {};
           const colorMap: Record<string, string> = {};
+          const damageNoteMap: Record<string, string> = {};
           for (const row of data) {
             labelMap[row.id] = row.imei ?? row.serial_number ?? row.id;
             if (row.color) colorMap[row.id] = row.color;
+            if (row.damage_note) damageNoteMap[row.id] = row.damage_note;
           }
           setFetchedIdentifierLabels(labelMap);
           setFetchedIdentifierColors(colorMap);
+          setFetchedIdentifierDamageNotes(damageNoteMap);
         },
       );
   }, [open, orderId, orderItemsJsonKey]);
@@ -413,6 +421,7 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
                             colorAssignments={colorAssignments}
                             fetchedIdentifierLabels={fetchedIdentifierLabels}
                             fetchedIdentifierColors={fetchedIdentifierColors}
+                            fetchedIdentifierDamageNotes={fetchedIdentifierDamageNotes}
                           />
                         ) : null,
                       )}

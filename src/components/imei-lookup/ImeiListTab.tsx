@@ -426,6 +426,9 @@ export function ImeiListTab({ companyId, storageOptions }: ImeiListTabProps) {
                         Color
                       </th>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        Damage Note
+                      </th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                         Status
                       </th>
                     </tr>
@@ -458,6 +461,25 @@ export function ImeiListTab({ companyId, storageOptions }: ImeiListTabProps) {
                         <td className="px-4 py-3 text-foreground">{item.storage}</td>
                         <td className="px-4 py-3 text-foreground">
                           {item.color ?? <span className="text-muted-foreground">—</span>}
+                        </td>
+                        <td className="px-4 py-3 max-w-[200px]">
+                          {item.damageNote ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-destructive/10 text-destructive text-xs font-medium border border-destructive/20 cursor-default max-w-full">
+                                  <span className="truncate max-w-[140px]">{item.damageNote}</span>
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent
+                                side="top"
+                                className="max-w-[280px] text-xs whitespace-pre-wrap"
+                              >
+                                {item.damageNote}
+                              </TooltipContent>
+                            </Tooltip>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           <StatusBadge status={item.status} />
@@ -514,6 +536,14 @@ export function ImeiListTab({ companyId, storageOptions }: ImeiListTabProps) {
                       </div>
                     )}
                   </div>
+                  {item.damageNote && (
+                    <div className="mt-1 pt-2 border-t border-border/60">
+                      <p className="text-xs text-muted-foreground mb-1">Damage Note</p>
+                      <p className="text-xs text-destructive bg-destructive/10 rounded px-2 py-1.5 border border-destructive/20">
+                        {item.damageNote}
+                      </p>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

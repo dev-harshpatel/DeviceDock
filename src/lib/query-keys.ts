@@ -68,4 +68,7 @@ export const queryKeys = {
   // Dashboard aggregate stats — fetched via RPC, cached for 5 minutes
   inventoryStats: (companyId: string) => ["inventoryStats", companyId] as const,
   orderStats: (companyId: string) => ["orderStats", companyId] as const,
+
+  // Damage notes per inventory item — staleTime: Infinity, invalidated on new identifier added
+  damageNotes: (inventoryId: string) => ["damageNotes", inventoryId] as const,
 };

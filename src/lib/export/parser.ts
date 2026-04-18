@@ -104,6 +104,12 @@ export async function parseExcelFile(file: File): Promise<ParsedProduct[]> {
           "serial_no",
         ]);
         const colorIndex = findColumnIndex(headers, ["color", "colour", "device color"]);
+        const damageNoteIndex = findColumnIndex(headers, [
+          "damage note",
+          "damagenote",
+          "damage_note",
+          "damage",
+        ]);
 
         const missingColumns: string[] = [];
         if (deviceNameIndex === -1) missingColumns.push("Device Name");
@@ -139,6 +145,7 @@ export async function parseExcelFile(file: File): Promise<ParsedProduct[]> {
           const imeiCellRaw = cellToString(row[imeiIndex]);
           const serialCellRaw = cellToString(row[serialIndex]);
           const colorCellRaw = colorIndex >= 0 ? cellToString(row[colorIndex]) : "";
+          const damageNoteCellRaw = damageNoteIndex >= 0 ? cellToString(row[damageNoteIndex]) : "";
 
           const parseMode = detectUploadParseMode(quantity, imeiCellRaw, serialCellRaw);
 
@@ -154,6 +161,7 @@ export async function parseExcelFile(file: File): Promise<ParsedProduct[]> {
             imeiCellRaw,
             serialCellRaw,
             colorCellRaw: colorIndex >= 0 ? colorCellRaw : undefined,
+            damageNote: damageNoteCellRaw || null,
             identifiers: [],
             parseMode,
             lastUpdated: lastUpdatedIndex >= 0 ? cellToString(row[lastUpdatedIndex]) : undefined,
@@ -163,7 +171,12 @@ export async function parseExcelFile(file: File): Promise<ParsedProduct[]> {
 
           const idBundle =
             parseMode === "unit_row"
-              ? buildIdentifiersForUnitRow(imeiCellRaw, serialCellRaw, colorCellRaw)
+              ? buildIdentifiersForUnitRow(
+                  imeiCellRaw,
+                  serialCellRaw,
+                  colorCellRaw,
+                  damageNoteCellRaw,
+                )
               : buildIdentifiersFromUploadCells(imeiCellRaw, serialCellRaw, quantity);
           product.identifiers = idBundle.identifiers;
           const rowErrors: string[] = [...idBundle.errors];

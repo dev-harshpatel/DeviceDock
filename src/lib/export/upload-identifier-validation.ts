@@ -92,12 +92,13 @@ export const detectUploadParseMode = (
 };
 
 /**
- * Single physical unit per spreadsheet row (one IMEI or one serial). Optional colour for that unit.
+ * Single physical unit per spreadsheet row (one IMEI or one serial). Optional colour and damage note for that unit.
  */
 export const buildIdentifiersForUnitRow = (
   imeiCellRaw: string,
   serialCellRaw: string,
   colorRaw: string | undefined,
+  damageNoteRaw?: string | undefined,
 ): { identifiers: ParsedIdentifierEntry[]; errors: string[] } => {
   const errors: string[] = [];
   const imeiTokens = parseIdentifierList(imeiCellRaw);
@@ -130,16 +131,17 @@ export const buildIdentifiersForUnitRow = (
 
   const colorTrimmed = colorRaw?.trim() ?? "";
   const color = colorTrimmed.length > 0 ? colorTrimmed : null;
+  const damageNote = damageNoteRaw?.trim() || null;
 
   if (imeiTokens.length === 1) {
     return {
-      identifiers: [{ imei: imeiTokens[0].trim(), serialNumber: null, color }],
+      identifiers: [{ imei: imeiTokens[0].trim(), serialNumber: null, color, damageNote }],
       errors: [],
     };
   }
 
   return {
-    identifiers: [{ imei: null, serialNumber: serialTokens[0].trim(), color }],
+    identifiers: [{ imei: null, serialNumber: serialTokens[0].trim(), color, damageNote }],
     errors: [],
   };
 };

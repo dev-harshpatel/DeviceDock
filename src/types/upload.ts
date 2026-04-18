@@ -18,6 +18,8 @@ export interface ParsedIdentifierEntry {
   serialNumber: string | null;
   /** Per-unit colour (Excel unit-row mode); stored on `inventory_identifiers.color` */
   color?: string | null;
+  /** Damage note for D-grade units */
+  damageNote?: string | null;
 }
 
 /** One spreadsheet row = one physical unit (mergeable); legacy = comma-separated IMEIs in one row */
@@ -38,6 +40,8 @@ export interface ParsedProduct {
   serialCellRaw: string;
   /** Raw Color column (optional) */
   colorCellRaw?: string;
+  /** Damage note for D-grade units (optional column in Excel) */
+  damageNote?: string | null;
   /** Per-unit rows for `inventory_identifiers` (IMEI list + serial list, count = quantity) */
   identifiers: ParsedIdentifierEntry[];
   /** unit_row: one IMEI or serial per row, qty 1 — rows merge by SKU; legacy: multi-unit per row */

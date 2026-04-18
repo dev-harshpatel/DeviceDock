@@ -35,6 +35,7 @@ interface InventoryContextType {
     imei: string | null,
     serialNumber: string | null,
     color?: string | null,
+    damageNote?: string | null,
   ) => Promise<void>;
   /** Exact IMEI or serial match for manual sale (in_stock / reserved only). */
   lookupIdentifierForSale: (
@@ -314,6 +315,7 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
       imei: string | null,
       serialNumber: string | null,
       color?: string | null,
+      damageNote?: string | null,
     ): Promise<void> => {
       if (!companyId) throw new Error("No active company context");
       if (!imei && !serialNumber)
@@ -326,6 +328,7 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
         serial_number: serialNumber ?? null,
         status: "in_stock",
         ...(color ? { color } : {}),
+        ...(damageNote ? { damage_note: damageNote } : {}),
       });
 
       if (error) {
@@ -339,8 +342,11 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
         }
         throw new Error(error.message);
       }
+
+      // Bust the damage-notes cache so the modal reflects the new unit.
+      queryClient.invalidateQueries({ queryKey: queryKeys.damageNotes(inventoryId) });
     },
-    [companyId],
+    [companyId, queryClient],
   );
 
   const lookupIdentifierForSale = useCallback(
@@ -357,7 +363,7 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
         column: "imei" | "serial_number",
       ): Promise<Record<string, unknown> | null> => {
         const { data, error } = await (supabase.from("inventory_identifiers") as any)
-          .select("id, inventory_id, imei, serial_number, status, color")
+          .select("id, inventory_id, imei, serial_number, status, color, damage_note")
           .eq("company_id", companyId)
           .eq(column, q)
           .maybeSingle();
@@ -402,6 +408,7 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
         serialNumber: (row.serial_number as string | null) ?? null,
         status,
         color: (row.color as string | null) ?? null,
+        damageNote: (row.damage_note as string | null) ?? null,
         item,
       };
     },
