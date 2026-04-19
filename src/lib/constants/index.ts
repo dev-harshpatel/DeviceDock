@@ -37,8 +37,8 @@ const DYMO_30252_HEIGHT_IN = 1.125;
 export const IMEI_LABEL_WIDTH_MM = DYMO_30252_WIDTH_IN * MM_PER_IN;
 export const IMEI_LABEL_HEIGHT_MM = DYMO_30252_HEIGHT_IN * MM_PER_IN;
 // Bar height only (px) — sized so total canvas (bars + text + margins) fits a DYMO 30252 label.
-// 52px bars + ~10px IMEI text + 4px×2 margins ≈ 74px = 19.6mm → fits in 20.75mm barcode zone.
-export const IMEI_BARCODE_HEIGHT = 52;
+// 44px bars + ~10px IMEI text + 4px×2 margins ≈ 66px = 17.5mm → fits in 20.75mm barcode zone.
+export const IMEI_BARCODE_HEIGHT = 44;
 
 // Bulk Label Sheet Layout (reserved for future multi-up layouts; bulk print uses per-page below)
 export const BULK_LABEL_COLUMNS = 3; // labels per row on the print sheet
