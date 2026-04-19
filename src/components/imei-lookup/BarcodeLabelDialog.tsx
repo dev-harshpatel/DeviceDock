@@ -146,25 +146,23 @@ export function BarcodeLabelDialog({
               align-items: ${hasPrice ? "flex-start" : "center"};
             }
             .device-name {
-              font-size: 7.5pt;
+              font-size: 8.5pt;
               font-weight: 700;
               font-family: Arial, sans-serif;
               line-height: 1.2;
-              white-space: nowrap;
-              overflow: hidden;
-              text-overflow: ellipsis;
+              word-break: break-word;
               text-align: ${hasPrice ? "left" : "center"};
             }
             .meta {
-              font-size: 6.5pt;
+              font-size: 7.5pt;
               font-family: Arial, sans-serif;
               color: #333;
               line-height: 1.2;
-              white-space: nowrap;
+              word-break: break-word;
               text-align: ${hasPrice ? "left" : "center"};
             }
             .price {
-              font-size: 7.5pt;
+              font-size: 8.5pt;
               font-weight: 700;
               font-family: Arial, sans-serif;
               white-space: nowrap;
