@@ -1,6 +1,6 @@
 "use client";
 
-import { InventoryItem } from "@/data/inventory";
+import { calculatePricePerUnit, InventoryItem } from "@/data/inventory";
 import { Database } from "@/lib/database.types";
 import { supabase } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/context";
@@ -8,7 +8,7 @@ import { useCompany } from "@/contexts/CompanyContext";
 import { ReactNode, createContext, useCallback, useContext, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query-keys";
-import type { IdentifierSaleLookup } from "@/types/inventory-identifiers";
+import type { IdentifierFullLookup, IdentifierSaleLookup } from "@/types/inventory-identifiers";
 import { UploadHistory, BulkInsertResult } from "@/types/upload";
 import {
   dbRowToInventoryItem,
@@ -16,11 +16,29 @@ import {
   INVENTORY_ADMIN_FIELDS,
 } from "@/lib/supabase/queries";
 import { BULK_INSERT_BATCH_SIZE, INVENTORY_SORT_ORDER } from "@/lib/constants";
-import { deleteAllInventoryColors } from "@/lib/inventory/inventory-colors";
+import {
+  applyInventoryColorDelta,
+  deleteAllInventoryColors,
+} from "@/lib/inventory/inventory-colors";
+import type { Grade } from "@/lib/constants/grades";
+import { removeTax } from "@/lib/tax";
 
 interface InventoryContextType {
   inventory: InventoryItem[];
   updateProduct: (id: string, updates: Partial<InventoryItem>) => Promise<void>;
+  updateInventoryIdentifier: (
+    identifierId: string,
+    updates: { color?: string | null; damageNote?: string | null },
+  ) => Promise<void>;
+  updateIdentifierUnit: (input: {
+    lookup: IdentifierFullLookup;
+    color: string | null;
+    grade: Grade;
+    storage: string;
+    pricePerUnit: number;
+    sellingPrice: number;
+    hst: number | null;
+  }) => Promise<void>;
   decreaseQuantity: (id: string, amount: number) => Promise<void>;
   resetInventory: () => Promise<void>;
   refreshInventory: () => Promise<void>;
@@ -61,6 +79,12 @@ const toFiniteNumber = (value: number | null | undefined): number | null => {
   if (value == null) return null;
   return Number.isFinite(value) ? value : null;
 };
+
+const roundCurrency = (value: number, precision = 4): number =>
+  Math.round(value * 10 ** precision) / 10 ** precision;
+
+const sameNumber = (a: number | null | undefined, b: number | null | undefined): boolean =>
+  Math.abs((a ?? 0) - (b ?? 0)) < 0.0001;
 
 const toInventoryUpdate = (updates: Partial<InventoryItem>): InventoryUpdate => {
   const updateData: InventoryUpdate = {};
@@ -168,8 +192,275 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
           item.id === id ? { ...item, ...updates, lastUpdated: "Just now" } : item,
         ),
       );
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.inventory }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.identifiersList }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.identifierMapAll(companyId) }),
+      ]);
     },
     [companyId, queryClient],
+  );
+
+  const updateInventoryIdentifier = useCallback(
+    async (
+      identifierId: string,
+      updates: { color?: string | null; damageNote?: string | null },
+    ): Promise<void> => {
+      if (!companyId) {
+        throw new Error("No active company context");
+      }
+
+      const updateData: Record<string, string | null> = {};
+
+      if (updates.color !== undefined) updateData.color = updates.color;
+      if (updates.damageNote !== undefined) updateData.damage_note = updates.damageNote;
+
+      if (Object.keys(updateData).length === 0) return;
+
+      const { error } = await (supabase.from("inventory_identifiers") as any)
+        .update({
+          ...updateData,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", identifierId)
+        .eq("company_id", companyId);
+
+      if (error) {
+        console.error("[InventoryContext] updateInventoryIdentifier failed:", {
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+          identifierId,
+          message: error.message,
+          updateData,
+        });
+        throw new Error(error.message || "Failed to update device details");
+      }
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.identifiersList }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.identifierMapAll(companyId) }),
+      ]);
+    },
+    [companyId, queryClient],
+  );
+
+  const updateIdentifierUnit = useCallback(
+    async (input: {
+      lookup: IdentifierFullLookup;
+      color: string | null;
+      grade: Grade;
+      storage: string;
+      pricePerUnit: number;
+      sellingPrice: number;
+      hst: number | null;
+    }): Promise<void> => {
+      if (!companyId) {
+        throw new Error("No active company context");
+      }
+
+      const { lookup, color, grade, storage, pricePerUnit, sellingPrice, hst } = input;
+      const sourceItem = lookup.item;
+      const sourceStatus = lookup.status;
+      const normalizedColor = color?.trim() || null;
+      const nextHst = hst ?? 0;
+      const nextBasePurchase = roundCurrency(removeTax(pricePerUnit, nextHst));
+      const nextStoredPricePerUnit = calculatePricePerUnit(nextBasePurchase, 1, nextHst);
+      const sharedFieldsChanged =
+        grade !== sourceItem.grade ||
+        storage.trim() !== sourceItem.storage ||
+        !sameNumber(nextStoredPricePerUnit, sourceItem.pricePerUnit) ||
+        !sameNumber(sellingPrice, sourceItem.sellingPrice) ||
+        !sameNumber(nextHst, sourceItem.hst);
+
+      if (sourceStatus !== "in_stock" && sourceStatus !== "reserved") {
+        throw new Error("Only in-stock or reserved units can be edited individually.");
+      }
+
+      const sourceColor = lookup.color?.trim() || null;
+      const nowIso = new Date().toISOString();
+
+      if (!sharedFieldsChanged) {
+        await updateInventoryIdentifier(lookup.identifierId, { color: normalizedColor });
+
+        if (sourceColor !== normalizedColor) {
+          await applyInventoryColorDelta(supabase, sourceItem.id, sourceColor, -1);
+          await applyInventoryColorDelta(supabase, sourceItem.id, normalizedColor, 1);
+        }
+
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: queryKeys.inventory }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.inventoryAll(companyId) }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.identifiersList }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.identifierMapAll(companyId) }),
+        ]);
+        return;
+      }
+
+      const sourceQuantity = sourceItem.quantity;
+      const sourcePurchasePrice = sourceItem.purchasePrice ?? 0;
+      const sourceUnitBaseCost =
+        sourceQuantity > 0 ? roundCurrency(sourcePurchasePrice / sourceQuantity) : 0;
+
+      // Try to merge this device into an existing matching per-device row before creating one.
+      const { data: candidateRows, error: candidateError } = await (
+        supabase.from("inventory") as any
+      )
+        .select(INVENTORY_ADMIN_FIELDS)
+        .eq("company_id", companyId)
+        .eq("device_name", sourceItem.deviceName)
+        .eq("brand", sourceItem.brand)
+        .eq("grade", grade)
+        .eq("storage", storage.trim())
+        .eq("selling_price", sellingPrice)
+        .eq("is_active", sourceItem.isActive ?? true)
+        .eq("hst", nextHst)
+        .gt("quantity", 0);
+
+      if (candidateError) {
+        throw new Error(candidateError.message || "Failed to find a matching inventory group");
+      }
+
+      const matchingTarget =
+        ((candidateRows ?? []) as Array<Record<string, unknown>>)
+          .map((row) => dbRowToInventoryItem(row as any))
+          .find(
+            (row) =>
+              row.id !== sourceItem.id && sameNumber(row.pricePerUnit, nextStoredPricePerUnit),
+          ) ?? null;
+
+      let targetInventoryId = sourceItem.id;
+
+      if (sourceQuantity <= 1) {
+        if (matchingTarget) {
+          targetInventoryId = matchingTarget.id;
+          const mergedQuantity = matchingTarget.quantity + 1;
+          const mergedPurchase = roundCurrency(
+            (matchingTarget.purchasePrice ?? 0) + nextBasePurchase,
+          );
+          await updateProduct(matchingTarget.id, {
+            quantity: mergedQuantity,
+            purchasePrice: mergedPurchase,
+            pricePerUnit: calculatePricePerUnit(mergedPurchase, mergedQuantity, nextHst),
+          });
+
+          const { error: moveError } = await (supabase.from("inventory_identifiers") as any)
+            .update({
+              inventory_id: matchingTarget.id,
+              color: normalizedColor,
+              updated_at: nowIso,
+            })
+            .eq("id", lookup.identifierId)
+            .eq("company_id", companyId);
+          if (moveError) throw new Error(moveError.message || "Failed to move IMEI to target row");
+
+          await applyInventoryColorDelta(supabase, sourceItem.id, sourceColor, -1);
+          await applyInventoryColorDelta(supabase, matchingTarget.id, normalizedColor, 1);
+
+          const { error: deleteSourceError } = await (supabase.from("inventory") as any)
+            .delete()
+            .eq("id", sourceItem.id)
+            .eq("company_id", companyId);
+          if (deleteSourceError) {
+            throw new Error(deleteSourceError.message || "Failed to remove old inventory group");
+          }
+
+          await deleteAllInventoryColors(supabase, sourceItem.id);
+        } else {
+          await updateProduct(sourceItem.id, {
+            grade,
+            storage: storage.trim(),
+            purchasePrice: nextBasePurchase,
+            pricePerUnit: nextStoredPricePerUnit,
+            sellingPrice,
+            hst: nextHst,
+          });
+
+          await updateInventoryIdentifier(lookup.identifierId, { color: normalizedColor });
+
+          if (sourceColor !== normalizedColor) {
+            await applyInventoryColorDelta(supabase, sourceItem.id, sourceColor, -1);
+            await applyInventoryColorDelta(supabase, sourceItem.id, normalizedColor, 1);
+          }
+        }
+      } else {
+        if (matchingTarget) {
+          targetInventoryId = matchingTarget.id;
+          const mergedQuantity = matchingTarget.quantity + 1;
+          const mergedPurchase = roundCurrency(
+            (matchingTarget.purchasePrice ?? 0) + nextBasePurchase,
+          );
+          await updateProduct(matchingTarget.id, {
+            quantity: mergedQuantity,
+            purchasePrice: mergedPurchase,
+            pricePerUnit: calculatePricePerUnit(mergedPurchase, mergedQuantity, nextHst),
+          });
+        } else {
+          const { data: insertedRow, error: insertError } = await (
+            supabase.from("inventory") as any
+          )
+            .insert({
+              company_id: companyId,
+              device_name: sourceItem.deviceName,
+              brand: sourceItem.brand,
+              grade,
+              storage: storage.trim(),
+              quantity: 1,
+              price_per_unit: nextStoredPricePerUnit,
+              purchase_price: nextBasePurchase,
+              hst: nextHst,
+              selling_price: sellingPrice,
+              last_updated: "Just now",
+              price_change: sourceItem.priceChange ?? null,
+              is_active: sourceItem.isActive ?? true,
+              created_at: nowIso,
+              updated_at: nowIso,
+            })
+            .select(INVENTORY_ADMIN_FIELDS)
+            .single();
+          if (insertError || !insertedRow) {
+            throw new Error(insertError?.message || "Failed to create a split inventory row");
+          }
+          targetInventoryId = String((insertedRow as { id: string }).id);
+        }
+
+        const nextSourceQuantity = sourceQuantity - 1;
+        const nextSourcePurchase = roundCurrency(
+          Math.max(0, sourcePurchasePrice - sourceUnitBaseCost),
+        );
+        await updateProduct(sourceItem.id, {
+          quantity: nextSourceQuantity,
+          purchasePrice: nextSourcePurchase,
+          pricePerUnit: calculatePricePerUnit(
+            nextSourcePurchase,
+            nextSourceQuantity,
+            sourceItem.hst ?? 0,
+          ),
+        });
+
+        const { error: moveError } = await (supabase.from("inventory_identifiers") as any)
+          .update({
+            inventory_id: targetInventoryId,
+            color: normalizedColor,
+            updated_at: nowIso,
+          })
+          .eq("id", lookup.identifierId)
+          .eq("company_id", companyId);
+        if (moveError) throw new Error(moveError.message || "Failed to move IMEI to a new group");
+
+        await applyInventoryColorDelta(supabase, sourceItem.id, sourceColor, -1);
+        await applyInventoryColorDelta(supabase, targetInventoryId, normalizedColor, 1);
+      }
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.inventory }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.inventoryAll(companyId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.identifiersList }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.identifierMapAll(companyId) }),
+      ]);
+    },
+    [companyId, queryClient, updateInventoryIdentifier, updateProduct],
   );
 
   const decreaseQuantity = useCallback(
@@ -511,6 +802,8 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
       lookupIdentifierForSale,
       markInventoryIdentifierSold,
       revertInventoryIdentifierSold,
+      updateIdentifierUnit,
+      updateInventoryIdentifier,
       getUploadHistory,
       isLoading,
     }),
@@ -526,6 +819,8 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
       lookupIdentifierForSale,
       markInventoryIdentifierSold,
       revertInventoryIdentifierSold,
+      updateIdentifierUnit,
+      updateInventoryIdentifier,
       getUploadHistory,
     ],
   );

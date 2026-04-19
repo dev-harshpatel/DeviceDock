@@ -169,10 +169,10 @@ export function BulkBarcodeLabelDialog({
               width: ${widthMm}mm;
               height: ${heightMm}mm;
               box-sizing: border-box;
-              padding: 0.75mm 1.5mm 0.5mm;
+              padding: 1.25mm 1.5mm 0.5mm;
               display: flex;
               flex-direction: column;
-              justify-content: center;
+              justify-content: flex-start;
               gap: 0.5mm;
               page-break-after: always;
               break-after: page;
@@ -231,6 +231,7 @@ export function BulkBarcodeLabelDialog({
               align-items: center;
               justify-content: center;
               overflow: hidden;
+              padding-top: 1mm;
             }
             .barcode-img {
               width: 100%;

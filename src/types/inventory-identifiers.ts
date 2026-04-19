@@ -22,3 +22,6 @@ export interface IdentifierFullLookup {
   damageNote: string | null;
   item: InventoryItem;
 }
+
+/** Result used by the Edit Products by IMEI workflow. */
+export type IdentifierEditLookup = IdentifierFullLookup;

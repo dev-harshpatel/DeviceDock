@@ -16,6 +16,10 @@ import { formatPrice } from "@/lib/utils";
 import { calculatePricePerUnit } from "@/data/inventory";
 import type { InventoryItem } from "@/data/inventory";
 import { parseIdentifierList } from "@/lib/inventory/parse-identifier-list";
+import {
+  mergeInventoryColorsAdditive,
+  replaceInventoryColors,
+} from "@/lib/inventory/inventory-colors";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -168,11 +172,14 @@ export function AddProductModal({
       .catch(() => setSuggestedColors([]));
   }, [colourDialogOpen, form.brand, form.deviceName, inventory]);
 
-  // When adding a unit to an existing device (any case), pre-load its colour breakdown
-  // so the dialog shows the full picture and a full replace is applied on save.
+  // Legacy restock without identifiers edits the full SKU colour totals.
+  // Identifier-based restock assigns colors only for the newly added units.
   useEffect(() => {
-    if (!colourDialogOpen || !selectedExistingId) {
+    if (!colourDialogOpen || !selectedExistingId || hasIdentifier) {
       setIsLoadingExistingColors(false);
+      if (hasIdentifier) {
+        setExistingColorRows([]);
+      }
       return;
     }
 
@@ -193,7 +200,7 @@ export function AddProductModal({
       .finally(() => {
         setIsLoadingExistingColors(false);
       });
-  }, [colourDialogOpen, selectedExistingId]);
+  }, [colourDialogOpen, selectedExistingId, hasIdentifier]);
 
   // Pre-select item when initialItemId is provided (e.g. from Demand restock flow)
   useEffect(() => {
@@ -846,34 +853,15 @@ export function AddProductModal({
         const rows = colorRows
           .filter((r) => r.color.trim() && Number(r.quantity) > 0)
           .map((r) => ({
-            inventory_id: inventoryId,
             color: r.color.trim(),
             quantity: Number(r.quantity),
-            updated_at: new Date().toISOString(),
           }));
 
         if (rows.length > 0) {
-          const { error: upsertError } = await (supabase as any)
-            .from("inventory_colors")
-            .upsert(rows, { onConflict: "inventory_id,color" });
-          if (upsertError) throw new Error(`Colour save failed: ${upsertError.message}`);
-
-          // Remove colours no longer in the breakdown
-          const keptColors = rows.map((r) => r.color);
-          const { data: existing } = await (supabase as any)
-            .from("inventory_colors")
-            .select("color")
-            .eq("inventory_id", inventoryId);
-          const toDelete = (existing ?? [])
-            .map((r: { color: string }) => r.color)
-            .filter((c: string) => !keptColors.includes(c));
-          if (toDelete.length > 0) {
-            const { error: deleteError } = await (supabase as any)
-              .from("inventory_colors")
-              .delete()
-              .eq("inventory_id", inventoryId)
-              .in("color", toDelete);
-            if (deleteError) throw new Error(`Colour cleanup failed: ${deleteError.message}`);
+          if (selectedExisting && identifiers.length > 0) {
+            await mergeInventoryColorsAdditive(supabase, inventoryId, rows);
+          } else {
+            await replaceInventoryColors(supabase, inventoryId, rows);
           }
         }
       }
@@ -1368,17 +1356,17 @@ export function AddProductModal({
         }}
         productName={form.deviceName || "this product"}
         totalQuantity={
-          selectedExistingEffective && hasIdentifier
-            ? selectedExistingEffective.quantity + 1
+          hasIdentifier
+            ? totalIdentifierCount
             : isLegacyRestock && mergePreview
               ? mergePreview.totalQty
               : newQuantity
         }
-        initialColors={selectedExistingId ? existingColorRows : undefined}
+        initialColors={selectedExistingId && !hasIdentifier ? existingColorRows : undefined}
         suggestedColors={suggestedColors}
         note={
           selectedExistingEffective && hasIdentifier
-            ? `Covers all ${selectedExistingEffective.quantity + 1} units — ${selectedExistingEffective.quantity} existing + 1 new. Increment the colour that matches this unit.`
+            ? `Assign colours for this batch only — ${totalIdentifierCount} new unit${totalIdentifierCount !== 1 ? "s" : ""}. Existing SKU colours will be incremented automatically when you save.`
             : isLegacyRestock && mergePreview && selectedExistingEffective
               ? `Covers all ${mergePreview.totalQty} units — ${selectedExistingEffective.quantity} existing + ${newQuantity} new batch. Previously assigned colours are pre-filled.`
               : undefined

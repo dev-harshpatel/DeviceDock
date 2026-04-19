@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any -- `inventory_colors` is not in generated Database types */
 export interface InventoryColorQuantityRow {
   color: string;
   quantity: number;
@@ -115,4 +114,47 @@ export const mergeInventoryColorsAdditive = async (
     .from("inventory_colors")
     .upsert(mergedRows, { onConflict: "inventory_id,color" });
   if (upsertError) throw upsertError;
+};
+
+/** Applies a +/- quantity delta for one colour on one inventory row. */
+export const applyInventoryColorDelta = async (
+  supabase: any,
+  inventoryId: string,
+  color: string | null,
+  delta: number,
+): Promise<void> => {
+  const normalizedColor = color?.trim() ?? "";
+  if (!normalizedColor || delta === 0) return;
+
+  const { data, error } = await supabase
+    .from("inventory_colors")
+    .select("quantity")
+    .eq("inventory_id", inventoryId)
+    .eq("color", normalizedColor)
+    .maybeSingle();
+  if (error) throw error;
+
+  const currentQuantity = Number((data as { quantity?: number } | null)?.quantity ?? 0);
+  const nextQuantity = currentQuantity + delta;
+
+  if (nextQuantity > 0) {
+    const { error: upsertError } = await supabase.from("inventory_colors").upsert(
+      {
+        inventory_id: inventoryId,
+        color: normalizedColor,
+        quantity: nextQuantity,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "inventory_id,color" },
+    );
+    if (upsertError) throw upsertError;
+    return;
+  }
+
+  const { error: deleteError } = await supabase
+    .from("inventory_colors")
+    .delete()
+    .eq("inventory_id", inventoryId)
+    .eq("color", normalizedColor);
+  if (deleteError) throw deleteError;
 };
