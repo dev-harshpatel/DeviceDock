@@ -45,7 +45,7 @@ import type {
   IdentifierScanGroup,
   ScannedIdentifierUnit,
 } from "@/components/manual-sale/manual-sale-types";
-import { useIdentifierMap } from "@/hooks/use-identifier-map";
+
 import { supabase } from "@/lib/supabase/client";
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
@@ -144,7 +144,7 @@ export function ManualSaleWizard({
     markInventoryIdentifierSold,
     revertInventoryIdentifierSold,
   } = useInventory();
-  const { lookup: lookupFromMap } = useIdentifierMap();
+
   const { createManualOrder, patchManualSaleOrderDetails, updateManualOrder } = useOrders();
   const { user } = useAuth();
   const queryClient = useQueryClient();

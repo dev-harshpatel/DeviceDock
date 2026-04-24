@@ -433,7 +433,9 @@ export async function lookupIdentifierByImei(
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: row, error } = await (supabase.from("inventory_identifiers") as any)
-    .select("id, inventory_id, imei, serial_number, status, sold_at, color, damage_note")
+    .select(
+      "id, inventory_id, imei, serial_number, status, sold_at, color, damage_note, purchase_price",
+    )
     .eq("company_id", companyId)
     .eq("imei", trimmed)
     .maybeSingle();
@@ -478,6 +480,7 @@ export async function lookupIdentifierByImei(
     soldAt: (row.sold_at as string | null) ?? null,
     color,
     damageNote: (row.damage_note as string | null) ?? null,
+    purchasePrice: row.purchase_price != null ? Number(row.purchase_price) : null,
     item: dbRowToInventoryItem(invRow),
   };
 }

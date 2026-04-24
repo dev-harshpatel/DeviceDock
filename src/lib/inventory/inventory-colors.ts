@@ -67,19 +67,30 @@ export const deleteAllInventoryColors = async (
   if (error) throw error;
 };
 
-/** Aggregate colour rows with quantity &gt; 0 for SKU-level display. */
+/** Aggregate colour rows with quantity > 0 for SKU-level display.
+ *  Accepts a single ID or an array (grouped rows share the same spec). */
 export const fetchPositiveInventoryColors = async (
   supabase: any,
-  inventoryId: string,
+  inventoryId: string | string[],
 ): Promise<InventoryColorQuantityRow[]> => {
+  const ids = Array.isArray(inventoryId) ? inventoryId : [inventoryId];
   const { data, error } = await supabase
     .from("inventory_colors")
     .select("color, quantity")
-    .eq("inventory_id", inventoryId)
+    .in("inventory_id", ids)
     .gt("quantity", 0)
     .order("color");
   if (error) throw error;
-  return ((data ?? []) as InventoryColorQuantityRow[]).filter((row) => row.quantity > 0);
+
+  // Sum quantities across rows when multiple inventory IDs map to the same colour.
+  const totals = new Map<string, number>();
+  for (const row of (data ?? []) as InventoryColorQuantityRow[]) {
+    totals.set(row.color, (totals.get(row.color) ?? 0) + row.quantity);
+  }
+  return Array.from(totals.entries())
+    .filter(([, qty]) => qty > 0)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([color, quantity]) => ({ color, quantity }));
 };
 
 /**

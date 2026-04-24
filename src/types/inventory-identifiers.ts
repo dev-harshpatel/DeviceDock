@@ -8,6 +8,8 @@ export interface IdentifierSaleLookup {
   status: string;
   color: string | null;
   damageNote: string | null;
+  /** Per-unit base purchase cost (pre-HST); null for legacy records before migration 043. */
+  purchasePrice?: number | null;
   item: InventoryItem;
 }
 
@@ -20,6 +22,8 @@ export interface IdentifierFullLookup {
   soldAt: string | null;
   color: string | null;
   damageNote: string | null;
+  /** Per-unit purchase cost stored at add-time; null for legacy records added before migration 043. */
+  purchasePrice?: number | null;
   item: InventoryItem;
 }
 

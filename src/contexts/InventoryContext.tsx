@@ -20,11 +20,14 @@ import {
   applyInventoryColorDelta,
   deleteAllInventoryColors,
 } from "@/lib/inventory/inventory-colors";
+import { groupMatchingInventoryItems } from "@/lib/inventory/group-inventory-items";
 import type { Grade } from "@/lib/constants/grades";
 import { removeTax } from "@/lib/tax";
 
 interface InventoryContextType {
   inventory: InventoryItem[];
+  /** Same items as `inventory` but with matching-spec rows merged into one grouped entry. */
+  groupedInventory: InventoryItem[];
   updateProduct: (id: string, updates: Partial<InventoryItem>) => Promise<void>;
   updateInventoryIdentifier: (
     identifierId: string,
@@ -39,6 +42,13 @@ interface InventoryContextType {
     sellingPrice: number;
     hst: number | null;
   }) => Promise<void>;
+  /**
+   * Permanently removes a single tracked unit (by IMEI / serial) from inventory.
+   * Blocks if the unit is sold, reserved, or referenced by any order.
+   * Recalculates the parent row's quantity, purchase price, and price/unit.
+   * Deletes the parent row entirely if it reaches zero quantity.
+   */
+  deleteIdentifierUnit: (input: { lookup: IdentifierFullLookup }) => Promise<void>;
   decreaseQuantity: (id: string, amount: number) => Promise<void>;
   resetInventory: () => Promise<void>;
   refreshInventory: () => Promise<void>;
@@ -54,6 +64,7 @@ interface InventoryContextType {
     serialNumber: string | null,
     color?: string | null,
     damageNote?: string | null,
+    purchasePrice?: number | null,
   ) => Promise<void>;
   /** Exact IMEI or serial match for manual sale (in_stock / reserved only). */
   lookupIdentifierForSale: (
@@ -153,6 +164,9 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
     staleTime: 30_000,
     enabled: Boolean(companyId),
   });
+
+  // Same-spec rows merged into single grouped entries for display (prices averaged by quantity).
+  const groupedInventory = useMemo(() => groupMatchingInventoryItems(inventory), [inventory]);
 
   const updateProduct = useCallback(
     async (id: string, updates: Partial<InventoryItem>) => {
@@ -265,7 +279,8 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
       const sourceStatus = lookup.status;
       const normalizedColor = color?.trim() || null;
       const nextHst = hst ?? 0;
-      const nextBasePurchase = roundCurrency(removeTax(pricePerUnit, nextHst));
+      // pricePerUnit from the editor is already the BASE cost (pre-HST).
+      const nextBasePurchase = roundCurrency(pricePerUnit);
       const nextStoredPricePerUnit = calculatePricePerUnit(nextBasePurchase, 1, nextHst);
       const sharedFieldsChanged =
         grade !== sourceItem.grade ||
@@ -300,8 +315,13 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
 
       const sourceQuantity = sourceItem.quantity;
       const sourcePurchasePrice = sourceItem.purchasePrice ?? 0;
+      // Use the stored per-unit cost if present; otherwise fall back to the group average.
       const sourceUnitBaseCost =
-        sourceQuantity > 0 ? roundCurrency(sourcePurchasePrice / sourceQuantity) : 0;
+        lookup.purchasePrice != null
+          ? roundCurrency(lookup.purchasePrice)
+          : sourceQuantity > 0
+            ? roundCurrency(sourcePurchasePrice / sourceQuantity)
+            : 0;
 
       // Try to merge this device into an existing matching per-device row before creating one.
       const { data: candidateRows, error: candidateError } = await (
@@ -463,6 +483,103 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
     [companyId, queryClient, updateInventoryIdentifier, updateProduct],
   );
 
+  const deleteIdentifierUnit = useCallback(
+    async (input: { lookup: IdentifierFullLookup }): Promise<void> => {
+      if (!companyId) throw new Error("No active company context");
+
+      const { lookup } = input;
+      const sourceItem = lookup.item;
+
+      // Only in_stock and damaged units can be deleted; all others have order associations.
+      const DELETABLE_STATUSES = new Set(["in_stock", "damaged"]);
+      if (!DELETABLE_STATUSES.has(lookup.status)) {
+        const reasons: Record<string, string> = {
+          sold: "This unit has been sold and is linked to an order. Sold units cannot be deleted to preserve order history.",
+          reserved:
+            "This unit is reserved for a pending order. Cancel the reservation before deleting.",
+          returned:
+            "This unit has order history (returned). Delete is blocked to preserve order records.",
+        };
+        throw new Error(
+          reasons[lookup.status] ?? `Units with status "${lookup.status}" cannot be deleted.`,
+        );
+      }
+
+      // Belt-and-suspenders: confirm no order row references this identifier ID.
+      const { count: orderCount, error: orderCheckError } = await (supabase.from("orders") as any)
+        .select("id", { count: "exact", head: true })
+        .eq("company_id", companyId)
+        .filter("items", "cs", JSON.stringify([{ inventoryIdentifierId: lookup.identifierId }]));
+
+      if (orderCheckError) {
+        throw new Error("Failed to verify order history. Please try again.");
+      }
+      if ((orderCount ?? 0) > 0) {
+        throw new Error("This unit is referenced in one or more orders and cannot be deleted.");
+      }
+
+      // Compute the base cost this unit contributed to the parent row.
+      const unitCost =
+        lookup.purchasePrice != null
+          ? roundCurrency(lookup.purchasePrice)
+          : sourceItem.quantity > 0
+            ? roundCurrency((sourceItem.purchasePrice ?? 0) / sourceItem.quantity)
+            : 0;
+
+      const newQuantity = Math.max(0, sourceItem.quantity - 1);
+      const newPurchasePrice = roundCurrency(
+        Math.max(0, (sourceItem.purchasePrice ?? 0) - unitCost),
+      );
+
+      // Delete the identifier record first.
+      const { error: deleteIdError } = await (supabase.from("inventory_identifiers") as any)
+        .delete()
+        .eq("id", lookup.identifierId)
+        .eq("company_id", companyId);
+
+      if (deleteIdError) {
+        throw new Error(deleteIdError.message || "Failed to remove the device record.");
+      }
+
+      // Remove this unit's colour contribution.
+      if (lookup.color) {
+        await applyInventoryColorDelta(supabase, sourceItem.id, lookup.color, -1);
+      }
+
+      if (newQuantity === 0) {
+        // Last unit in this row — remove the inventory row and all its colours.
+        await deleteAllInventoryColors(supabase, sourceItem.id);
+        const { error: deleteInvError } = await (supabase.from("inventory") as any)
+          .delete()
+          .eq("id", sourceItem.id)
+          .eq("company_id", companyId);
+        if (deleteInvError) {
+          throw new Error(deleteInvError.message || "Failed to remove the inventory record.");
+        }
+      } else {
+        // Reduce quantity and recalculate cost on the parent row.
+        const newPricePerUnit = calculatePricePerUnit(
+          newPurchasePrice,
+          newQuantity,
+          sourceItem.hst ?? 0,
+        );
+        await updateProduct(sourceItem.id, {
+          quantity: newQuantity,
+          purchasePrice: newPurchasePrice,
+          pricePerUnit: newPricePerUnit,
+        });
+      }
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.inventory }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.inventoryAll(companyId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.identifiersList }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.identifierMapAll(companyId) }),
+      ]);
+    },
+    [companyId, queryClient, updateProduct],
+  );
+
   const decreaseQuantity = useCallback(
     async (id: string, amount: number) => {
       // Read the current item from the cache at call time — avoids stale closure over inventory.
@@ -607,6 +724,7 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
       serialNumber: string | null,
       color?: string | null,
       damageNote?: string | null,
+      purchasePrice?: number | null,
     ): Promise<void> => {
       if (!companyId) throw new Error("No active company context");
       if (!imei && !serialNumber)
@@ -620,6 +738,7 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
         status: "in_stock",
         ...(color ? { color } : {}),
         ...(damageNote ? { damage_note: damageNote } : {}),
+        ...(purchasePrice != null ? { purchase_price: purchasePrice } : {}),
       });
 
       if (error) {
@@ -793,6 +912,7 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
   const contextValue = useMemo(
     () => ({
       inventory,
+      groupedInventory,
       updateProduct,
       decreaseQuantity,
       resetInventory,
@@ -803,12 +923,14 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
       markInventoryIdentifierSold,
       revertInventoryIdentifierSold,
       updateIdentifierUnit,
+      deleteIdentifierUnit,
       updateInventoryIdentifier,
       getUploadHistory,
       isLoading,
     }),
     [
       inventory,
+      groupedInventory,
       isLoading,
       updateProduct,
       decreaseQuantity,
@@ -820,6 +942,7 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
       markInventoryIdentifierSold,
       revertInventoryIdentifierSold,
       updateIdentifierUnit,
+      deleteIdentifierUnit,
       updateInventoryIdentifier,
       getUploadHistory,
     ],

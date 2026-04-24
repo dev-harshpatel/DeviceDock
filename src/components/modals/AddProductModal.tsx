@@ -11,15 +11,13 @@ import {
 } from "@/components/modals/ImeiColorMappingDialog";
 import { toast } from "sonner";
 import { toastError } from "@/lib/utils/toast-helpers";
+import { normalizeStorage, storageInputDisplay } from "@/lib/utils/storage";
 import { cn } from "@/lib/utils";
 import { formatPrice } from "@/lib/utils";
 import { calculatePricePerUnit } from "@/data/inventory";
 import type { InventoryItem } from "@/data/inventory";
 import { parseIdentifierList } from "@/lib/inventory/parse-identifier-list";
-import {
-  mergeInventoryColorsAdditive,
-  replaceInventoryColors,
-} from "@/lib/inventory/inventory-colors";
+import { replaceInventoryColors } from "@/lib/inventory/inventory-colors";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -112,7 +110,8 @@ export function AddProductModal({
   initialItemId,
   onRestockComplete,
 }: AddProductModalProps) {
-  const { inventory, updateProduct, bulkInsertProducts, addInventoryIdentifier } = useInventory();
+  const { inventory, groupedInventory, updateProduct, bulkInsertProducts, addInventoryIdentifier } =
+    useInventory();
   const { user } = useAuth();
   const { companyId } = useCompany();
   const [form, setForm] = useState<ProductForm>(defaultForm);
@@ -726,38 +725,46 @@ export function AddProductModal({
       const damageNoteValue = form.damageNote.trim() || null;
 
       if (selectedExisting && hasIdentifier) {
-        // ── Case 1: Scan a new unit of an existing device configuration ──────
-        // Increment the shared quantity counter and register the new identifier.
-        let currentQty = selectedExisting.quantity;
-        if (companyId) {
-          const { data: qtyRow, error: qtyErr } = await supabase
-            .from("inventory")
-            .select("quantity")
-            .eq("id", selectedExisting.id)
-            .eq("company_id", companyId)
-            .maybeSingle();
-          const liveQty = (qtyRow as { quantity?: number } | null)?.quantity;
-          if (!qtyErr && typeof liveQty === "number") {
-            currentQty = liveQty;
+        // Case 1: add a separate DB row for the scanned unit batch.
+        const perUnitPrice = calculatePricePerUnit(newPurchasePrice, effectiveQuantity, hstValue);
+        const perUnitPurchase = effectiveQuantity > 0 ? newPurchasePrice / effectiveQuantity : 0;
+        const result = await bulkInsertProducts([
+          {
+            id: "",
+            deviceName: form.deviceName.trim(),
+            brand: form.brand.trim(),
+            grade: form.grade as Grade,
+            storage: form.storage.trim(),
+            quantity: effectiveQuantity,
+            purchasePrice: newPurchasePrice,
+            hst: hstValue || null,
+            pricePerUnit: perUnitPrice,
+            sellingPrice,
+            lastUpdated: "Just now",
+            priceChange: "stable",
+            isActive: true,
+          },
+        ]);
+
+        savedInventoryId = result.insertedIds?.[0] ?? null;
+
+        if (savedInventoryId) {
+          for (const identifier of identifiers) {
+            await addInventoryIdentifier(
+              savedInventoryId,
+              identifier.imei,
+              identifier.serialNumber,
+              getColorForIdentifier(identifier.imei, identifier.serialNumber),
+              damageNoteValue,
+              perUnitPurchase,
+            );
           }
         }
-        await updateProduct(selectedExisting.id, {
-          quantity: currentQty + identifiers.length,
-        });
-        for (const identifier of identifiers) {
-          await addInventoryIdentifier(
-            selectedExisting.id,
-            identifier.imei,
-            identifier.serialNumber,
-            getColorForIdentifier(identifier.imei, identifier.serialNumber),
-            damageNoteValue,
-          );
-        }
-        savedInventoryId = selectedExisting.id;
+
         toast.success(
-          `${form.deviceName} — ${identifiers.length} unit${identifiers.length !== 1 ? "s" : ""} added with identifiers`,
+          `${form.deviceName} — ${identifiers.length} unit${identifiers.length !== 1 ? "s" : ""} added as a separate inventory row`,
         );
-        onRestockComplete?.(selectedExisting.id);
+        onRestockComplete?.(savedInventoryId ?? selectedExisting.id);
       } else if (selectedExisting && mergePreview && !hasIdentifier) {
         // ── Case 2: Legacy restock without a scanned identifier ──────────────
         let currentQty = selectedExisting.quantity;
@@ -794,6 +801,7 @@ export function AddProductModal({
       } else {
         // ── Case 3: New product configuration ───────────────────────────────
         const pricePerUnit = calculatePricePerUnit(newPurchasePrice, effectiveQuantity, hstValue);
+        const perUnitPurchaseNew = effectiveQuantity > 0 ? newPurchasePrice / effectiveQuantity : 0;
         const result = await bulkInsertProducts([
           {
             id: "",
@@ -823,6 +831,7 @@ export function AddProductModal({
               identifier.serialNumber,
               getColorForIdentifier(identifier.imei, identifier.serialNumber),
               damageNoteValue,
+              perUnitPurchaseNew,
             );
           }
         }
@@ -858,11 +867,7 @@ export function AddProductModal({
           }));
 
         if (rows.length > 0) {
-          if (selectedExisting && identifiers.length > 0) {
-            await mergeInventoryColorsAdditive(supabase, inventoryId, rows);
-          } else {
-            await replaceInventoryColors(supabase, inventoryId, rows);
-          }
+          await replaceInventoryColors(supabase, inventoryId, rows);
         }
       }
 
@@ -926,7 +931,7 @@ export function AddProductModal({
               <ProductSearchCombobox
                 comboboxOpen={comboboxOpen}
                 setComboboxOpen={setComboboxOpen}
-                inventory={inventory}
+                inventory={groupedInventory}
                 selectedExisting={selectedExisting}
                 selectedExistingId={selectedExistingId}
                 deviceNameSearch={form.deviceName}
@@ -1110,16 +1115,24 @@ export function AddProductModal({
                   <Label htmlFor="ap-storage" className="text-sm font-medium">
                     Storage
                   </Label>
-                  <Input
-                    id="ap-storage"
-                    placeholder="e.g. 128GB"
-                    value={form.storage}
-                    onChange={(e) => handleField("storage", e.target.value)}
-                    disabled={!!selectedExisting}
-                    className={
-                      selectedExisting ? "bg-muted/50 text-muted-foreground cursor-not-allowed" : ""
-                    }
-                  />
+                  <div className="relative">
+                    <Input
+                      id="ap-storage"
+                      placeholder="128"
+                      value={storageInputDisplay(form.storage)}
+                      onChange={(e) => handleField("storage", normalizeStorage(e.target.value))}
+                      disabled={!!selectedExisting}
+                      className={cn(
+                        "pr-10",
+                        selectedExisting
+                          ? "bg-muted/50 text-muted-foreground cursor-not-allowed"
+                          : "",
+                      )}
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">
+                      GB
+                    </span>
+                  </div>
                 </div>
 
                 {/* HST */}

@@ -9,42 +9,39 @@ import {
   buildServerFilters,
 } from "@/components/common/FilterBar";
 import { PaginationControls } from "@/components/common/PaginationControls";
-import { useQueryClient } from "@tanstack/react-query";
 import { useInventory } from "@/contexts/InventoryContext";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useDebounce } from "@/hooks/use-debounce";
-import { usePaginatedReactQuery } from "@/hooks/use-paginated-react-query";
 import { usePageParam } from "@/hooks/use-page-param";
-import { queryKeys } from "@/lib/query-keys";
 import { InventoryItem, calculatePricePerUnit } from "@/data/inventory";
-import { fetchPaginatedInventory } from "@/lib/supabase/queries";
+import { filterInventoryItems, sortInventoryItems } from "@/lib/inventory/group-inventory-items";
 import { supabase } from "@/lib/supabase/client";
 import { useFilterOptions } from "@/hooks/use-filter-options";
 import { cn } from "@/lib/utils";
-import { Loader2, RotateCcw } from "lucide-react";
-import { useState, useCallback } from "react";
+import { RotateCcw } from "lucide-react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { toast } from "sonner";
 import { toastError } from "@/lib/utils/toast-helpers";
 import { ColourBreakdownDialog, type ColourRow } from "@/components/modals/ColourBreakdownDialog";
 import { TOAST_MESSAGES } from "@/lib/constants/toast-messages";
 import { EmptyState } from "@/components/common/EmptyState";
+import { ProductImeiDeleter } from "@/components/products/ProductImeiDeleter";
 import { ProductImeiEditor } from "@/components/products/ProductImeiEditor";
 import { ProductTableRow } from "@/components/products/ProductTableRow";
 import { ProductDeleteDialog } from "@/components/products/ProductDeleteDialog";
 
-const TableLoadingOverlay = ({ label }: { label: string }) => (
-  <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60 backdrop-blur-[1px]">
-    <div className="flex items-center gap-3 rounded-md border border-border bg-card px-4 py-2 shadow-sm">
-      <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-      <p className="text-sm text-foreground">{label}</p>
-    </div>
-  </div>
-);
+const PRODUCTS_PAGE_SIZE = 20;
 
 export default function ProductManagement() {
-  const { updateProduct, resetInventory } = useInventory();
+  const {
+    inventory,
+    groupedInventory,
+    updateProduct,
+    resetInventory,
+    refreshInventory,
+    isLoading,
+  } = useInventory();
   const { isOwner, isManager, companyId } = useCompany();
-  const queryClient = useQueryClient();
 
   // ── Product field edits ───────────────────────────────────────────────────
   const [editedProducts, setEditedProducts] = useState<Record<string, Partial<InventoryItem>>>({});
@@ -69,29 +66,45 @@ export default function ProductManagement() {
   const [filters, setFilters] = useState<FilterValues>(defaultFilters);
   const filterOptions = useFilterOptions();
   const debouncedSearch = useDebounce(filters.search);
-  const serverFilters = buildServerFilters(debouncedSearch, filters);
+  const serverFilters = useMemo(
+    () => buildServerFilters(debouncedSearch, filters),
+    [debouncedSearch, filters],
+  );
+  const filtersKey = useMemo(() => JSON.stringify(serverFilters), [serverFilters]);
   const [currentPage, setCurrentPage] = usePageParam();
-  const queryKey = queryKeys.inventoryPage(currentPage, serverFilters);
-  const filtersKey = JSON.stringify(serverFilters);
 
-  const {
-    data: filteredItems,
-    totalCount,
-    totalPages,
-    isLoading,
-    isFetching,
-    rangeText,
-  } = usePaginatedReactQuery<InventoryItem>({
-    queryKey,
-    fetchFn: (range) =>
-      fetchPaginatedInventory(serverFilters, range, {
-        showInactive: true,
-        includeAdminFields: true,
-      }),
-    currentPage,
-    setCurrentPage,
-    filtersKey,
-  });
+  // Client-side filter + sort on grouped inventory (show all items including inactive).
+  const filteredSorted = useMemo(() => {
+    const filtered = filterInventoryItems(groupedInventory, serverFilters);
+    return sortInventoryItems(filtered, serverFilters.sortBy ?? "created_asc");
+  }, [groupedInventory, serverFilters]);
+
+  const totalCount = filteredSorted.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / PRODUCTS_PAGE_SIZE));
+  const filteredItems = useMemo(
+    () =>
+      filteredSorted.slice(
+        (currentPage - 1) * PRODUCTS_PAGE_SIZE,
+        currentPage * PRODUCTS_PAGE_SIZE,
+      ),
+    [filteredSorted, currentPage],
+  );
+  const rangeFrom = totalCount > 0 ? (currentPage - 1) * PRODUCTS_PAGE_SIZE + 1 : 0;
+  const rangeTo = Math.min(currentPage * PRODUCTS_PAGE_SIZE, totalCount);
+  const rangeText = totalCount > 0 ? `${rangeFrom}-${rangeTo} of ${totalCount}` : "0 items";
+
+  // Reset to page 1 when filters change.
+  useEffect(() => {
+    setCurrentPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtersKey]);
+
+  // Clamp page when results shrink.
+  useEffect(() => {
+    if (currentPage > totalPages && !isLoading) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages, isLoading, setCurrentPage]);
 
   // ── Product field handlers ────────────────────────────────────────────────
   const handleFieldChange = (id: string, field: keyof InventoryItem, value: string | number) => {
@@ -106,16 +119,28 @@ export default function ProductManagement() {
     async (productId: string) => {
       if (loadedColors[productId] !== undefined) return; // already loaded
       setLoadingColors((prev) => new Set(prev).add(productId));
+
+      // For grouped items, aggregate colors across ALL underlying inventory rows.
+      const product = filteredItems.find((p) => p.id === productId);
+      const ids = product?.inventoryIds ?? [productId];
+
       try {
         const { data } = await (supabase as any)
           .from("inventory_colors")
           .select("color, quantity")
-          .eq("inventory_id", productId)
+          .in("inventory_id", ids)
           .order("color");
-        const rows: ColourRow[] = (data ?? []).map((c: { color: string; quantity: number }) => ({
-          color: c.color,
-          quantity: String(c.quantity),
-        }));
+
+        // Sum quantities per color across all rows in the group.
+        const totals = new Map<string, number>();
+        for (const c of (data ?? []) as { color: string; quantity: number }[]) {
+          totals.set(c.color, (totals.get(c.color) ?? 0) + c.quantity);
+        }
+        const rows: ColourRow[] = Array.from(totals.entries())
+          .filter(([, qty]) => qty > 0)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([color, quantity]) => ({ color, quantity: String(quantity) }));
+
         setLoadedColors((prev) => ({ ...prev, [productId]: rows }));
         setEditedColors((prev) => ({ ...prev, [productId]: rows }));
       } catch {
@@ -129,7 +154,7 @@ export default function ProductManagement() {
         });
       }
     },
-    [loadedColors],
+    [loadedColors, filteredItems],
   );
 
   const openColourDialog = async (productId: string) => {
@@ -148,12 +173,44 @@ export default function ProductManagement() {
     const product = filteredItems.find((p) => p.id === id);
     if (!product) return;
 
+    const ids = product.inventoryIds ?? [product.id];
+
     try {
-      const qty = (fieldUpdates.quantity ?? product.quantity) as number;
-      const pp = (fieldUpdates.purchasePrice ?? product.purchasePrice ?? 0) as number;
-      const h = (fieldUpdates.hst ?? product.hst ?? 0) as number;
-      fieldUpdates.pricePerUnit = calculatePricePerUnit(pp, qty, h);
-      await updateProduct(id, fieldUpdates);
+      if (ids.length <= 1) {
+        // Single-row item — update normally.
+        const qty = (fieldUpdates.quantity ?? product.quantity) as number;
+        const pp = (fieldUpdates.purchasePrice ?? product.purchasePrice ?? 0) as number;
+        const h = (fieldUpdates.hst ?? product.hst ?? 0) as number;
+        fieldUpdates.pricePerUnit = calculatePricePerUnit(pp, qty, h);
+        await updateProduct(id, fieldUpdates);
+      } else {
+        // Grouped item — apply spec/price changes to every underlying raw row.
+        const rawRows = inventory.filter((i) => ids.includes(i.id));
+        const totalNewPP =
+          fieldUpdates.purchasePrice !== undefined
+            ? (fieldUpdates.purchasePrice as number)
+            : (product.purchasePrice ?? 0);
+        const totalOldPP = product.purchasePrice ?? 0;
+
+        for (const rawRow of rawRows) {
+          // Don't allow direct quantity editing on grouped rows; keep each row's qty.
+          const { quantity: _ignored, ...sharedUpdates } = fieldUpdates;
+          const rowUpdates: Partial<InventoryItem> = { ...sharedUpdates };
+
+          // Distribute purchase price proportionally across underlying rows.
+          if (fieldUpdates.purchasePrice !== undefined) {
+            const rowRatio =
+              totalOldPP > 0 ? (rawRow.purchasePrice ?? 0) / totalOldPP : 1 / ids.length;
+            rowUpdates.purchasePrice = Math.round(totalNewPP * rowRatio * 100) / 100;
+          }
+
+          const pp = (rowUpdates.purchasePrice ?? rawRow.purchasePrice ?? 0) as number;
+          const h = (rowUpdates.hst ?? rawRow.hst ?? 0) as number;
+          rowUpdates.pricePerUnit = calculatePricePerUnit(pp, rawRow.quantity, h);
+          await updateProduct(rawRow.id, rowUpdates);
+        }
+      }
+
       setEditedProducts((prev) => {
         const next = { ...prev };
         delete next[id];
@@ -172,12 +229,21 @@ export default function ProductManagement() {
     const id = colourDialog.productId;
     if (!id) return;
 
+    // For grouped items, collect all underlying row IDs.
+    const product = filteredItems.find((p) => p.id === id);
+    const allIds = product?.inventoryIds ?? [id];
+
     setColourDialog((prev) => ({ ...prev, isSaving: true }));
     try {
+      // Clear color rows from every underlying DB row so we start fresh.
+      for (const rowId of allIds) {
+        await (supabase as any).from("inventory_colors").delete().eq("inventory_id", rowId);
+      }
+
       const validRows = rows
         .filter((r) => r.color.trim() && Number(r.quantity) > 0)
         .map((r) => ({
-          inventory_id: id,
+          inventory_id: id, // consolidate the aggregate onto the representative row
           color: r.color.trim(),
           quantity: Number(r.quantity),
           updated_at: new Date().toISOString(),
@@ -188,25 +254,6 @@ export default function ProductManagement() {
           .from("inventory_colors")
           .upsert(validRows, { onConflict: "inventory_id,color" });
         if (upsertError) throw upsertError;
-
-        const keptColors = validRows.map((r) => r.color);
-        const { data: existing } = await (supabase as any)
-          .from("inventory_colors")
-          .select("color")
-          .eq("inventory_id", id);
-        const toDelete = (existing ?? [])
-          .map((r: { color: string }) => r.color)
-          .filter((c: string) => !keptColors.includes(c));
-        if (toDelete.length > 0) {
-          await (supabase as any)
-            .from("inventory_colors")
-            .delete()
-            .eq("inventory_id", id)
-            .in("color", toDelete);
-        }
-      } else {
-        // All rows cleared — delete everything for this item
-        await (supabase as any).from("inventory_colors").delete().eq("inventory_id", id);
       }
 
       setLoadedColors((prev) => ({ ...prev, [id]: rows }));
@@ -300,16 +347,20 @@ export default function ProductManagement() {
     const product = deleteDialog.product;
     if (!product) return;
 
+    const ids = product.inventoryIds ?? [product.id];
+
     setDeleteDialog((prev) => ({ ...prev, isDeleting: true }));
     try {
-      const { error } = await (supabase as any)
-        .from("inventory")
-        .delete()
-        .eq("id", product.id)
-        .eq("company_id", companyId);
+      for (const rowId of ids) {
+        const { error } = await (supabase as any)
+          .from("inventory")
+          .delete()
+          .eq("id", rowId)
+          .eq("company_id", companyId);
+        if (error) throw error;
+      }
 
-      if (error) throw error;
-
+      await refreshInventory();
       toast.success(`${product.deviceName} deleted`, {
         description: "Product and all associated records have been removed.",
       });
@@ -320,26 +371,23 @@ export default function ProductManagement() {
         isChecking: false,
         isDeleting: false,
       });
-      // Remove any pending edits for this product
       setEditedProducts((prev) => {
         const next = { ...prev };
         delete next[product.id];
         return next;
       });
-      // Refetch the product list
-      await queryClient.invalidateQueries({ queryKey: queryKeys.inventory });
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Failed to delete product. Please try again.",
       );
       setDeleteDialog((prev) => ({ ...prev, isDeleting: false }));
     }
-  }, [deleteDialog.product, companyId, queryClient]);
+  }, [deleteDialog.product, companyId, refreshInventory]);
 
   const canDelete = isOwner || isManager;
 
   const hasChanges = Object.keys(editedProducts).length > 0;
-  const shouldShowSkeleton = (isLoading || isFetching) && filteredItems.length === 0;
+  const shouldShowSkeleton = isLoading && filteredItems.length === 0;
 
   // The product whose colour dialog is open (for passing to the dialog)
   const colourDialogProduct = colourDialog.productId
@@ -365,6 +413,7 @@ export default function ProductManagement() {
             <TabsList className="w-fit">
               <TabsTrigger value="summary">Product Summary</TabsTrigger>
               <TabsTrigger value="imei">Edit by IMEI</TabsTrigger>
+              <TabsTrigger value="delete-imei">Delete by IMEI</TabsTrigger>
             </TabsList>
           </div>
           <div className="flex gap-2 shrink-0">
@@ -439,7 +488,6 @@ export default function ProductManagement() {
 
           {!shouldShowSkeleton && filteredItems.length > 0 && (
             <div className="relative rounded-lg border border-border bg-card overflow-x-auto">
-              {isFetching && <TableLoadingOverlay label="Searching products..." />}
               <table className="w-full">
                 <thead className="sticky top-0 z-10">
                   <tr className="border-b border-border bg-muted">
@@ -506,7 +554,7 @@ export default function ProductManagement() {
             </div>
           )}
 
-          {!shouldShowSkeleton && !isFetching && filteredItems.length === 0 && (
+          {!shouldShowSkeleton && filteredItems.length === 0 && (
             <EmptyState
               title="No products found"
               description="Try adjusting your search or filter criteria to find what you're looking for."
@@ -516,6 +564,10 @@ export default function ProductManagement() {
 
         <TabsContent value="imei" className="mt-0">
           <ProductImeiEditor />
+        </TabsContent>
+
+        <TabsContent value="delete-imei" className="mt-0">
+          <ProductImeiDeleter />
         </TabsContent>
       </div>
 

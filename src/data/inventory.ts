@@ -17,6 +17,7 @@ export interface InventoryItem {
   imei?: string | null;
   serialNumber?: string | null;
   status?: string;
+  inventoryIds?: string[];
 }
 
 // Helper to calculate price per unit: (purchasePrice / quantity) * (1 + hst/100)

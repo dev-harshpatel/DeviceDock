@@ -37,14 +37,14 @@ const COLUMN_WIDTHS = [
  * Fourth row is a D-grade example showing the optional Damage Note column.
  */
 const UNIT_ROW_SAMPLE_ROWS: (string | number)[][] = [
-  ["Google Pixel 8", "Google", "A", "128GB", 1, 500, 699, 13, "123456789012341", "", "Black", ""],
-  ["Google Pixel 8", "Google", "A", "128GB", 1, 510, 699, 13, "123456789012342", "", "Black", ""],
-  ["Google Pixel 8", "Google", "A", "128GB", 1, 490, 699, 13, "123456789012343", "", "White", ""],
+  ["Google Pixel 8", "Google", "A", "128", 1, 500, 699, 13, "123456789012341", "", "Black", ""],
+  ["Google Pixel 8", "Google", "A", "128", 1, 510, 699, 13, "123456789012342", "", "Black", ""],
+  ["Google Pixel 8", "Google", "A", "128", 1, 490, 699, 13, "123456789012343", "", "White", ""],
   [
     "Google Pixel 8",
     "Google",
     "D",
-    "128GB",
+    "128",
     1,
     200,
     399,
@@ -62,7 +62,7 @@ const LEGACY_SAMPLE_ROWS: (string | number)[][] = [
     "Google Pixel 8",
     "Google",
     "A",
-    "128GB",
+    "128",
     3,
     1500,
     699,
@@ -85,6 +85,10 @@ const INSTRUCTIONS_UNIT_ROW: string[][] = [
     "Purchase Price on each row is the cost for that single unit. Matching SKU rows combine into one inventory line with summed cost.",
   ],
   [""],
+  [
+    "Storage: enter the number only (e.g. 128). GB is added automatically. Use 1TB for terabyte devices.",
+  ],
+  [""],
   ["Format the IMEI column as Text in Excel to avoid rounding."],
 ];
 
@@ -96,6 +100,10 @@ const INSTRUCTIONS_LEGACY: string[][] = [
   ],
   [""],
   ["Purchase Price is the total line cost for that row."],
+  [""],
+  [
+    "Storage: enter the number only (e.g. 128). GB is added automatically. Use 1TB for terabyte devices.",
+  ],
   [""],
   ["Format the IMEI column as Text in Excel to avoid rounding."],
 ];

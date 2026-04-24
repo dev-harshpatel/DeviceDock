@@ -124,23 +124,18 @@ export function BulkBarcodeLabelDialog({
     const pageMarkup = pages
       .map(({ src, deviceName, grade, storage, showRetailPrice, customPrice }) => {
         const metaParts = [grade, storage].filter(Boolean);
-        const metaLine = metaParts.join(" · ");
+        const labelLine = [deviceName, ...metaParts].filter(Boolean).join(" · ");
         const priceValue = showRetailPrice && customPrice.trim() ? parseFloat(customPrice) : null;
 
-        const hasText = !!(deviceName || metaLine);
+        const hasText = !!labelLine;
         const hasPrice = priceValue != null && !isNaN(priceValue);
 
-        // Use split (space-between) layout when price is shown; centered otherwise.
         const topClass = hasPrice ? "label-top-split" : "label-top-centered";
-        const textClass = hasPrice ? "label-text" : "label-text-centered";
         const topBlock =
           hasText || hasPrice
             ? `<div class="${topClass}">` +
               (hasText
-                ? `<div class="${textClass}">` +
-                  (deviceName ? `<div class="device-name">${escapeHtml(deviceName)}</div>` : "") +
-                  (metaLine ? `<div class="meta">${escapeHtml(metaLine)}</div>` : "") +
-                  `</div>`
+                ? `<div class="label-text"><div class="label-line">${escapeHtml(labelLine)}</div></div>`
                 : "") +
               (hasPrice ? `<div class="price">$${(priceValue as number).toFixed(2)}</div>` : "") +
               `</div>`
@@ -195,35 +190,20 @@ export function BulkBarcodeLabelDialog({
             /* Price present → text left, price right */
             .label-top-split { justify-content: space-between; }
             .label-text {
-              display: flex;
-              flex-direction: column;
-              gap: 0.2mm;
               min-width: 0;
               flex: 1;
             }
-            .label-text-centered {
-              display: flex;
-              flex-direction: column;
-              gap: 0.2mm;
-              min-width: 0;
-              align-items: center;
-            }
-            .device-name {
-              font-size: 8.5pt;
+            .label-line {
+              font-size: 10pt;
               font-weight: 700;
               font-family: Arial, sans-serif;
               line-height: 1.2;
-              word-break: break-word;
+              white-space: nowrap;
+              overflow: hidden;
+              text-overflow: ellipsis;
             }
-            .label-text-centered .device-name,
-            .label-text-centered .meta { text-align: center; }
-            .meta {
-              font-size: 7.5pt;
-              font-family: Arial, sans-serif;
-              color: #333;
-              line-height: 1.2;
-              word-break: break-word;
-            }
+            .label-top-centered .label-line { text-align: center; }
+            .label-top-split .label-line { text-align: left; }
             .barcode-wrap {
               flex: 1;
               min-height: 0;
@@ -241,7 +221,7 @@ export function BulkBarcodeLabelDialog({
               object-fit: contain;
             }
             .price {
-              font-size: 8.5pt;
+              font-size: 10.5pt;
               font-weight: 700;
               font-family: Arial, sans-serif;
               white-space: nowrap;
@@ -293,7 +273,7 @@ export function BulkBarcodeLabelDialog({
                     height: IMEI_BARCODE_HEIGHT,
                     displayValue: true,
                     font: "Arial",
-                    fontSize: 10,
+                    fontSize: 13,
                     margin: 4,
                   });
                 } catch {
@@ -309,7 +289,7 @@ export function BulkBarcodeLabelDialog({
           {entries.map((entry, i) => {
             const setting = settings[i] ?? { showRetailPrice: false, customPrice: "" };
             const metaParts = [entry.grade, entry.storage].filter(Boolean);
-            const metaLine = metaParts.join(" · ");
+            const labelLine = [entry.deviceName, ...metaParts].filter(Boolean).join(" · ");
 
             return (
               <div
@@ -319,10 +299,9 @@ export function BulkBarcodeLabelDialog({
                 {/* Left: device info */}
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-foreground truncate">
-                    {entry.deviceName ?? entry.imei}
+                    {labelLine || entry.imei}
                   </p>
                   <p className="text-xs text-muted-foreground font-mono">{entry.imei}</p>
-                  {metaLine && <p className="text-xs text-muted-foreground mt-0.5">{metaLine}</p>}
                 </div>
 
                 {/* Right: retail price toggle + editable input */}
