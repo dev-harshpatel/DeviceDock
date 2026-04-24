@@ -75,7 +75,7 @@ function DetailField({ label, value }: DetailFieldProps) {
 
 /** Convert an in-memory map hit (no soldAt) to the full lookup shape. */
 function saleLookupToFull(r: IdentifierSaleLookup): IdentifierFullLookup {
-  return { ...r, soldAt: null };
+  return { ...r, soldAt: null, purchasePrice: r.purchasePrice ?? null };
 }
 
 export default function ImeiLookup() {

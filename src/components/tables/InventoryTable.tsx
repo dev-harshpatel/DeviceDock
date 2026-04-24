@@ -1,4 +1,4 @@
-import { InventoryItem, getStockStatus } from "@/data/inventory";
+import { InventoryItem, calculatePricePerUnit, getStockStatus } from "@/data/inventory";
 import { removeTax } from "@/lib/tax";
 import { formatPrice } from "@/lib/utils";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -18,6 +18,13 @@ const getPricePerUnitWithoutTax = (item: InventoryItem): number => {
   }
   if (item.hst != null && item.hst > 0) {
     return removeTax(item.pricePerUnit, item.hst);
+  }
+  return item.pricePerUnit;
+};
+
+const getPricePerUnitWithTax = (item: InventoryItem): number => {
+  if (item.quantity > 0 && item.purchasePrice != null) {
+    return calculatePricePerUnit(item.purchasePrice, item.quantity, item.hst ?? 0);
   }
   return item.pricePerUnit;
 };
@@ -86,7 +93,7 @@ export function InventoryTable({
                   Qty
                 </th>
                 <th className="sticky top-0 z-10 bg-muted border-b border-border text-center text-xs font-medium text-muted-foreground uppercase tracking-wider px-3 py-2.5">
-                  Purchase Price
+                  Purchase Price / Unit
                 </th>
                 <th className="sticky top-0 z-10 bg-muted border-b border-border text-center text-xs font-medium text-muted-foreground uppercase tracking-wider px-3 py-2.5">
                   HST %
@@ -146,22 +153,24 @@ export function InventoryTable({
                         </span>
                         {showColorBreakdown && (
                           <ColorBreakdownPopover
-                            inventoryId={item.id}
+                            inventoryIds={item.inventoryIds ?? [item.id]}
                             stockQuantity={item.quantity}
                           />
                         )}
                       </div>
                     </td>
                     <td className="px-3 py-2.5 text-center align-middle font-medium text-foreground text-sm">
-                      {item.purchasePrice != null
-                        ? formatPriceWithoutCurrencySuffix(item.purchasePrice)
-                        : "—"}
+                      {item.purchasePrice != null && item.quantity > 0
+                        ? formatPriceWithoutCurrencySuffix(item.purchasePrice / item.quantity)
+                        : item.purchasePrice != null
+                          ? formatPriceWithoutCurrencySuffix(item.purchasePrice)
+                          : "—"}
                     </td>
                     <td className="px-3 py-2.5 text-center align-middle font-medium text-foreground text-sm">
                       {item.hst != null ? `${item.hst}%` : "—"}
                     </td>
                     <td className="px-3 py-2.5 text-center align-middle font-medium text-muted-foreground text-sm">
-                      {formatPriceWithoutCurrencySuffix(item.pricePerUnit)}
+                      {formatPriceWithoutCurrencySuffix(getPricePerUnitWithTax(item))}
                     </td>
                     <td className="px-3 py-2.5 text-center align-middle font-medium text-muted-foreground text-sm">
                       {formatPriceWithoutCurrencySuffix(getPricePerUnitWithoutTax(item))}
@@ -220,7 +229,10 @@ export function InventoryTable({
                       ×{item.quantity}
                     </span>
                     {showColorBreakdown && (
-                      <ColorBreakdownPopover inventoryId={item.id} stockQuantity={item.quantity} />
+                      <ColorBreakdownPopover
+                        inventoryIds={item.inventoryIds ?? [item.id]}
+                        stockQuantity={item.quantity}
+                      />
                     )}
                   </div>
                 </div>
@@ -237,9 +249,11 @@ export function InventoryTable({
                 <span>
                   Buy:{" "}
                   <span className="text-foreground font-medium">
-                    {item.purchasePrice != null
-                      ? formatPriceWithoutCurrencySuffix(item.purchasePrice)
-                      : "—"}
+                    {item.purchasePrice != null && item.quantity > 0
+                      ? formatPriceWithoutCurrencySuffix(item.purchasePrice / item.quantity)
+                      : item.purchasePrice != null
+                        ? formatPriceWithoutCurrencySuffix(item.purchasePrice)
+                        : "—"}
                   </span>
                 </span>
                 <span>
@@ -251,7 +265,7 @@ export function InventoryTable({
                 <span>
                   /unit (w tax):{" "}
                   <span className="text-foreground font-medium">
-                    {formatPriceWithoutCurrencySuffix(item.pricePerUnit)}
+                    {formatPriceWithoutCurrencySuffix(getPricePerUnitWithTax(item))}
                   </span>
                 </span>
                 <span>

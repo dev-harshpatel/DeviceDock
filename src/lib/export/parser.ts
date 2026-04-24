@@ -2,6 +2,7 @@ import * as XLSX from "xlsx";
 import { ParsedProduct } from "@/types/upload";
 import { calculatePricePerUnit } from "@/data/inventory";
 import { GRADES, normalizeGrade } from "@/lib/constants/grades";
+import { normalizeStorage } from "@/lib/utils/storage";
 import {
   applyFileLevelIdentifierDuplicateDetection,
   applyUnitRowGroupPricingValidation,
@@ -153,7 +154,7 @@ export async function parseExcelFile(file: File): Promise<ParsedProduct[]> {
             deviceName: cellToString(row[deviceNameIndex]),
             brand: cellToString(row[brandIndex]),
             grade: normalizedGrade ?? "A",
-            storage: cellToString(row[storageIndex]),
+            storage: normalizeStorage(cellToString(row[storageIndex])),
             quantity,
             purchasePrice: parseNumber(row[purchasePriceIndex]),
             sellingPrice: parseNumber(row[sellingPriceIndex]),

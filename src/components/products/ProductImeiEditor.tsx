@@ -1,7 +1,7 @@
 "use client";
 
 import { Loader2, Search } from "lucide-react";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Badge } from "@/components/ui/badge";
@@ -18,11 +18,13 @@ import {
 } from "@/components/ui/select";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useInventory } from "@/contexts/InventoryContext";
+import { useIdentifierMap } from "@/hooks/use-identifier-map";
 import type { Grade } from "@/lib/constants/grades";
 import { GRADES } from "@/lib/constants/grades";
 import { TOAST_MESSAGES } from "@/lib/constants/toast-messages";
 import { lookupIdentifierByImei } from "@/lib/supabase/queries";
 import { removeTax } from "@/lib/tax";
+import { calculatePricePerUnit } from "@/data/inventory";
 import type { IdentifierEditLookup } from "@/types/inventory-identifiers";
 import { toastError } from "@/lib/utils/toast-helpers";
 
@@ -63,11 +65,22 @@ function numberFromInput(value: string, fallback: number): number {
 }
 
 function buildDraft(result: IdentifierEditLookup): DeviceDraft {
+  const hst = result.item.hst ?? 0;
+  // Show the base purchase cost (pre-HST) so the user sees the price they actually paid.
+  // If the identifier has a stored per-unit cost use it directly; otherwise derive from the
+  // group's HST-inclusive pricePerUnit by reversing the tax.
+  const rawCost =
+    result.purchasePrice != null
+      ? result.purchasePrice
+      : removeTax(result.item.pricePerUnit ?? 0, hst);
+  // Round to 2 decimal places to avoid floating-point display noise (e.g. 100.00000000000001).
+  const baseCost = Math.round(rawCost * 100) / 100;
+
   return {
     color: result.color ?? "",
     grade: result.item.grade,
-    hst: String(result.item.hst ?? 0),
-    pricePerUnit: String(result.item.pricePerUnit ?? 0),
+    hst: String(hst),
+    pricePerUnit: String(baseCost),
     sellingPrice: String(result.item.sellingPrice ?? 0),
     storage: result.item.storage,
   };
@@ -82,7 +95,8 @@ function StatusBadge({ status }: { status: string }) {
 
 export function ProductImeiEditor() {
   const { companyId } = useCompany();
-  const { updateIdentifierUnit } = useInventory();
+  const { updateIdentifierUnit, groupedInventory } = useInventory();
+  const { lookup: mapLookup } = useIdentifierMap();
 
   const [imeiInput, setImeiInput] = useState("");
   const [result, setResult] = useState<IdentifierEditLookup | null>(null);
@@ -100,15 +114,40 @@ export function ProductImeiEditor() {
     setDraft(buildDraft(result));
   }, [result]);
 
+  // Find the grouped total quantity across all rows with the same spec.
+  const groupQuantity = useMemo(() => {
+    if (!result) return null;
+    const item = result.item;
+    const match = groupedInventory.find(
+      (g) =>
+        g.brand === item.brand &&
+        g.deviceName === item.deviceName &&
+        g.grade === item.grade &&
+        g.storage === item.storage &&
+        (g.hst ?? 0) === (item.hst ?? 0),
+    );
+    return match?.quantity ?? item.quantity;
+  }, [result, groupedInventory]);
+
   const canEdit = result?.status === "in_stock" || result?.status === "reserved";
   const currentHst = draft ? numberFromInput(draft.hst, result?.item.hst ?? 0) : 0;
+  // pricePerUnit in draft holds the BASE cost (pre-HST) — what the user paid per unit.
   const currentPricePerUnit = draft
-    ? numberFromInput(draft.pricePerUnit, result?.item.pricePerUnit ?? 0)
+    ? numberFromInput(
+        draft.pricePerUnit,
+        result?.purchasePrice ?? removeTax(result?.item.pricePerUnit ?? 0, result?.item.hst ?? 0),
+      )
     : 0;
   const currentSellingPrice = draft
     ? numberFromInput(draft.sellingPrice, result?.item.sellingPrice ?? 0)
     : 0;
-  const previewBaseCost = draft ? removeTax(currentPricePerUnit, currentHst) : 0;
+  // Preview shows the HST-inclusive total cost per unit.
+  const previewTotalCost = calculatePricePerUnit(currentPricePerUnit, 1, currentHst);
+
+  // Stored base cost for change detection.
+  const storedBaseCost = result
+    ? (result.purchasePrice ?? removeTax(result.item.pricePerUnit ?? 0, result.item.hst ?? 0))
+    : 0;
 
   const hasChanges =
     !!result &&
@@ -117,10 +156,17 @@ export function ProductImeiEditor() {
       draft.grade !== result.item.grade ||
       normalizeText(draft.storage) !== result.item.storage ||
       Math.abs(currentHst - (result.item.hst ?? 0)) > 0.0001 ||
-      Math.abs(currentPricePerUnit - result.item.pricePerUnit) > 0.0001 ||
+      Math.abs(currentPricePerUnit - storedBaseCost) > 0.0001 ||
       Math.abs(currentSellingPrice - result.item.sellingPrice) > 0.0001);
 
   async function refreshLookup(imei: string) {
+    // Try the in-memory map first (instant). Fall back to DB for sold/returned units
+    // that aren't cached, so the user can still see the blocked-reason UI.
+    const cached = mapLookup(imei);
+    if (cached) {
+      setResult({ ...cached, soldAt: null });
+      return;
+    }
     const nextLookup = await lookupIdentifierByImei(companyId, imei);
     setResult(nextLookup);
     if (!nextLookup) {
@@ -138,6 +184,12 @@ export function ProductImeiEditor() {
     }
 
     setHasSearched(true);
+    // Check map synchronously — skip the loading state entirely if cached.
+    const cached = mapLookup(trimmed);
+    if (cached) {
+      setResult({ ...cached, soldAt: null });
+      return;
+    }
     setIsSearching(true);
     try {
       await refreshLookup(trimmed);
@@ -159,6 +211,7 @@ export function ProductImeiEditor() {
         color: normalizeText(draft.color) || null,
         grade: draft.grade,
         storage: normalizeText(draft.storage),
+        // Pass base cost (pre-HST); updateIdentifierUnit derives the HST-inclusive pricePerUnit.
         pricePerUnit: currentPricePerUnit,
         sellingPrice: currentSellingPrice,
         hst: currentHst,
@@ -265,7 +318,7 @@ export function ProductImeiEditor() {
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   Current Group Qty
                 </p>
-                <p className="text-sm text-foreground">{result.item.quantity}</p>
+                <p className="text-sm text-foreground">{groupQuantity ?? result.item.quantity}</p>
               </div>
             </div>
 
@@ -341,7 +394,7 @@ export function ProductImeiEditor() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="imei-price-per-unit">Price per Unit</Label>
+                <Label htmlFor="imei-price-per-unit">Purchase Cost / Unit (excl. HST)</Label>
                 <Input
                   id="imei-price-per-unit"
                   type="number"
@@ -377,9 +430,9 @@ export function ProductImeiEditor() {
 
             {canEdit && (
               <div className="rounded-lg border border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
-                Device landed cost preview:{" "}
+                Total cost per unit incl. HST:{" "}
                 <span className="font-medium text-foreground">
-                  {Number.isFinite(previewBaseCost) ? previewBaseCost.toFixed(2) : "0.00"}
+                  {Number.isFinite(previewTotalCost) ? previewTotalCost.toFixed(2) : "0.00"}
                 </span>
                 . This device will stay in its current group only if the grouped fields still match.
               </div>

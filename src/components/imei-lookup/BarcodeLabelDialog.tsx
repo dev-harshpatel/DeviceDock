@@ -77,7 +77,7 @@ export function BarcodeLabelDialog({
           height: IMEI_BARCODE_HEIGHT,
           displayValue: true,
           font: "Arial",
-          fontSize: 10,
+          fontSize: 13,
           margin: 4,
         });
       } catch {
@@ -96,9 +96,9 @@ export function BarcodeLabelDialog({
     if (!printWindow) return;
 
     const metaParts = [grade, storage].filter(Boolean);
-    const metaLine = metaParts.length > 0 ? metaParts.join(" · ") : null;
+    const labelLine = [deviceName, ...metaParts].filter(Boolean).join(" · ");
     const priceValue = showRetailPrice && customPrice.trim() ? parseFloat(customPrice) : null;
-    const hasText = !!(deviceName || metaLine);
+    const hasText = !!labelLine;
     const hasPrice = priceValue != null && !isNaN(priceValue);
 
     printWindow.document.write(`
@@ -138,31 +138,21 @@ export function BarcodeLabelDialog({
               width: 100%;
             }
             .label-text {
-              display: flex;
-              flex-direction: column;
-              gap: 0.2mm;
               min-width: 0;
               flex: ${hasPrice ? "1" : "none"};
-              align-items: ${hasPrice ? "flex-start" : "center"};
             }
-            .device-name {
-              font-size: 8.5pt;
+            .label-line {
+              font-size: 10pt;
               font-weight: 700;
               font-family: Arial, sans-serif;
               line-height: 1.2;
-              word-break: break-word;
-              text-align: ${hasPrice ? "left" : "center"};
-            }
-            .meta {
-              font-size: 7.5pt;
-              font-family: Arial, sans-serif;
-              color: #333;
-              line-height: 1.2;
-              word-break: break-word;
+              white-space: nowrap;
+              overflow: hidden;
+              text-overflow: ellipsis;
               text-align: ${hasPrice ? "left" : "center"};
             }
             .price {
-              font-size: 8.5pt;
+              font-size: 10.5pt;
               font-weight: 700;
               font-family: Arial, sans-serif;
               white-space: nowrap;
@@ -196,11 +186,7 @@ export function BarcodeLabelDialog({
             <div class="label-top">
               ${
                 hasText
-                  ? `
-              <div class="label-text">
-                ${deviceName ? `<div class="device-name">${escapeHtml(deviceName)}</div>` : ""}
-                ${metaLine ? `<div class="meta">${escapeHtml(metaLine)}</div>` : ""}
-              </div>`
+                  ? `<div class="label-text"><div class="label-line">${escapeHtml(labelLine)}</div></div>`
                   : ""
               }
               ${hasPrice ? `<div class="price">$${(priceValue as number).toFixed(2)}</div>` : ""}

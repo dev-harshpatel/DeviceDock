@@ -11,22 +11,26 @@ import {
 import { supabase } from "@/lib/supabase/client";
 
 interface ColorBreakdownPopoverProps {
-  inventoryId: string;
+  /** All inventory row IDs that belong to this grouped SKU. */
+  inventoryIds: string[];
   /** When zero, colour breakdown is hidden — aggregate rows may be stale if stock was sold outside colour-aware flows. */
   stockQuantity: number;
 }
 
-export function ColorBreakdownPopover({ inventoryId, stockQuantity }: ColorBreakdownPopoverProps) {
+export function ColorBreakdownPopover({ inventoryIds, stockQuantity }: ColorBreakdownPopoverProps) {
   const [colors, setColors] = useState<InventoryColorQuantityRow[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
 
+  const inventoryIdsKey = inventoryIds.join(",");
+
   useEffect(() => {
     setColors(null);
     setError(null);
     setOpen(false);
-  }, [inventoryId, stockQuantity]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inventoryIdsKey, stockQuantity]);
 
   const handleOpen = async (nextOpen: boolean) => {
     setOpen(nextOpen);
@@ -34,7 +38,7 @@ export function ColorBreakdownPopover({ inventoryId, stockQuantity }: ColorBreak
     setIsLoading(true);
     setError(null);
     try {
-      const rows = await fetchPositiveInventoryColors(supabase, inventoryId);
+      const rows = await fetchPositiveInventoryColors(supabase, inventoryIds);
       setColors(rows);
     } catch {
       setError("Could not load colour data.");

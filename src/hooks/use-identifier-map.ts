@@ -13,15 +13,15 @@ const STALE_MS = 5 * 60 * 1000; // 5 minutes
 
 async function fetchAllActiveIdentifiers(companyId: string): Promise<IdentifierSaleLookup[]> {
   // Single JOIN query — identifiers + their inventory row in one round-trip.
-  // Only fetches in_stock and reserved; sold/inactive identifiers are excluded
-  // because they are not valid for a new sale.
+  // Includes in_stock, reserved, and damaged so the edit/delete by IMEI flows get
+  // instant O(1) lookups for all actionable statuses. Sold/returned fall back to DB.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase.from("inventory_identifiers") as any)
     .select(
-      `id, imei, serial_number, status, color, damage_note, inventory!inner(${INVENTORY_ADMIN_FIELDS})`,
+      `id, imei, serial_number, status, color, damage_note, purchase_price, inventory!inner(${INVENTORY_ADMIN_FIELDS})`,
     )
     .eq("company_id", companyId)
-    .in("status", ["in_stock", "reserved"]);
+    .in("status", ["in_stock", "reserved", "damaged"]);
 
   if (error) throw error;
 
@@ -33,6 +33,7 @@ async function fetchAllActiveIdentifiers(companyId: string): Promise<IdentifierS
     status: String(row.status ?? "in_stock"),
     color: (row.color as string | null) ?? null,
     damageNote: (row.damage_note as string | null) ?? null,
+    purchasePrice: row.purchase_price != null ? Number(row.purchase_price) : null,
     item: dbRowToInventoryItem(row.inventory),
   }));
 }

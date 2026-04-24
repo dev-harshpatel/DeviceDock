@@ -53,6 +53,7 @@ import { ColourBreakdownDialog, type ColourRow } from "@/components/modals/Colou
 import { supabase } from "@/lib/supabase/client";
 import { type Grade, GRADES, GRADE_BADGE_LABELS, GRADE_LABELS } from "@/lib/constants/grades";
 import { cn, formatPrice } from "@/lib/utils";
+import { normalizeStorage, storageInputDisplay } from "@/lib/utils/storage";
 
 const MAX_ROWS = 50;
 
@@ -1084,15 +1085,24 @@ export default function AddMultipleProducts() {
                         </div>
                         <div className="space-y-1.5">
                           <Label className="text-sm font-medium">Storage</Label>
-                          <Input
-                            placeholder="128GB"
-                            value={row.storage}
-                            onChange={(event) =>
-                              handleFieldChange(index, "storage", event.target.value)
-                            }
-                            disabled={isSubmitting || !!row.selectedInventoryId}
-                            className="h-10"
-                          />
+                          <div className="relative">
+                            <Input
+                              placeholder="128"
+                              value={storageInputDisplay(row.storage)}
+                              onChange={(event) =>
+                                handleFieldChange(
+                                  index,
+                                  "storage",
+                                  normalizeStorage(event.target.value),
+                                )
+                              }
+                              disabled={isSubmitting || !!row.selectedInventoryId}
+                              className="h-10 pr-10"
+                            />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">
+                              GB
+                            </span>
+                          </div>
                         </div>
                       </div>
 

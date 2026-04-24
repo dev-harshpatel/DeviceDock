@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
@@ -17,15 +17,15 @@ import { InventoryTable } from "@/components/tables/InventoryTable";
 import { Loader } from "@/components/common/Loader";
 import { PaginationControls } from "@/components/common/PaginationControls";
 import { Button } from "@/components/ui/button";
-import { InventoryItem } from "@/data/inventory";
 import { useDebounce } from "@/hooks/use-debounce";
-import { usePaginatedReactQuery } from "@/hooks/use-paginated-react-query";
 import { usePageParam } from "@/hooks/use-page-param";
 import { queryKeys } from "@/lib/query-keys";
-import { fetchPaginatedInventory, fetchAllFilteredInventory } from "@/lib/supabase/queries";
+import { filterInventoryItems, sortInventoryItems } from "@/lib/inventory/group-inventory-items";
 import { useFilterOptions } from "@/hooks/use-filter-options";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useInventory } from "@/contexts/InventoryContext";
+
+const INVENTORY_PAGE_SIZE = 20;
 
 const AddProductModal = dynamic(
   () =>
@@ -43,8 +43,8 @@ export default function Inventory() {
   const [navigatingTo, setNavigatingTo] = useState<"multiple" | "upload" | null>(null);
   const filterOptions = useFilterOptions();
   const queryClient = useQueryClient();
-  const { companyId, companyName, slug } = useCompany();
-  const { refreshInventory } = useInventory();
+  const { companyName, slug } = useCompany();
+  const { groupedInventory, isLoading, refreshInventory } = useInventory();
 
   const debouncedSearch = useDebounce(filters.search);
 
@@ -53,26 +53,44 @@ export default function Inventory() {
     [debouncedSearch, filters],
   );
 
-  const [currentPage, setCurrentPage] = usePageParam();
-  const queryKey = useMemo(
-    () => queryKeys.inventoryPage(currentPage, serverFilters),
-    [currentPage, serverFilters],
-  );
-
   const filtersKey = useMemo(() => JSON.stringify(serverFilters), [serverFilters]);
 
-  const { data, totalCount, totalPages, isLoading, rangeText } =
-    usePaginatedReactQuery<InventoryItem>({
-      queryKey,
-      fetchFn: (range) =>
-        fetchPaginatedInventory(serverFilters, range, {
-          includeAdminFields: true,
-          companyId,
-        }),
-      currentPage,
-      setCurrentPage,
-      filtersKey,
-    });
+  const [currentPage, setCurrentPage] = usePageParam();
+
+  // Apply filters and sort client-side on the grouped inventory (active items only).
+  const filteredSorted = useMemo(() => {
+    const active = groupedInventory.filter((item) => item.isActive !== false);
+    const filtered = filterInventoryItems(active, serverFilters);
+    return sortInventoryItems(filtered, serverFilters.sortBy ?? "created_asc");
+  }, [groupedInventory, serverFilters]);
+
+  // Client-side pagination derived values.
+  const totalCount = filteredSorted.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / INVENTORY_PAGE_SIZE));
+  const data = useMemo(
+    () =>
+      filteredSorted.slice(
+        (currentPage - 1) * INVENTORY_PAGE_SIZE,
+        currentPage * INVENTORY_PAGE_SIZE,
+      ),
+    [filteredSorted, currentPage],
+  );
+  const rangeFrom = totalCount > 0 ? (currentPage - 1) * INVENTORY_PAGE_SIZE + 1 : 0;
+  const rangeTo = Math.min(currentPage * INVENTORY_PAGE_SIZE, totalCount);
+  const rangeText = totalCount > 0 ? `${rangeFrom}-${rangeTo} of ${totalCount}` : "0 items";
+
+  // Reset to page 1 when filters change.
+  useEffect(() => {
+    setCurrentPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtersKey]);
+
+  // Clamp page when results shrink.
+  useEffect(() => {
+    if (currentPage > totalPages && !isLoading) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages, isLoading, setCurrentPage]);
 
   const handleResetFilters = useCallback(() => {
     setFilters(defaultFilters);
@@ -97,12 +115,10 @@ export default function Inventory() {
     router.push(`/${slug}/upload-products`);
   }, [router, slug]);
 
+  // Export returns all grouped+filtered rows (no pagination slice).
   const handleFetchAllData = useCallback(async () => {
-    return await fetchAllFilteredInventory(serverFilters, {
-      includeAdminFields: true,
-      companyId,
-    });
-  }, [companyId, serverFilters]);
+    return filteredSorted;
+  }, [filteredSorted]);
 
   const handleAddProductSuccess = useCallback(async () => {
     await refreshInventory();
