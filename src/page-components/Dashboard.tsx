@@ -19,20 +19,20 @@ import { useCompany } from "@/contexts/CompanyContext";
 import { useInventory } from "@/contexts/InventoryContext";
 import { useOrders } from "@/contexts/OrdersContext";
 import { buildMonthlyOrderFlowSeries } from "@/lib/dashboard/order-flow-monthly-series";
-import { computeInventoryValueTotals } from "@/lib/inventory/inventory-value-totals";
 import { queryKeys } from "@/lib/query-keys";
 import { fetchInventoryStats, fetchOrderStats } from "@/lib/supabase/queries";
 import { formatPrice } from "@/lib/utils";
 
 export default function Dashboard() {
   const { orders, isLoading: ordersLoading } = useOrders();
-  const { inventory, isLoading: inventoryLoading } = useInventory();
+  const { isLoading: inventoryLoading } = useInventory();
   const { companyId } = useCompany();
 
   const { data: inventoryStats, isLoading: inventoryStatsLoading } = useQuery({
     queryKey: queryKeys.inventoryStats(companyId),
     queryFn: () => fetchInventoryStats(companyId),
-    staleTime: 5 * 60_000,
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 
   const { data: orderStats, isLoading: orderStatsLoading } = useQuery({
@@ -42,8 +42,6 @@ export default function Dashboard() {
   });
 
   const isLoadingStats = inventoryStatsLoading || orderStatsLoading;
-
-  const inventoryValueTotals = useMemo(() => computeInventoryValueTotals(inventory), [inventory]);
 
   const stats = useMemo(() => {
     if (!inventoryStats || !orderStats) {
@@ -63,15 +61,15 @@ export default function Dashboard() {
     return {
       totalDevices: inventoryStats.totalDevices,
       totalUnits: inventoryStats.totalUnits,
-      totalPurchaseValue: inventoryValueTotals.totalPurchaseValue,
-      totalSellingValue: inventoryValueTotals.totalSellingValue,
+      totalPurchaseValue: inventoryStats.totalPurchaseValue,
+      totalSellingValue: inventoryStats.totalSellingValue,
       lowStockItems: inventoryStats.lowStockItems,
       totalOrders: orderStats.totalOrders,
       pendingOrders: orderStats.pendingOrders,
       totalRevenue: orderStats.totalRevenue,
       completedOrders: orderStats.completedOrders,
     };
-  }, [inventoryStats, orderStats, inventoryValueTotals]);
+  }, [inventoryStats, orderStats]);
 
   const monthlyOrderFlow = useMemo(() => buildMonthlyOrderFlowSeries(orders), [orders]);
 

@@ -211,6 +211,7 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
         queryClient.invalidateQueries({ queryKey: queryKeys.inventory }),
         queryClient.invalidateQueries({ queryKey: queryKeys.identifiersList }),
         queryClient.invalidateQueries({ queryKey: queryKeys.identifierMapAll(companyId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.inventoryStats(companyId) }),
       ]);
     },
     [companyId, queryClient],
@@ -575,6 +576,7 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
         queryClient.invalidateQueries({ queryKey: queryKeys.inventoryAll(companyId) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.identifiersList }),
         queryClient.invalidateQueries({ queryKey: queryKeys.identifierMapAll(companyId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.inventoryStats(companyId) }),
       ]);
     },
     [companyId, queryClient, updateProduct],
@@ -623,6 +625,7 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
             : i,
         ),
       );
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventoryStats(companyId) });
     },
     [companyId, queryClient],
   );
@@ -712,6 +715,7 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
       // Invalidate both the full list and any paginated pages so the UI reflects new products.
       await queryClient.invalidateQueries({ queryKey: queryKeys.inventoryAll(companyId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.inventory });
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventoryStats(companyId) });
       return result;
     },
     [user?.id, companyId, queryClient],
