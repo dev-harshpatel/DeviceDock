@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Copy, Filter, RotateCcw, Search, X } from "lucide-react";
+import { formatPrice } from "@/lib/utils/formatters";
 import { toast } from "sonner";
 import { GRADES, GRADE_LABELS } from "@/lib/constants/grades";
 import { TOAST_MESSAGES } from "@/lib/constants/toast-messages";
@@ -408,10 +409,7 @@ export function ImeiListTab({ companyId, storageOptions }: ImeiListTabProps) {
                   <thead>
                     <tr className="border-b border-border bg-muted/40">
                       <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                        IMEI
-                      </th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                        Serial #
+                        IMEI / Serial No.
                       </th>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                         Device
@@ -428,6 +426,12 @@ export function ImeiListTab({ companyId, storageOptions }: ImeiListTabProps) {
                       <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                         Damage Note
                       </th>
+                      <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        Purchase Price
+                      </th>
+                      <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        Selling Price
+                      </th>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                         Status
                       </th>
@@ -440,18 +444,21 @@ export function ImeiListTab({ companyId, storageOptions }: ImeiListTabProps) {
                         className="hover:bg-table-hover transition-colors"
                       >
                         <td className="px-4 py-3">
-                          <CopyIdentifierValue
-                            ariaLabel="Copy IMEI"
-                            tooltipLabel="Copy IMEI"
-                            value={item.imei}
-                          />
-                        </td>
-                        <td className="px-4 py-3">
-                          <CopyIdentifierValue
-                            ariaLabel="Copy Sr. No."
-                            tooltipLabel="Copy Sr. No."
-                            value={item.serialNumber}
-                          />
+                          {item.imei ? (
+                            <CopyIdentifierValue
+                              ariaLabel="Copy IMEI"
+                              tooltipLabel="Copy IMEI"
+                              value={item.imei}
+                            />
+                          ) : item.serialNumber ? (
+                            <CopyIdentifierValue
+                              ariaLabel="Copy Serial No."
+                              tooltipLabel="Copy Serial No."
+                              value={item.serialNumber}
+                            />
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           <div className="font-medium text-foreground">{item.deviceName}</div>
@@ -481,6 +488,20 @@ export function ImeiListTab({ companyId, storageOptions }: ImeiListTabProps) {
                             <span className="text-muted-foreground">—</span>
                           )}
                         </td>
+                        <td className="px-4 py-3 text-right font-medium text-foreground">
+                          {item.purchasePrice != null ? (
+                            formatPrice(item.purchasePrice)
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right font-medium text-foreground">
+                          {item.sellingPrice != null ? (
+                            formatPrice(item.sellingPrice)
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
                         <td className="px-4 py-3">
                           <StatusBadge status={item.status} />
                         </td>
@@ -505,21 +526,23 @@ export function ImeiListTab({ companyId, storageOptions }: ImeiListTabProps) {
                     <StatusBadge status={item.status} />
                   </div>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
-                    <div className="min-w-0">
-                      <p className="text-xs text-muted-foreground">IMEI</p>
-                      <CopyIdentifierValue
-                        ariaLabel="Copy IMEI"
-                        tooltipLabel="Copy IMEI"
-                        value={item.imei}
-                      />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs text-muted-foreground">Serial #</p>
-                      <CopyIdentifierValue
-                        ariaLabel="Copy Sr. No."
-                        tooltipLabel="Copy Sr. No."
-                        value={item.serialNumber}
-                      />
+                    <div className="col-span-2 min-w-0">
+                      <p className="text-xs text-muted-foreground">IMEI / Serial No.</p>
+                      {item.imei ? (
+                        <CopyIdentifierValue
+                          ariaLabel="Copy IMEI"
+                          tooltipLabel="Copy IMEI"
+                          value={item.imei}
+                        />
+                      ) : item.serialNumber ? (
+                        <CopyIdentifierValue
+                          ariaLabel="Copy Serial No."
+                          tooltipLabel="Copy Serial No."
+                          value={item.serialNumber}
+                        />
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Grade</p>
@@ -535,6 +558,18 @@ export function ImeiListTab({ companyId, storageOptions }: ImeiListTabProps) {
                         <p className="text-foreground">{item.color}</p>
                       </div>
                     )}
+                    <div>
+                      <p className="text-xs text-muted-foreground">Purchase Price</p>
+                      <p className="text-foreground font-medium">
+                        {item.purchasePrice != null ? formatPrice(item.purchasePrice) : "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Selling Price</p>
+                      <p className="text-foreground font-medium">
+                        {item.sellingPrice != null ? formatPrice(item.sellingPrice) : "—"}
+                      </p>
+                    </div>
                   </div>
                   {item.damageNote && (
                     <div className="mt-1 pt-2 border-t border-border/60">

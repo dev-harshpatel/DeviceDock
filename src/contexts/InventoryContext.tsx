@@ -41,6 +41,7 @@ interface InventoryContextType {
     pricePerUnit: number;
     sellingPrice: number;
     hst: number | null;
+    damageNote?: string | null;
   }) => Promise<void>;
   /**
    * Permanently removes a single tracked unit (by IMEI / serial) from inventory.
@@ -270,12 +271,13 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
       pricePerUnit: number;
       sellingPrice: number;
       hst: number | null;
+      damageNote?: string | null;
     }): Promise<void> => {
       if (!companyId) {
         throw new Error("No active company context");
       }
 
-      const { lookup, color, grade, storage, pricePerUnit, sellingPrice, hst } = input;
+      const { lookup, color, grade, storage, pricePerUnit, sellingPrice, hst, damageNote } = input;
       const sourceItem = lookup.item;
       const sourceStatus = lookup.status;
       const normalizedColor = color?.trim() || null;
@@ -298,7 +300,10 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
       const nowIso = new Date().toISOString();
 
       if (!sharedFieldsChanged) {
-        await updateInventoryIdentifier(lookup.identifierId, { color: normalizedColor });
+        await updateInventoryIdentifier(lookup.identifierId, {
+          color: normalizedColor,
+          ...(damageNote !== undefined && { damageNote }),
+        });
 
         if (sourceColor !== normalizedColor) {
           await applyInventoryColorDelta(supabase, sourceItem.id, sourceColor, -1);
@@ -370,6 +375,7 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
             .update({
               inventory_id: matchingTarget.id,
               color: normalizedColor,
+              ...(damageNote !== undefined && { damage_note: damageNote }),
               updated_at: nowIso,
             })
             .eq("id", lookup.identifierId)
@@ -398,7 +404,10 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
             hst: nextHst,
           });
 
-          await updateInventoryIdentifier(lookup.identifierId, { color: normalizedColor });
+          await updateInventoryIdentifier(lookup.identifierId, {
+            color: normalizedColor,
+            ...(damageNote !== undefined && { damageNote }),
+          });
 
           if (sourceColor !== normalizedColor) {
             await applyInventoryColorDelta(supabase, sourceItem.id, sourceColor, -1);
@@ -464,6 +473,7 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
           .update({
             inventory_id: targetInventoryId,
             color: normalizedColor,
+            ...(damageNote !== undefined && { damage_note: damageNote }),
             updated_at: nowIso,
           })
           .eq("id", lookup.identifierId)
