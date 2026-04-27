@@ -287,6 +287,8 @@ export interface IdentifierListItem {
   brand: string;
   grade: string;
   storage: string;
+  sellingPrice: number | null;
+  purchasePrice: number | null;
 }
 
 export interface IdentifierFilters {
@@ -351,9 +353,12 @@ export async function fetchPaginatedIdentifiers(
   // Step 2 — query identifiers
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let q = (supabase.from("inventory_identifiers") as any)
-    .select("id, imei, serial_number, status, sold_at, color, damage_note, inventory_id", {
-      count: "exact",
-    })
+    .select(
+      "id, imei, serial_number, status, sold_at, color, damage_note, purchase_price, inventory_id",
+      {
+        count: "exact",
+      },
+    )
     .eq("company_id", companyId);
 
   if (inventoryIds !== null) {
@@ -376,6 +381,7 @@ export async function fetchPaginatedIdentifiers(
     sold_at: string | null;
     color: string | null;
     damage_note: string | null;
+    purchase_price: number | null;
     inventory_id: string;
   }>;
 
@@ -385,19 +391,31 @@ export async function fetchPaginatedIdentifiers(
   const uniqueInvIds = Array.from(new Set(identifierRows.map((r) => r.inventory_id)));
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: invDetails, error: invDetailErr } = await (supabase.from("inventory") as any)
-    .select("id, device_name, brand, grade, storage")
+    .select("id, device_name, brand, grade, storage, selling_price")
     .in("id", uniqueInvIds);
 
   if (invDetailErr) throw invDetailErr;
 
   const invMap = new Map<
     string,
-    { device_name: string; brand: string; grade: string; storage: string }
+    {
+      device_name: string;
+      brand: string;
+      grade: string;
+      storage: string;
+      selling_price: number | null;
+    }
   >();
   for (const inv of invDetails ?? []) {
     invMap.set(
       inv.id as string,
-      inv as { device_name: string; brand: string; grade: string; storage: string },
+      inv as {
+        device_name: string;
+        brand: string;
+        grade: string;
+        storage: string;
+        selling_price: number | null;
+      },
     );
   }
 
@@ -415,6 +433,8 @@ export async function fetchPaginatedIdentifiers(
       brand: inv?.brand ?? "—",
       grade: inv?.grade ?? "—",
       storage: inv?.storage ?? "—",
+      sellingPrice: inv?.selling_price ?? null,
+      purchasePrice: row.purchase_price ?? null,
     };
   });
 

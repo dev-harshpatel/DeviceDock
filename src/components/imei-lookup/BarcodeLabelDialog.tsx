@@ -79,6 +79,7 @@ export function BarcodeLabelDialog({
           font: "Arial",
           fontSize: 13,
           margin: 4,
+          marginTop: 1,
         });
       } catch {
         // JsBarcode may throw on invalid input — canvas stays blank
@@ -127,7 +128,7 @@ export function BarcodeLabelDialog({
               display: flex;
               flex-direction: column;
               justify-content: flex-start;
-              gap: 0.5mm;
+              gap: 0;
             }
             .label-top {
               display: flex;
@@ -167,7 +168,7 @@ export function BarcodeLabelDialog({
               align-items: center;
               justify-content: center;
               overflow: hidden;
-              padding-top: 1mm;
+              padding-top: 0;
             }
             .barcode-img {
               width: 100%;

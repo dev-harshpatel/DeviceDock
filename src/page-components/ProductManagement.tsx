@@ -563,7 +563,7 @@ export default function ProductManagement() {
         </TabsContent>
 
         <TabsContent value="imei" className="mt-0">
-          <ProductImeiEditor />
+          <ProductImeiEditor onSaveSuccess={() => setActiveView("summary")} />
         </TabsContent>
 
         <TabsContent value="delete-imei" className="mt-0">

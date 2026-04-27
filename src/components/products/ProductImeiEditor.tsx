@@ -2,6 +2,7 @@
 
 import { Loader2, Search } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +31,7 @@ import { toastError } from "@/lib/utils/toast-helpers";
 
 interface DeviceDraft {
   color: string;
+  damageNote: string;
   grade: Grade;
   hst: string;
   pricePerUnit: string;
@@ -78,6 +80,7 @@ function buildDraft(result: IdentifierEditLookup): DeviceDraft {
 
   return {
     color: result.color ?? "",
+    damageNote: result.damageNote ?? "",
     grade: result.item.grade,
     hst: String(hst),
     pricePerUnit: String(baseCost),
@@ -93,7 +96,11 @@ function StatusBadge({ status }: { status: string }) {
   return <Badge className={className}>{label}</Badge>;
 }
 
-export function ProductImeiEditor() {
+interface ProductImeiEditorProps {
+  onSaveSuccess?: () => void;
+}
+
+export function ProductImeiEditor({ onSaveSuccess }: ProductImeiEditorProps) {
   const { companyId } = useCompany();
   const { updateIdentifierUnit, groupedInventory } = useInventory();
   const { lookup: mapLookup } = useIdentifierMap();
@@ -149,6 +156,8 @@ export function ProductImeiEditor() {
     ? (result.purchasePrice ?? removeTax(result.item.pricePerUnit ?? 0, result.item.hst ?? 0))
     : 0;
 
+  const effectiveDamageNote = draft?.grade === "D" ? normalizeText(draft?.damageNote) : "";
+
   const hasChanges =
     !!result &&
     !!draft &&
@@ -157,7 +166,8 @@ export function ProductImeiEditor() {
       normalizeText(draft.storage) !== result.item.storage ||
       Math.abs(currentHst - (result.item.hst ?? 0)) > 0.0001 ||
       Math.abs(currentPricePerUnit - storedBaseCost) > 0.0001 ||
-      Math.abs(currentSellingPrice - result.item.sellingPrice) > 0.0001);
+      Math.abs(currentSellingPrice - result.item.sellingPrice) > 0.0001 ||
+      effectiveDamageNote !== normalizeText(result.damageNote));
 
   async function refreshLookup(imei: string) {
     // Try the in-memory map first (instant). Fall back to DB for sold/returned units
@@ -215,6 +225,8 @@ export function ProductImeiEditor() {
         pricePerUnit: currentPricePerUnit,
         sellingPrice: currentSellingPrice,
         hst: currentHst,
+        // Only send damageNote when grade is D; clear it otherwise.
+        damageNote: draft.grade === "D" ? normalizeText(draft.damageNote) || null : null,
       });
 
       await refreshLookup(result.imei ?? imeiInput.trim());
@@ -222,6 +234,7 @@ export function ProductImeiEditor() {
         description:
           "This unit was updated successfully. If grouped fields changed, it was separated into its own matching inventory row.",
       });
+      onSaveSuccess?.();
     } catch (error) {
       toastError(error, "Failed to update this device. Please try again.");
     } finally {
@@ -348,7 +361,16 @@ export function ProductImeiEditor() {
                 <Select
                   value={draft.grade}
                   onValueChange={(value) =>
-                    setDraft((prev) => (prev ? { ...prev, grade: value as Grade } : prev))
+                    setDraft((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            grade: value as Grade,
+                            // Clear note when switching away from grade D.
+                            damageNote: value === "D" ? prev.damageNote : "",
+                          }
+                        : prev,
+                    )
                   }
                   disabled={!canEdit}
                 >
@@ -426,6 +448,25 @@ export function ProductImeiEditor() {
                   disabled={!canEdit}
                 />
               </div>
+
+              {draft.grade === "D" && (
+                <div className="sm:col-span-2 space-y-2">
+                  <Label htmlFor="imei-damage-note">Damage Notes</Label>
+                  <Textarea
+                    id="imei-damage-note"
+                    value={draft.damageNote}
+                    onChange={(event) =>
+                      setDraft((prev) =>
+                        prev ? { ...prev, damageNote: event.target.value } : prev,
+                      )
+                    }
+                    placeholder="Describe the damage or condition of this device..."
+                    rows={3}
+                    disabled={!canEdit}
+                    className="resize-none"
+                  />
+                </div>
+              )}
             </div>
 
             {canEdit && (

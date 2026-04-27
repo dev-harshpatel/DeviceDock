@@ -748,6 +748,10 @@ export function AddProductModal({
 
         savedInventoryId = result.insertedIds?.[0] ?? null;
 
+        if (result.success === 0) {
+          throw new Error(result.errors?.[0] ?? "Failed to save product to inventory.");
+        }
+
         if (savedInventoryId) {
           for (const identifier of identifiers) {
             await addInventoryIdentifier(
@@ -821,6 +825,10 @@ export function AddProductModal({
         ]);
 
         savedInventoryId = result.insertedIds?.[0] ?? null;
+
+        if (result.success === 0) {
+          throw new Error(result.errors?.[0] ?? "Failed to save product to inventory.");
+        }
 
         // Register the scanned identifier against the new inventory record.
         if (identifiers.length > 0 && savedInventoryId) {

@@ -31,8 +31,9 @@ export function useRealtimeInvalidation() {
     queryClient.invalidateQueries({ queryKey: queryKeys.inventory });
     queryClient.invalidateQueries({ queryKey: ["inventory", "all"] });
     queryClient.invalidateQueries({ queryKey: queryKeys.identifiersList });
+    // Prefix match — works even when companyId is unavailable (bridge sits outside CompanyProvider)
+    queryClient.invalidateQueries({ queryKey: ["inventoryStats"] });
     if (companyId) {
-      queryClient.invalidateQueries({ queryKey: queryKeys.inventoryStats(companyId) });
       // Invalidate the in-memory identifier map so sold/updated devices are reflected immediately.
       queryClient.invalidateQueries({ queryKey: queryKeys.identifierMapAll(companyId) });
     }

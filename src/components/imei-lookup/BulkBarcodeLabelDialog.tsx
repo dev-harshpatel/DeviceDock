@@ -168,7 +168,7 @@ export function BulkBarcodeLabelDialog({
               display: flex;
               flex-direction: column;
               justify-content: flex-start;
-              gap: 0.5mm;
+              gap: 0;
               page-break-after: always;
               break-after: page;
               overflow: hidden;
@@ -211,7 +211,7 @@ export function BulkBarcodeLabelDialog({
               align-items: center;
               justify-content: center;
               overflow: hidden;
-              padding-top: 1mm;
+              padding-top: 0;
             }
             .barcode-img {
               width: 100%;
@@ -275,6 +275,7 @@ export function BulkBarcodeLabelDialog({
                     font: "Arial",
                     fontSize: 13,
                     margin: 4,
+                    marginTop: 1,
                   });
                 } catch {
                   // Invalid input — canvas stays blank
