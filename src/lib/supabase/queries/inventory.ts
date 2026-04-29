@@ -391,7 +391,7 @@ export async function fetchPaginatedIdentifiers(
   const uniqueInvIds = Array.from(new Set(identifierRows.map((r) => r.inventory_id)));
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: invDetails, error: invDetailErr } = await (supabase.from("inventory") as any)
-    .select("id, device_name, brand, grade, storage, selling_price")
+    .select("id, device_name, brand, grade, storage, selling_price, price_per_unit")
     .in("id", uniqueInvIds);
 
   if (invDetailErr) throw invDetailErr;
@@ -404,6 +404,7 @@ export async function fetchPaginatedIdentifiers(
       grade: string;
       storage: string;
       selling_price: number | null;
+      price_per_unit: number | null;
     }
   >();
   for (const inv of invDetails ?? []) {
@@ -415,6 +416,7 @@ export async function fetchPaginatedIdentifiers(
         grade: string;
         storage: string;
         selling_price: number | null;
+        price_per_unit: number | null;
       },
     );
   }
@@ -434,7 +436,7 @@ export async function fetchPaginatedIdentifiers(
       grade: inv?.grade ?? "—",
       storage: inv?.storage ?? "—",
       sellingPrice: inv?.selling_price ?? null,
-      purchasePrice: row.purchase_price ?? null,
+      purchasePrice: row.purchase_price ?? inv?.price_per_unit ?? null,
     };
   });
 

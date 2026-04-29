@@ -124,18 +124,23 @@ export function BarcodeLabelDialog({
               width: 100%;
               height: 100%;
               box-sizing: border-box;
-              padding: 1.25mm 1.5mm 0.5mm;
+              padding: 0 1.5mm;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+            }
+            .content {
               display: flex;
               flex-direction: column;
-              justify-content: flex-start;
-              gap: 0;
+              align-items: center;
+              gap: 0.5mm;
+              width: 100%;
             }
             .label-top {
               display: flex;
               align-items: center;
               justify-content: ${hasPrice ? "space-between" : "center"};
               gap: 1.5mm;
-              flex-shrink: 0;
               width: 100%;
             }
             .label-text {
@@ -143,17 +148,17 @@ export function BarcodeLabelDialog({
               flex: ${hasPrice ? "1" : "none"};
             }
             .label-line {
-              font-size: 10pt;
+              font-size: 9pt;
               font-weight: 700;
               font-family: Arial, sans-serif;
-              line-height: 1.2;
+              line-height: 1.1;
               white-space: nowrap;
               overflow: hidden;
               text-overflow: ellipsis;
               text-align: ${hasPrice ? "left" : "center"};
             }
             .price {
-              font-size: 10.5pt;
+              font-size: 9.5pt;
               font-weight: 700;
               font-family: Arial, sans-serif;
               white-space: nowrap;
@@ -162,40 +167,37 @@ export function BarcodeLabelDialog({
               align-self: center;
             }
             .barcode-wrap {
-              flex: 1;
-              min-height: 0;
               display: flex;
-              align-items: center;
               justify-content: center;
-              overflow: hidden;
-              padding-top: 0;
+              width: 100%;
             }
             .barcode-img {
               width: 100%;
               height: auto;
               display: block;
-              max-height: 100%;
               object-fit: contain;
             }
           </style>
         </head>
         <body>
           <div class="label">
-            ${
-              hasText || hasPrice
-                ? `
-            <div class="label-top">
+            <div class="content">
               ${
-                hasText
-                  ? `<div class="label-text"><div class="label-line">${escapeHtml(labelLine)}</div></div>`
+                hasText || hasPrice
+                  ? `
+              <div class="label-top">
+                ${
+                  hasText
+                    ? `<div class="label-text"><div class="label-line">${escapeHtml(labelLine)}</div></div>`
+                    : ""
+                }
+                ${hasPrice ? `<div class="price">$${(priceValue as number).toFixed(2)}</div>` : ""}
+              </div>`
                   : ""
               }
-              ${hasPrice ? `<div class="price">$${(priceValue as number).toFixed(2)}</div>` : ""}
-            </div>`
-                : ""
-            }
-            <div class="barcode-wrap">
-              <img class="barcode-img" src="${dataUrl}" alt="barcode" onload="window.print();window.close();" />
+              <div class="barcode-wrap">
+                <img class="barcode-img" src="${dataUrl}" alt="barcode" onload="window.print();window.close();" />
+              </div>
             </div>
           </div>
         </body>

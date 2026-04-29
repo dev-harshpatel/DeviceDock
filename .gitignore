@@ -22,6 +22,7 @@ dist-ssr
 out
 build
 next-env.d.ts
+tsconfig.tsbuildinfo
 
 # Lock files (keep only one)
 bun.lockb

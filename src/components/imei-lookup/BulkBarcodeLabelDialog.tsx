@@ -142,10 +142,10 @@ export function BulkBarcodeLabelDialog({
             : "";
 
         return (
-          `<section class="label">` +
+          `<section class="label"><div class="content">` +
           topBlock +
           `<div class="barcode-wrap"><img class="barcode-img" src="${src}" alt="barcode" /></div>` +
-          `</section>`
+          `</div></section>`
         );
       })
       .join("");
@@ -164,11 +164,10 @@ export function BulkBarcodeLabelDialog({
               width: ${widthMm}mm;
               height: ${heightMm}mm;
               box-sizing: border-box;
-              padding: 1.25mm 1.5mm 0.5mm;
+              padding: 0 1.5mm;
               display: flex;
-              flex-direction: column;
-              justify-content: flex-start;
-              gap: 0;
+              align-items: center;
+              justify-content: center;
               page-break-after: always;
               break-after: page;
               overflow: hidden;
@@ -177,12 +176,18 @@ export function BulkBarcodeLabelDialog({
               page-break-after: auto;
               break-after: auto;
             }
+            .content {
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              gap: 0.5mm;
+              width: 100%;
+            }
             /* Shared top-row base */
             .label-top-centered, .label-top-split {
               display: flex;
               align-items: center;
               gap: 1.5mm;
-              flex-shrink: 0;
               width: 100%;
             }
             /* No price → center the text block */
@@ -194,10 +199,10 @@ export function BulkBarcodeLabelDialog({
               flex: 1;
             }
             .label-line {
-              font-size: 10pt;
+              font-size: 9pt;
               font-weight: 700;
               font-family: Arial, sans-serif;
-              line-height: 1.2;
+              line-height: 1.1;
               white-space: nowrap;
               overflow: hidden;
               text-overflow: ellipsis;
@@ -205,23 +210,18 @@ export function BulkBarcodeLabelDialog({
             .label-top-centered .label-line { text-align: center; }
             .label-top-split .label-line { text-align: left; }
             .barcode-wrap {
-              flex: 1;
-              min-height: 0;
               display: flex;
-              align-items: center;
               justify-content: center;
-              overflow: hidden;
-              padding-top: 0;
+              width: 100%;
             }
             .barcode-img {
               width: 100%;
               height: auto;
               display: block;
-              max-height: 100%;
               object-fit: contain;
             }
             .price {
-              font-size: 10.5pt;
+              font-size: 9.5pt;
               font-weight: 700;
               font-family: Arial, sans-serif;
               white-space: nowrap;
