@@ -649,7 +649,7 @@ export function ManualSaleWizard({
     if (!item) return;
     const listPrice = item.sellingPrice ?? item.pricePerUnit;
     const entered = parseFloat(sellingPrices[itemId] ?? "");
-    if (isNaN(entered) || entered < listPrice) {
+    if (isNaN(entered) || entered <= 0) {
       setSellingPrices((prev) => ({ ...prev, [itemId]: String(listPrice) }));
     }
   };
@@ -661,7 +661,7 @@ export function ManualSaleWizard({
   const handleSellingPriceBlurIdent = (group: IdentifierScanGroup) => {
     const listPrice = group.item.sellingPrice ?? group.item.pricePerUnit;
     const entered = parseFloat(sellingPricesIdent[group.inventoryId] ?? "");
-    if (isNaN(entered) || entered < listPrice) {
+    if (isNaN(entered) || entered <= 0) {
       setSellingPricesIdent((prev) => ({
         ...prev,
         [group.inventoryId]: String(listPrice),
@@ -862,24 +862,17 @@ export function ManualSaleWizard({
   };
 
   const handleGoToStep4 = () => {
-    // Validate selling prices — none can be below list price
     for (const { item } of selectedItemsList) {
-      const listPrice = item.sellingPrice ?? item.pricePerUnit;
       const entered = parseFloat(sellingPrices[item.id] ?? "");
-      if (isNaN(entered) || entered < listPrice) {
-        toast.error(
-          `Selling price for ${item.deviceName} cannot be below $${listPrice.toFixed(2)}.`,
-        );
+      if (isNaN(entered) || entered <= 0) {
+        toast.error(`Enter a valid selling price for ${item.deviceName}.`);
         return;
       }
     }
     for (const g of identifierGroups) {
-      const listPrice = g.item.sellingPrice ?? g.item.pricePerUnit;
       const entered = parseFloat(sellingPricesIdent[g.inventoryId] ?? "");
-      if (isNaN(entered) || entered < listPrice) {
-        toast.error(
-          `Selling price for ${g.item.deviceName} (scanned) cannot be below $${listPrice.toFixed(2)}.`,
-        );
+      if (isNaN(entered) || entered <= 0) {
+        toast.error(`Enter a valid selling price for ${g.item.deviceName} (scanned).`);
         return;
       }
     }
@@ -1481,7 +1474,7 @@ export function ManualSaleWizard({
       {step === 3 && (
         <div className="flex flex-col flex-1 min-h-0 px-5 py-3 gap-3">
           <p className="text-sm text-muted-foreground flex-shrink-0">
-            Set the selling price for each line. You cannot go below the inventory list price.
+            Set the selling price for each line. You can sell below the list price if needed.
           </p>
 
           <div className="flex-1 overflow-y-auto min-h-0 space-y-3 -mx-1 px-1">
@@ -1490,7 +1483,6 @@ export function ManualSaleWizard({
               const priceStr = sellingPrices[item.id] ?? String(listPrice);
               const parsedPrice = parseFloat(priceStr);
               const lineTotal = isNaN(parsedPrice) ? 0 : parsedPrice * quantity;
-              const isBelowMin = !isNaN(parsedPrice) && parsedPrice < listPrice;
 
               return (
                 <div
@@ -1506,8 +1498,8 @@ export function ManualSaleWizard({
                       </p>
                     </div>
                     <p className="text-xs text-muted-foreground text-right flex-shrink-0">
-                      List price (minimum):{" "}
-                      <span className="font-semibold text-destructive">
+                      List price:{" "}
+                      <span className="font-semibold text-foreground">
                         {formatPrice(listPrice)}
                       </span>
                     </p>
@@ -1522,22 +1514,14 @@ export function ManualSaleWizard({
                       </span>
                       <Input
                         type="number"
-                        min={listPrice}
+                        min={0.01}
                         step="0.01"
                         value={priceStr}
                         onChange={(e) => handleSellingPriceChange(item.id, e.target.value)}
                         onBlur={() => handleSellingPriceBlur(item.id)}
-                        className={cn(
-                          "pl-7 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none",
-                          isBelowMin && "border-destructive focus-visible:ring-destructive",
-                        )}
+                        className="pl-7 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />
                     </div>
-                    {isBelowMin && (
-                      <p className="text-xs text-destructive">
-                        Cannot be below the list price of {formatPrice(listPrice)}.
-                      </p>
-                    )}
                   </div>
 
                   <p className="text-xs text-muted-foreground">
@@ -1554,7 +1538,6 @@ export function ManualSaleWizard({
               const parsedPrice = parseFloat(priceStr);
               const qty = group.units.length;
               const lineTotal = isNaN(parsedPrice) ? 0 : parsedPrice * qty;
-              const isBelowMin = !isNaN(parsedPrice) && parsedPrice < listPrice;
 
               return (
                 <div
@@ -1582,8 +1565,8 @@ export function ManualSaleWizard({
                       </p>
                     </div>
                     <p className="text-xs text-muted-foreground text-right flex-shrink-0">
-                      List price (minimum):{" "}
-                      <span className="font-semibold text-destructive">
+                      List price:{" "}
+                      <span className="font-semibold text-foreground">
                         {formatPrice(listPrice)}
                       </span>
                     </p>
@@ -1597,24 +1580,16 @@ export function ManualSaleWizard({
                       </span>
                       <Input
                         type="number"
-                        min={listPrice}
+                        min={0.01}
                         step="0.01"
                         value={priceStr}
                         onChange={(e) =>
                           handleSellingPriceChangeIdent(group.inventoryId, e.target.value)
                         }
                         onBlur={() => handleSellingPriceBlurIdent(group)}
-                        className={cn(
-                          "pl-7 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none",
-                          isBelowMin && "border-destructive focus-visible:ring-destructive",
-                        )}
+                        className="pl-7 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />
                     </div>
-                    {isBelowMin && (
-                      <p className="text-xs text-destructive">
-                        Cannot be below the list price of {formatPrice(listPrice)}.
-                      </p>
-                    )}
                   </div>
 
                   <p className="text-xs text-muted-foreground">

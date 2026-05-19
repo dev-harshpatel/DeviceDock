@@ -185,7 +185,7 @@ export function InvoiceDetailsForm({
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="percentage">%</SelectItem>
+                        {/* <SelectItem value="percentage">%</SelectItem> */}
                         <SelectItem value="cad">CAD</SelectItem>
                       </SelectContent>
                     </Select>
@@ -202,7 +202,6 @@ export function InvoiceDetailsForm({
                         type="number"
                         min="0"
                         step="0.01"
-                        max={form.watch("discountType") === "percentage" ? "100" : undefined}
                         placeholder="0.00"
                         onWheel={(e) => e.currentTarget.blur()}
                         {...field}
