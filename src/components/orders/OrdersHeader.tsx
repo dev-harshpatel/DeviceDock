@@ -4,26 +4,16 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Archive, Loader2, RotateCcw, Search, ShoppingBag } from "lucide-react";
-import type { OrderStatus } from "@/types/order";
 
 interface OrdersHeaderProps {
   activeTab: "orders" | "deleted";
   totalCount: number;
   deletedTotal: number;
   hasActiveFilters: boolean;
-  statusFilter: OrderStatus | "all";
   searchQuery: string;
   isPendingManualSale: boolean;
   onSearchChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onStatusFilterChange: (value: string) => void;
   onOpenManualSale: () => void;
   onResetFilter: () => void;
 }
@@ -33,11 +23,9 @@ export function OrdersHeader({
   totalCount,
   deletedTotal,
   hasActiveFilters,
-  statusFilter,
   searchQuery,
   isPendingManualSale,
   onSearchChange,
-  onStatusFilterChange,
   onOpenManualSale,
   onResetFilter,
 }: OrdersHeaderProps) {
@@ -80,24 +68,12 @@ export function OrdersHeader({
             <div className="relative flex-1 min-w-0 max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by order ID, status..."
+                placeholder="Search by order ID..."
                 value={searchQuery}
                 onChange={onSearchChange}
                 className="pl-9 bg-background border-border"
               />
             </div>
-            <Select value={statusFilter} onValueChange={onStatusFilterChange}>
-              <SelectTrigger className="w-36 bg-background border-border">
-                <SelectValue placeholder="Filter by Status" />
-              </SelectTrigger>
-              <SelectContent className="bg-card border-border">
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="approved">Approved</SelectItem>
-                <SelectItem value="rejected">Rejected</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
-              </SelectContent>
-            </Select>
             <Button
               type="button"
               onClick={onOpenManualSale}

@@ -86,13 +86,6 @@ export default function EditManualSalePage() {
         return;
       }
 
-      if (o.status !== "approved" && o.status !== "completed") {
-        toast.error("This order cannot be edited.");
-        setLoadState("error");
-        router.replace(ordersListPath);
-        return;
-      }
-
       if (o.invoiceConfirmed === true) {
         toast.error("Invoice is confirmed; this order cannot be edited.");
         setLoadState("error");

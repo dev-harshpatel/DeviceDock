@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
   if (!order_id || !Array.isArray(color_assignments)) {
     return NextResponse.json(
       { error: "order_id and color_assignments are required" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -48,14 +48,14 @@ export async function POST(request: NextRequest) {
         {
           error: `Colour quantities (${colorTotal}) do not match ordered quantity (${assignment.ordered_quantity}) for item ${assignment.inventory_id}`,
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
     for (const c of assignment.colors) {
       if (!c.color || c.quantity < 0 || !Number.isInteger(c.quantity)) {
         return NextResponse.json(
           { error: `Invalid colour entry for item ${assignment.inventory_id}` },
-          { status: 400 }
+          { status: 400 },
         );
       }
     }
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
     if (invError || !invRow) {
       return NextResponse.json(
         { error: `Inventory item ${inventory_id} not found` },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
             quantity: newColorQty,
             updated_at: new Date().toISOString(),
           },
-          { onConflict: "inventory_id,color" }
+          { onConflict: "inventory_id,color" },
         );
 
       if (colorUpdateError) {
@@ -128,8 +128,7 @@ export async function POST(request: NextRequest) {
 
     if (currentPP != null && currentQty > 0) {
       const costPerUnit = currentPP / currentQty;
-      invUpdate.purchase_price =
-        Math.round(costPerUnit * newQty * 100) / 100;
+      invUpdate.purchase_price = Math.round(costPerUnit * newQty * 100) / 100;
     }
 
     const { error: invUpdateError } = await (supabaseAdmin as any)
@@ -149,7 +148,7 @@ export async function POST(request: NextRequest) {
       inventory_id: assignment.inventory_id,
       color: c.color,
       quantity: c.quantity,
-    }))
+    })),
   );
 
   if (assignmentRows.length > 0) {
@@ -160,21 +159,6 @@ export async function POST(request: NextRequest) {
     if (assignError) {
       return NextResponse.json({ error: assignError.message }, { status: 500 });
     }
-  }
-
-  // Update order status to approved
-  const { error: orderError } = await (supabaseAdmin as any)
-    .from("orders")
-    .update({
-      status: "approved",
-      updated_at: new Date().toISOString(),
-      rejection_reason: null,
-      rejection_comment: null,
-    })
-    .eq("id", order_id);
-
-  if (orderError) {
-    return NextResponse.json({ error: orderError.message }, { status: 500 });
   }
 
   return NextResponse.json({ success: true });

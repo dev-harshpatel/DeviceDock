@@ -182,11 +182,8 @@ export const dbRowToOrder = (row: OrderRow): Order => {
       (row as any).profit != null && (row as any).profit !== ""
         ? Number((row as any).profit)
         : null,
-    status: row.status as Order["status"],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    rejectionReason: (row as any).rejection_reason ?? null,
-    rejectionComment: (row as any).rejection_comment ?? null,
     invoiceNumber: (row as any).invoice_number ?? null,
     invoiceDate: (row as any).invoice_date ?? null,
     poNumber: (row as any).po_number ?? null,

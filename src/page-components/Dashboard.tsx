@@ -7,7 +7,6 @@ import {
   AlertTriangle,
   DollarSign,
   ShoppingCart,
-  Clock,
   Receipt,
   Tags,
 } from "lucide-react";
@@ -51,9 +50,7 @@ export default function Dashboard() {
         totalSellingValue: 0,
         lowStockItems: 0,
         totalOrders: 0,
-        pendingOrders: 0,
         totalRevenue: 0,
-        completedOrders: 0,
       };
     }
 
@@ -64,9 +61,7 @@ export default function Dashboard() {
       totalSellingValue: inventoryStats.totalSellingValue,
       lowStockItems: inventoryStats.lowStockItems,
       totalOrders: orderStats.totalOrders,
-      pendingOrders: orderStats.pendingOrders,
       totalRevenue: orderStats.totalRevenue,
-      completedOrders: orderStats.completedOrders,
     };
   }, [inventoryStats, orderStats]);
 
@@ -153,7 +148,7 @@ export default function Dashboard() {
         </section>
 
         <section aria-label="Orders overview" className="shrink-0">
-          <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4 lg:gap-4 lg:items-stretch [&>*]:min-w-0">
+          <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:items-stretch [&>*]:min-w-0">
             <StatCard
               fillHeight
               title="Total Orders"
@@ -164,25 +159,9 @@ export default function Dashboard() {
             />
             <StatCard
               fillHeight
-              title="Pending Orders"
-              value={stats.pendingOrders}
-              icon={<Clock className="h-5 w-5" />}
-              accent="warning"
-              className="h-full min-h-[5.5rem]"
-            />
-            <StatCard
-              fillHeight
               title="Total Revenue"
               value={formatPrice(stats.totalRevenue)}
               icon={<DollarSign className="h-5 w-5" />}
-              accent="success"
-              className="h-full min-h-[5.5rem]"
-            />
-            <StatCard
-              fillHeight
-              title="Completed Orders"
-              value={stats.completedOrders}
-              icon={<TrendingUp className="h-5 w-5" />}
               accent="success"
               className="h-full min-h-[5.5rem]"
             />

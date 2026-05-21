@@ -1,7 +1,5 @@
 import { InventoryItem } from "@/data/inventory";
 
-export type OrderStatus = "pending" | "approved" | "rejected" | "completed";
-
 export interface OrderItem {
   item: InventoryItem;
   quantity: number;
@@ -21,11 +19,8 @@ export interface Order {
   totalPrice: number;
   /** Gross profit snapshot (manual sale / RPC updates). */
   profit?: number | null;
-  status: OrderStatus;
   createdAt: string;
   updatedAt: string;
-  rejectionReason?: string | null;
-  rejectionComment?: string | null;
   invoiceNumber?: string | null;
   invoiceDate?: string | null;
   poNumber?: string | null;
@@ -39,7 +34,6 @@ export interface Order {
   discountAmount?: number;
   discountType?: "percentage" | "cad";
   shippingAmount?: number;
-  // Addresses (full address string only)
   shippingAddress?: string | null;
   billingAddress?: string | null;
   // IMEI numbers keyed by item index (e.g. {"0": "123456789012345"})

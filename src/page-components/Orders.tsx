@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useState, useMemo, useCallback, useTransition } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Order, OrderStatus } from "@/types/order";
+import { Order } from "@/types/order";
 import { ActiveOrderTableRow } from "@/components/orders/ActiveOrderTableRow";
 import { DeletedOrderTableRow } from "@/components/orders/DeletedOrderTableRow";
 import { OrdersHeader } from "@/components/orders/OrdersHeader";
@@ -44,7 +44,6 @@ export default function Orders() {
   const [activeTab, setActiveTab] = useState<"orders" | "deleted">("orders");
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<OrderStatus | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
 
   // TODO: Remove if Request Device feature is not required in later development
@@ -99,7 +98,6 @@ export default function Orders() {
 
   const serverFilters: OrdersFilters = {
     search: debouncedSearch,
-    status: statusFilter,
   };
 
   const [currentPage, setCurrentPage] = usePageParam();
@@ -188,11 +186,10 @@ export default function Orders() {
   }, []);
 
   const handleResetFilter = () => {
-    setStatusFilter("all");
     setSearchQuery("");
   };
 
-  const hasActiveFilters = statusFilter !== "all" || searchQuery.trim() !== "";
+  const hasActiveFilters = searchQuery.trim() !== "";
   const orderRows = useMemo(
     () =>
       filteredOrders.map((order) => ({
@@ -226,10 +223,6 @@ export default function Orders() {
     setSearchQuery(event.target.value);
   }, []);
 
-  const handleStatusFilterChange = useCallback((value: string) => {
-    setStatusFilter(value as OrderStatus | "all");
-  }, []);
-
   const handleTabChange = useCallback((value: string) => {
     setActiveTab(value as "orders" | "deleted");
   }, []);
@@ -252,11 +245,9 @@ export default function Orders() {
           totalCount={totalCount}
           deletedTotal={deletedTotal}
           hasActiveFilters={hasActiveFilters}
-          statusFilter={statusFilter}
           searchQuery={searchQuery}
           isPendingManualSale={isPendingManualSale}
           onSearchChange={handleSearchChange}
-          onStatusFilterChange={handleStatusFilterChange}
           onOpenManualSale={handleOpenManualSale}
           onResetFilter={handleResetFilter}
         />
@@ -290,14 +281,8 @@ export default function Orders() {
                         <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-4">
                           Total
                         </th>
-                        <th className="text-center text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-4">
-                          Status
-                        </th>
                         <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-4">
                           Date
-                        </th>
-                        <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-4">
-                          Notes
                         </th>
                         <th className="text-center text-xs font-medium text-muted-foreground uppercase tracking-wider px-6 py-4">
                           Action
@@ -348,9 +333,6 @@ export default function Orders() {
                         </th>
                         <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-4">
                           Total
-                        </th>
-                        <th className="text-center text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-4">
-                          Status at Deletion
                         </th>
                         <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-4">
                           Order Date

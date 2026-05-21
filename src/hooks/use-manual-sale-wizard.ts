@@ -83,13 +83,7 @@ export function useManualSaleWizard({
   const isEdit = mode === "edit" && orderToEdit != null;
   const allowedSoldIdentifierIdsRef = useRef<readonly string[]>([]);
 
-  const {
-    inventory,
-    decreaseQuantity,
-    lookupIdentifierForSale,
-    markInventoryIdentifierSold,
-    revertInventoryIdentifierSold,
-  } = useInventory();
+  const { inventory, lookupIdentifierForSale } = useInventory();
   const { createManualOrder, patchManualSaleOrderDetails, updateManualOrder } = useOrders();
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -934,6 +928,7 @@ export function useManualSaleWizard({
         return;
       }
 
+      // Atomic RPC handles order creation + inventory decrement + identifier marking in one transaction.
       const order = await createManualOrder(
         user.id,
         orderItems,
@@ -949,37 +944,8 @@ export function useManualSaleWizard({
         notes.trim() || undefined,
       );
 
-      // Order is committed — inventory mutations are best-effort; failures must NOT
-      // surface as "sale failed" or the user will resubmit and create a duplicate.
-      let inventoryWarning = false;
-      for (const oi of orderItems) {
-        if (oi.inventoryIdentifierId) {
-          try {
-            await markInventoryIdentifierSold(oi.inventoryIdentifierId);
-          } catch (identErr) {
-            toastError(
-              identErr,
-              "Identifier update failed — sale was recorded, check inventory manually",
-            );
-            inventoryWarning = true;
-          }
-        }
-        try {
-          await decreaseQuantity(oi.item.id, oi.quantity);
-        } catch (qtyErr) {
-          toastError(
-            qtyErr,
-            "Quantity update failed — sale was recorded, check inventory manually",
-          );
-          inventoryWarning = true;
-        }
-      }
-
-      toast.success(
-        inventoryWarning
-          ? `Sale recorded — Order #${order.id.slice(-8).toUpperCase()} (inventory may need manual review)`
-          : `Sale recorded — Order #${order.id.slice(-8).toUpperCase()}`,
-      );
+      toast.success(`Sale recorded — Order #${order.id.slice(-8).toUpperCase()}`);
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventory });
       queryClient.invalidateQueries({ queryKey: queryKeys.orders });
       queryClient.invalidateQueries({ queryKey: queryKeys.userOrdersBase });
       handleClose();

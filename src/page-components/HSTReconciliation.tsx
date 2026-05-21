@@ -99,7 +99,6 @@ export default function HSTReconciliation() {
     return orders
       .filter(
         (o) =>
-          (o.status === "approved" || o.status === "completed") &&
           ((o.taxRate != null && o.taxRate > 0) || (o.taxAmount != null && o.taxAmount > 0)) &&
           inRange(o.createdAt),
       )

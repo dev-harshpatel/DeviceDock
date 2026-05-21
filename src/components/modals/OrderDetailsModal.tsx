@@ -2,25 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  AlertCircle,
-  CheckCircle2,
-  Download,
-  FileText,
-  Loader2,
-  ShoppingBag,
-  Trash2,
-  XCircle,
-} from "lucide-react";
+import { Download, FileText, Loader2, ShoppingBag, Trash2 } from "lucide-react";
 import { removeTax } from "@/lib/tax";
 import { useInventory } from "@/contexts/InventoryContext";
 import { useNavigation } from "@/contexts/NavigationContext";
 import { useOrders } from "@/contexts/OrdersContext";
 import { useCompany } from "@/contexts/CompanyContext";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { OrderRejectionDialog } from "@/components/modals/OrderRejectionDialog";
 import {
   Dialog,
   DialogContent,
@@ -37,7 +26,6 @@ import { TOAST_MESSAGES } from "@/lib/constants/toast-messages";
 import { cn } from "@/lib/utils";
 import { Order } from "@/types/order";
 import { supabase } from "@/lib/supabase/client";
-import { getStatusColor, getStatusLabel } from "@/lib/utils/status";
 import { OrderItemCard } from "@/components/modals/OrderItemCard";
 import { OrderInfoSection } from "@/components/modals/OrderInfoSection";
 import { OrderTotalSection } from "@/components/modals/OrderTotalSection";
@@ -63,13 +51,11 @@ const getCostPerUnitWithoutHst = (
 
 export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsModalProps) => {
   const { startNavigation } = useNavigation();
-  const { updateOrderStatus, downloadInvoicePDF, deleteOrder, refreshOrders } = useOrders();
+  const { downloadInvoicePDF, deleteOrder, refreshOrders } = useOrders();
   const { inventory, refreshInventory } = useInventory();
   const { canWrite: isAdmin, slug: companySlug } = useCompany();
   const router = useRouter();
 
-  const [isRejecting, setIsRejecting] = useState(false);
-  const [rejectionDialogOpen, setRejectionDialogOpen] = useState(false);
   const [customerEmail, setCustomerEmail] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -90,7 +76,6 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
   >({});
 
   const orderId = order?.id;
-  const orderStatus = order?.status;
   const orderUserId = order?.userId;
   const orderIsManualSale = order?.isManualSale;
   const orderItemsJsonKey = order?.items != null ? JSON.stringify(order.items) : "";
@@ -159,15 +144,11 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
 
   useEffect(() => {
     if (!open || !orderId || !isAdmin) return;
-    if (orderStatus !== "approved" && orderStatus !== "completed") {
-      setColorAssignments({});
-      return;
-    }
     fetch(`/api/admin/order-color-assignments?order_id=${encodeURIComponent(orderId)}`)
       .then((r) => (r.ok ? r.json() : { assignments: {} }))
       .then((data) => setColorAssignments(data.assignments ?? {}))
       .catch(() => setColorAssignments({}));
-  }, [open, isAdmin, orderId, orderStatus]);
+  }, [open, isAdmin, orderId]);
 
   const invoiceRoute = order ? `/${companySlug}/orders/${order.id}/invoice` : "";
 
@@ -222,20 +203,6 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
   const totalMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
 
   // ── Handlers ─────────────────────────────────────────────────────────────
-  const handleReject = async (reason: string, comment: string) => {
-    setIsRejecting(true);
-    try {
-      await updateOrderStatus(order.id, "rejected", reason, comment);
-      toast.success(TOAST_MESSAGES.ORDER_REJECTED(order.id));
-      onOpenChange(false);
-    } catch (error) {
-      toast.error(TOAST_MESSAGES.ORDER_FAILED_REJECT);
-      throw error;
-    } finally {
-      setIsRejecting(false);
-    }
-  };
-
   const handleDeleteOrder = async () => {
     if (deleteConfirmText.trim().toLowerCase() !== "confirm") return;
     if (isDeleteInFlightRef.current) return;
@@ -257,16 +224,12 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
   };
 
   // ── Permission flags ──────────────────────────────────────────────────────
-  const canReject = order.status === "pending" && isAdmin;
-  const canDeleteOrder = isAdmin && (order.status === "approved" || order.status === "completed");
+  const canDeleteOrder = isAdmin;
   const canEditManualSale =
-    isAdmin &&
-    order.isManualSale === true &&
-    (order.status === "approved" || order.status === "completed") &&
-    order.invoiceConfirmed !== true;
+    isAdmin && order.isManualSale === true && order.invoiceConfirmed !== true;
   const hasInvoice = !!order.invoiceNumber;
   const canDownloadInvoice = hasInvoice && isAdmin;
-  const canCreateEditInvoice = isAdmin && order.status === "approved";
+  const canCreateEditInvoice = isAdmin;
 
   const handleDownloadInvoice = async () => {
     setIsDownloading(true);
@@ -301,43 +264,15 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
     </div>
   );
 
-  const rejectionInfo = order.status === "rejected" &&
-    (order.rejectionReason || order.rejectionComment) && (
-      <div className="border-t border-border pt-3">
-        <div className="px-3 py-2 bg-destructive/10 rounded-md border border-destructive/20">
-          <div className="flex items-start gap-2">
-            <AlertCircle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
-            <div className="flex-1 space-y-1">
-              <p className="text-xs font-medium text-destructive">Rejected</p>
-              {order.rejectionReason && (
-                <p className="text-xs text-muted-foreground">
-                  <span className="font-medium">Reason:</span> {order.rejectionReason}
-                </p>
-              )}
-              {order.rejectionComment && (
-                <p className="text-xs text-muted-foreground">{order.rejectionComment}</p>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col overflow-hidden w-[calc(100%-2rem)] sm:w-full">
         <DialogHeader>
-          <div className="flex items-start justify-between pr-8">
+          <div className="flex items-start pr-8">
             <div>
               <DialogTitle>Order #{order.id.slice(-8).toUpperCase()}</DialogTitle>
               <DialogDescription>Order details and summary</DialogDescription>
             </div>
-            <Badge
-              variant="outline"
-              className={cn("text-sm flex-shrink-0", getStatusColor(order.status))}
-            >
-              {getStatusLabel(order.status)}
-            </Badge>
           </div>
         </DialogHeader>
 
@@ -381,7 +316,6 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
                   )}
                 </div>
 
-                {rejectionInfo}
                 <OrderTotalSection order={order} />
               </div>
             </TabsContent>
@@ -463,7 +397,6 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
               )}
             </div>
 
-            {rejectionInfo}
             <OrderTotalSection order={order} />
           </div>
         )}
@@ -478,18 +411,13 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
                   onClick={handleCreateEditInvoice}
                   onMouseEnter={handlePrefetchInvoice}
                   onFocus={handlePrefetchInvoice}
-                  disabled={isRejecting}
                 >
                   <FileText className="mr-2 h-4 w-4" />
                   {hasInvoice ? "Edit Invoice" : "Create Invoice"}
                 </Button>
               )}
               {canDownloadInvoice && (
-                <Button
-                  variant="outline"
-                  onClick={handleDownloadInvoice}
-                  disabled={isDownloading || isRejecting}
-                >
+                <Button variant="outline" onClick={handleDownloadInvoice} disabled={isDownloading}>
                   {isDownloading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -507,19 +435,11 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
           )}
 
           <div className="flex justify-end gap-2">
-            <Button
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={isRejecting || isDeleting}
-            >
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isDeleting}>
               Close
             </Button>
             {canEditManualSale && (
-              <Button
-                variant="outline"
-                onClick={handleEditManualSale}
-                disabled={isRejecting || isDeleting}
-              >
+              <Button variant="outline" onClick={handleEditManualSale} disabled={isDeleting}>
                 <ShoppingBag className="mr-2 h-4 w-4" />
                 Edit manual sale
               </Button>
@@ -528,20 +448,10 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
               <Button
                 variant="destructive"
                 onClick={() => setDeleteDialogOpen(true)}
-                disabled={isRejecting || isDeleting}
+                disabled={isDeleting}
               >
                 <Trash2 className="mr-2 h-4 w-4" />
                 Delete Order
-              </Button>
-            )}
-            {canReject && (
-              <Button
-                variant="destructive"
-                onClick={() => setRejectionDialogOpen(true)}
-                disabled={isRejecting || isDeleting}
-              >
-                <XCircle className="mr-2 h-4 w-4" />
-                Reject Order
               </Button>
             )}
           </div>
@@ -561,8 +471,7 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
           <DialogHeader>
             <DialogTitle>Delete Order</DialogTitle>
             <DialogDescription>
-              Order is confirmed still you want to delete it? This will remove the order and restore
-              stock back to inventory.
+              This will remove the order and restore stock back to inventory.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
@@ -604,12 +513,6 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <OrderRejectionDialog
-        open={rejectionDialogOpen}
-        onOpenChange={setRejectionDialogOpen}
-        onReject={handleReject}
-      />
     </Dialog>
   );
 };

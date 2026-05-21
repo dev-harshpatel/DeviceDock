@@ -39,8 +39,6 @@ export const buildMonthlyOrderFlowSeries = (
   const byKey = new Map(points.map((p) => [p.monthKey, p] as const));
 
   for (const order of orders) {
-    if (order.status === "rejected") continue;
-
     let created: Date;
     try {
       created = parseISO(order.createdAt);

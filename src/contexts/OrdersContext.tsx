@@ -4,7 +4,7 @@ import { Database, Json } from "@/lib/database.types";
 import { supabase } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/context";
 import { useCompany } from "@/contexts/CompanyContext";
-import { Order, OrderItem, OrderStatus } from "@/types/order";
+import { Order, OrderItem } from "@/types/order";
 import { ReactNode, createContext, useCallback, useContext, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query-keys";
@@ -37,12 +37,6 @@ interface OrdersContextType {
       shippingAddress?: string | null;
       notes?: string | null;
     },
-  ) => Promise<void>;
-  updateOrderStatus: (
-    orderId: string,
-    status: OrderStatus,
-    rejectionReason?: string,
-    rejectionComment?: string,
   ) => Promise<void>;
   deleteOrder: (orderId: string) => Promise<void>;
   updateInvoice: (
@@ -138,41 +132,46 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
         throw new Error("Order must have at least one item");
       }
 
+      const orderId = generateUUID();
       const subtotal = calculateOrderSubtotal(items);
       const taxRate = hstPercent && hstPercent > 0 ? percentToRate(hstPercent) : null;
       const taxAmount = taxRate ? Math.round(subtotal * taxRate * 100) / 100 : null;
       const totalPrice = subtotal + (taxAmount ?? 0);
       const itemsJson: Json = items as unknown as Json;
 
-      const newOrder = {
-        id: generateUUID(),
-        user_id: adminUserId,
-        company_id: companyId,
-        items: itemsJson,
-        subtotal,
-        tax_rate: taxRate,
-        tax_amount: taxAmount,
-        total_price: totalPrice,
-        status: "approved",
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        is_manual_sale: true,
-        manual_customer_name: customerInfo.name,
-        manual_customer_email: customerInfo.email || null,
-        manual_customer_phone: customerInfo.phone || null,
-        payment_terms: paymentMethod,
-        billing_address: billingAddress || null,
-        shipping_address: shippingAddress || null,
-        invoice_notes: notes || null,
-      };
+      // Single atomic RPC: inserts order + decrements inventory + marks identifiers sold.
+      // If any step fails the entire transaction rolls back — no partial state possible.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error: rpcError } = await (supabase as any).rpc("create_manual_sale_order", {
+        p_order_id: orderId,
+        p_user_id: adminUserId,
+        p_company_id: companyId,
+        p_items: itemsJson,
+        p_subtotal: subtotal,
+        p_tax_rate: taxRate,
+        p_tax_amount: taxAmount,
+        p_total_price: totalPrice,
+        p_manual_customer_name: customerInfo.name,
+        p_manual_customer_email: customerInfo.email || null,
+        p_manual_customer_phone: customerInfo.phone || null,
+        p_payment_terms: paymentMethod,
+        p_billing_address: billingAddress || null,
+        p_shipping_address: shippingAddress || null,
+        p_invoice_notes: notes || null,
+      });
 
+      if (rpcError) {
+        throw new Error(rpcError.message || "Failed to record sale");
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase.from("orders") as any)
-        .insert([newOrder])
-        .select()
+        .select(ORDER_FIELDS)
+        .eq("id", orderId)
         .single();
 
-      if (error) {
-        throw new Error(error.message || "Failed to record sale");
+      if (error || !data) {
+        throw new Error(error?.message ?? "Failed to load created order");
       }
 
       const createdOrder = dbRowToOrder(data);
@@ -300,40 +299,6 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
       return orders.find((order) => order.id === orderId);
     },
     [orders],
-  );
-
-  const updateOrderStatus = useCallback(
-    async (
-      orderId: string,
-      status: OrderStatus,
-      rejectionReason?: string,
-      rejectionComment?: string,
-    ) => {
-      const updateData: OrderUpdate = {
-        status,
-        updated_at: new Date().toISOString(),
-      };
-
-      if (status === "rejected") {
-        (updateData as any).rejection_reason = rejectionReason || null;
-        (updateData as any).rejection_comment = rejectionComment || null;
-        (updateData as any).discount_amount = 0;
-      } else {
-        (updateData as any).rejection_reason = null;
-        (updateData as any).rejection_comment = null;
-      }
-
-      const { error } = await (supabase.from("orders") as any)
-        .update(updateData)
-        .eq("id", orderId)
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      invalidateOrders();
-    },
-    [getOrderById, invalidateOrders],
   );
 
   const deleteOrder = useCallback(
@@ -532,7 +497,6 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
       createManualOrder,
       updateManualOrder,
       patchManualSaleOrderDetails,
-      updateOrderStatus,
       deleteOrder,
       updateInvoice,
       confirmInvoice,
@@ -549,7 +513,6 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
       createManualOrder,
       updateManualOrder,
       patchManualSaleOrderDetails,
-      updateOrderStatus,
       deleteOrder,
       updateInvoice,
       confirmInvoice,

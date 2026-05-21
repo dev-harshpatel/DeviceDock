@@ -66,7 +66,8 @@
       "Bash(git stash *)",
       "Bash(cat next.config.js)",
       "Bash(cat next.config.mjs)",
-      "Bash(cat next.config.ts)"
+      "Bash(cat next.config.ts)",
+      "Bash(git *)"
     ]
   },
   "statusLine": {

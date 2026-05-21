@@ -4,7 +4,7 @@
  */
 
 import type { PaginatedResult } from "@/hooks/use-paginated-query";
-import { Order, OrderStatus } from "@/types/order";
+import { Order } from "@/types/order";
 import { supabase } from "../client/browser";
 import { dbRowToOrder } from "./mappers";
 
@@ -21,11 +21,8 @@ const DELETED_ORDER_FIELDS = [
   "tax_rate",
   "tax_amount",
   "total_price",
-  "status",
   "created_at",
   "updated_at",
-  "rejection_reason",
-  "rejection_comment",
   "invoice_number",
   "is_manual_sale",
   "manual_customer_name",
@@ -39,7 +36,6 @@ const DELETED_ORDER_FIELDS = [
 
 export interface OrdersFilters {
   search: string;
-  status: OrderStatus | "all";
 }
 
 // Columns required to build an Order via dbRowToOrder
@@ -51,11 +47,8 @@ export const ORDER_FIELDS = [
   "tax_rate",
   "tax_amount",
   "total_price",
-  "status",
   "created_at",
   "updated_at",
-  "rejection_reason",
-  "rejection_comment",
   "invoice_number",
   "invoice_date",
   "po_number",
@@ -80,7 +73,6 @@ export const ORDER_FIELDS = [
 ].join(", ");
 
 // Lightweight field set for paginated list views — omits large/detail-only columns.
-// Invoice fields, addresses, and IMEI data are only needed when a single order modal opens.
 const ORDER_SUMMARY_FIELDS = [
   "id",
   "user_id",
@@ -89,11 +81,8 @@ const ORDER_SUMMARY_FIELDS = [
   "tax_rate",
   "tax_amount",
   "total_price",
-  "status",
   "created_at",
   "updated_at",
-  "rejection_reason",
-  "rejection_comment",
   "invoice_number",
   "discount_amount",
   "discount_type",
@@ -110,35 +99,6 @@ export async function fetchPaginatedOrders(
 ): Promise<PaginatedResult<Order>> {
   const hasSearch = filters.search.trim().length > 0;
 
-  if (hasSearch) {
-    const q = filters.search.trim().toLowerCase();
-
-    let query = supabase
-      .from("orders")
-      .select(ORDER_SUMMARY_FIELDS, { count: "exact" })
-      .order("created_at", { ascending: false });
-
-    if (companyId) {
-      query = (query as any).eq("company_id", companyId);
-    }
-
-    if (filters.status !== "all") {
-      query = query.eq("status", filters.status);
-    }
-
-    query = query.or(`id.ilike.%${q}%,status.ilike.%${q}%`);
-    query = query.range(range.from, range.to);
-
-    const { data, count, error } = await query;
-    if (error) throw error;
-
-    return {
-      data: (data || []).map(dbRowToOrder),
-      count: count || 0,
-    };
-  }
-
-  // No search - simple paginated query
   let query = supabase
     .from("orders")
     .select(ORDER_SUMMARY_FIELDS, { count: "exact" })
@@ -148,8 +108,9 @@ export async function fetchPaginatedOrders(
     query = (query as any).eq("company_id", companyId);
   }
 
-  if (filters.status !== "all") {
-    query = query.eq("status", filters.status);
+  if (hasSearch) {
+    const q = filters.search.trim().toLowerCase();
+    query = query.ilike("id", `%${q}%`);
   }
 
   query = query.range(range.from, range.to);
@@ -219,35 +180,4 @@ export async function fetchAllOrders(companyId: string): Promise<Order[]> {
 
   if (error) throw error;
   return data ? data.map(dbRowToOrder) : [];
-}
-
-export async function fetchPaginatedUserOrders(
-  userId: string,
-  statusFilter: OrderStatus | "all",
-  range: { from: number; to: number },
-  companyId?: string,
-): Promise<PaginatedResult<Order>> {
-  let query = supabase
-    .from("orders")
-    .select(ORDER_FIELDS, { count: "exact" })
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false });
-
-  if (companyId) {
-    query = (query as any).eq("company_id", companyId);
-  }
-
-  if (statusFilter !== "all") {
-    query = query.eq("status", statusFilter);
-  }
-
-  query = query.range(range.from, range.to);
-
-  const { data, count, error } = await query;
-  if (error) throw error;
-
-  return {
-    data: (data || []).map(dbRowToOrder),
-    count: count || 0,
-  };
 }

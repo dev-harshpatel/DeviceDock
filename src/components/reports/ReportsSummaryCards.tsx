@@ -48,7 +48,7 @@ export function ReportsSummaryCards({
           {formatPrice(summaryStats.totalRevenue)}
         </p>
         <p className="text-xs text-muted-foreground mt-1">
-          {completedOrdersCount} completed orders
+          {completedOrdersCount} order{completedOrdersCount === 1 ? "" : "s"}
         </p>
       </div>
 
@@ -85,7 +85,8 @@ export function ReportsSummaryCards({
           {formatPrice(profitFromOrdersStats.totalProfit)}
         </p>
         <p className="text-xs text-muted-foreground mt-1">
-          From {profitFromOrdersStats.orderCount} completed orders
+          From {profitFromOrdersStats.orderCount} order
+          {profitFromOrdersStats.orderCount === 1 ? "" : "s"}
           {hasSummaryDateRange && <> in selected range</>}
         </p>
       </div>

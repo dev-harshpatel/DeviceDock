@@ -21,7 +21,6 @@ export default function Reports() {
 
   const [filters, setFilters] = useState<ReportFilters>({
     dateRange: { from: null, to: null },
-    orderStatus: "all",
     grade: "all",
     brand: "all",
   });
@@ -43,24 +42,18 @@ export default function Reports() {
   }, [inventory]);
 
   const filteredOrders = useMemo(() => {
-    let filtered = orders;
-    if (filters.dateRange.from || filters.dateRange.to) {
-      filtered = filtered.filter((order) => {
-        const orderDate = new Date(order.createdAt);
-        if (filters.dateRange.from && orderDate < filters.dateRange.from) return false;
-        if (filters.dateRange.to) {
-          const toDate = new Date(filters.dateRange.to);
-          toDate.setHours(23, 59, 59, 999);
-          if (orderDate > toDate) return false;
-        }
-        return true;
-      });
-    }
-    if (filters.orderStatus !== "all") {
-      filtered = filtered.filter((order) => order.status === filters.orderStatus);
-    }
-    return filtered;
-  }, [orders, filters.dateRange, filters.orderStatus]);
+    if (!filters.dateRange.from && !filters.dateRange.to) return orders;
+    return orders.filter((order) => {
+      const orderDate = new Date(order.createdAt);
+      if (filters.dateRange.from && orderDate < filters.dateRange.from) return false;
+      if (filters.dateRange.to) {
+        const toDate = new Date(filters.dateRange.to);
+        toDate.setHours(23, 59, 59, 999);
+        if (orderDate > toDate) return false;
+      }
+      return true;
+    });
+  }, [orders, filters.dateRange]);
 
   const filteredInventory = useMemo(() => {
     let filtered = inventory;
@@ -157,36 +150,8 @@ export default function Reports() {
       .slice(0, 6);
   }, [filteredInventory]);
 
-  const orderStatusDistribution = useMemo(() => {
-    const counts = { pending: 0, approved: 0, rejected: 0, completed: 0 };
-    filteredOrders.forEach((o) => {
-      counts[o.status] = (counts[o.status] || 0) + 1;
-    });
-    return [
-      { name: "Pending", value: counts.pending },
-      { name: "Approved", value: counts.approved },
-      { name: "Rejected", value: counts.rejected },
-      { name: "Completed", value: counts.completed },
-    ].filter((d) => d.value > 0);
-  }, [filteredOrders]);
-
-  const revenueByStatus = useMemo(() => {
-    const revenue = { pending: 0, approved: 0, rejected: 0, completed: 0 };
-    filteredOrders.forEach((o) => {
-      revenue[o.status] = (revenue[o.status] || 0) + o.totalPrice;
-    });
-    return [
-      { name: "Pending", value: revenue.pending },
-      { name: "Approved", value: revenue.approved },
-      { name: "Rejected", value: revenue.rejected },
-      { name: "Completed", value: revenue.completed },
-    ].filter((d) => d.value > 0);
-  }, [filteredOrders]);
-
   const summaryStats = useMemo(() => {
-    const totalRevenue = filteredOrders
-      .filter((o) => o.status === "approved" || o.status === "completed")
-      .reduce((sum, o) => sum + o.totalPrice, 0);
+    const totalRevenue = filteredOrders.reduce((sum, o) => sum + o.totalPrice, 0);
     const totalOrders = filteredOrders.length;
     const totalUnits = filteredOrders.reduce(
       (sum, o) => sum + o.items.reduce((s, item) => s + item.quantity, 0),
@@ -234,12 +199,9 @@ export default function Reports() {
   const isEstimatedProfitPending = inventoryLoading;
 
   const profitFromOrdersStats = useMemo(() => {
-    const completedOrders = filteredOrders.filter(
-      (o) => o.status === "approved" || o.status === "completed",
-    );
     let totalProfit = 0;
     let orderCount = 0;
-    completedOrders.forEach((order) => {
+    filteredOrders.forEach((order) => {
       if (!order.items || !Array.isArray(order.items)) return;
       orderCount++;
       order.items.forEach((orderItem) => {
@@ -281,7 +243,6 @@ export default function Reports() {
     return (
       filters.dateRange.from !== null ||
       filters.dateRange.to !== null ||
-      filters.orderStatus !== "all" ||
       filters.grade !== "all" ||
       filters.brand !== "all"
     );
@@ -290,16 +251,13 @@ export default function Reports() {
   const resetFilters = () =>
     setFilters({
       dateRange: { from: null, to: null },
-      orderStatus: "all",
       grade: "all",
       brand: "all",
     });
 
   if (inventoryLoading || ordersLoading) return <AdminReportsSkeleton />;
 
-  const completedOrdersCount = filteredOrders.filter(
-    (o) => o.status === "approved" || o.status === "completed",
-  ).length;
+  const completedOrdersCount = filteredOrders.length;
   const filteredInventoryTotalUnits = filteredInventory.reduce((s, i) => s + i.quantity, 0);
 
   return (
@@ -345,8 +303,6 @@ export default function Reports() {
           valueByDevice={valueByDevice}
           stockByGrade={stockByGrade}
           stockByStatus={stockByStatus}
-          orderStatusDistribution={orderStatusDistribution}
-          revenueByStatus={revenueByStatus}
         />
       </div>
     </div>
