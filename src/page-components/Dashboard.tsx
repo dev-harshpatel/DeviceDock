@@ -31,8 +31,7 @@ export default function Dashboard() {
   const { data: inventoryStats, isLoading: inventoryStatsLoading } = useQuery({
     queryKey: queryKeys.inventoryStats(companyId),
     queryFn: () => fetchInventoryStats(companyId),
-    staleTime: 0,
-    refetchOnMount: "always",
+    staleTime: 60_000,
   });
 
   const { data: orderStats, isLoading: orderStatsLoading } = useQuery({
@@ -73,9 +72,10 @@ export default function Dashboard() {
 
   const monthlyOrderFlow = useMemo(() => buildMonthlyOrderFlowSeries(orders), [orders]);
 
-  const isDashboardLoading = isLoadingStats || ordersLoading || inventoryLoading;
+  // Only block on stat data — chart series (orders) loads independently and shows empty until ready
+  const isStatLoading = isLoadingStats || inventoryLoading;
 
-  if (isDashboardLoading) {
+  if (isStatLoading) {
     return <AdminDashboardSkeleton />;
   }
 

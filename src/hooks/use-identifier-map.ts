@@ -15,8 +15,8 @@ async function fetchAllActiveIdentifiers(companyId: string): Promise<IdentifierS
   // Single JOIN query — identifiers + their inventory row in one round-trip.
   // Includes in_stock, reserved, and damaged so the edit/delete by IMEI flows get
   // instant O(1) lookups for all actionable statuses. Sold/returned fall back to DB.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase.from("inventory_identifiers") as any)
+  const { data, error } = await supabase
+    .from("inventory_identifiers")
     .select(
       `id, imei, serial_number, status, color, damage_note, purchase_price, inventory!inner(${INVENTORY_ADMIN_FIELDS})`,
     )
@@ -25,6 +25,8 @@ async function fetchAllActiveIdentifiers(companyId: string): Promise<IdentifierS
 
   if (error) throw error;
 
+  // The joined inventory field is typed as generic Json by the Supabase client;
+  // cast per-row to access the known inventory sub-fields from INVENTORY_ADMIN_FIELDS.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (data ?? []).map((row: any) => ({
     identifierId: row.id as string,

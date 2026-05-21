@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/lib/auth/context";
+import { UserProfileProvider } from "@/contexts/UserProfileContext";
 import { NavigationProvider } from "@/contexts/NavigationContext";
 import { RealtimeProvider } from "@/contexts/RealtimeContext";
 import { NavigationIndicator } from "@/components/layout/NavigationIndicator";
@@ -45,14 +46,16 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <AuthProvider>
-            <RealtimeProvider>
-              <RealtimeInvalidationBridge />
-              <NavigationProvider>
-                {children}
-                <NavigationIndicator />
-                <Sonner />
-              </NavigationProvider>
-            </RealtimeProvider>
+            <UserProfileProvider>
+              <RealtimeProvider>
+                <RealtimeInvalidationBridge />
+                <NavigationProvider>
+                  {children}
+                  <NavigationIndicator />
+                  <Sonner />
+                </NavigationProvider>
+              </RealtimeProvider>
+            </UserProfileProvider>
           </AuthProvider>
         </TooltipProvider>
       </QueryClientProvider>

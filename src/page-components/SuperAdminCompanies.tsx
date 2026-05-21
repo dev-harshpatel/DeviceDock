@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Building2, ChevronRight, Search, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Loader } from "@/components/common/Loader";
 import { EmptyState } from "@/components/common/EmptyState";
+import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -40,7 +42,7 @@ function StatusBadge({ status }: { status: string }) {
         "text-xs",
         status === "active" && "border-success text-success",
         status === "suspended" && "border-warning text-warning",
-        status === "inactive" && "border-muted-foreground text-muted-foreground"
+        status === "inactive" && "border-muted-foreground text-muted-foreground",
       )}
     >
       {status}
@@ -49,29 +51,23 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function SuperAdminCompanies() {
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [deletingCompany, setDeletingCompany] = useState<Company | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const router = useRouter();
+  const queryClient = useQueryClient();
 
-  const loadCompanies = useCallback(async () => {
-    try {
+  const { data: companies = [], isLoading } = useQuery({
+    queryKey: queryKeys.superAdminCompanies,
+    queryFn: async () => {
       const res = await fetch("/api/superadmin/companies");
-      const json = await res.json() as { companies: Company[] };
-      setCompanies(json.companies ?? []);
-    } catch {
-      toast.error("Failed to load companies");
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadCompanies();
-  }, [loadCompanies]);
+      if (!res.ok) throw new Error("Failed to load companies");
+      const json = (await res.json()) as { companies: Company[] };
+      return json.companies ?? [];
+    },
+    staleTime: 60_000,
+  });
 
   const handleToggleStatus = async (company: Company) => {
     const newStatus = company.status === "active" ? "suspended" : "active";
@@ -83,8 +79,8 @@ export default function SuperAdminCompanies() {
         body: JSON.stringify({ status: newStatus }),
       });
       if (!res.ok) throw new Error("Failed to update status");
-      setCompanies((prev) =>
-        prev.map((c) => (c.id === company.id ? { ...c, status: newStatus } : c))
+      queryClient.setQueryData(queryKeys.superAdminCompanies, (prev: Company[] | undefined) =>
+        (prev ?? []).map((c) => (c.id === company.id ? { ...c, status: newStatus } : c)),
       );
       toast.success(`${company.name} ${newStatus === "active" ? "activated" : "suspended"}`);
     } catch {
@@ -102,7 +98,9 @@ export default function SuperAdminCompanies() {
         method: "DELETE",
       });
       if (!res.ok) throw new Error("Failed to delete company");
-      setCompanies((prev) => prev.filter((c) => c.id !== deletingCompany.id));
+      queryClient.setQueryData(queryKeys.superAdminCompanies, (prev: Company[] | undefined) =>
+        (prev ?? []).filter((c) => c.id !== deletingCompany.id),
+      );
       toast.success(`"${deletingCompany.name}" and all its data have been deleted.`);
     } catch {
       toast.error("Failed to delete company. Please try again.");
@@ -116,7 +114,7 @@ export default function SuperAdminCompanies() {
     (c) =>
       c.name.toLowerCase().includes(search.toLowerCase()) ||
       c.slug.toLowerCase().includes(search.toLowerCase()) ||
-      (c.ownerEmail ?? "").toLowerCase().includes(search.toLowerCase())
+      (c.ownerEmail ?? "").toLowerCase().includes(search.toLowerCase()),
   );
 
   if (isLoading) return <Loader size="lg" text="Loading companies..." />;
@@ -174,9 +172,7 @@ export default function SuperAdminCompanies() {
                       className="hover:bg-muted/40 transition-colors cursor-pointer"
                       onClick={() => router.push(`/superadmin/companies/${company.id}`)}
                     >
-                      <td className="py-3 px-2 font-medium text-foreground">
-                        {company.name}
-                      </td>
+                      <td className="py-3 px-2 font-medium text-foreground">{company.name}</td>
                       <td className="py-3 px-2 text-muted-foreground font-mono text-xs">
                         {company.slug}
                       </td>
@@ -203,7 +199,7 @@ export default function SuperAdminCompanies() {
                               "h-7 text-xs",
                               company.status === "active"
                                 ? "text-warning hover:text-warning"
-                                : "text-success hover:text-success"
+                                : "text-success hover:text-success",
                             )}
                           >
                             {company.status === "active" ? "Suspend" : "Activate"}
@@ -262,7 +258,7 @@ export default function SuperAdminCompanies() {
                         "h-7 text-xs flex-1",
                         company.status === "active"
                           ? "text-warning hover:text-warning"
-                          : "text-success hover:text-success"
+                          : "text-success hover:text-success",
                       )}
                     >
                       {company.status === "active" ? "Suspend" : "Activate"}
@@ -285,18 +281,18 @@ export default function SuperAdminCompanies() {
 
       <AlertDialog
         open={!!deletingCompany}
-        onOpenChange={(open) => { if (!open && !isDeleting) setDeletingCompany(null); }}
+        onOpenChange={(open) => {
+          if (!open && !isDeleting) setDeletingCompany(null);
+        }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete company?</AlertDialogTitle>
             <AlertDialogDescription>
               This will permanently delete{" "}
-              <span className="font-semibold text-foreground">
-                {deletingCompany?.name}
-              </span>{" "}
-              and all associated data — users, inventory, orders, and
-              invitations. This action cannot be undone.
+              <span className="font-semibold text-foreground">{deletingCompany?.name}</span> and all
+              associated data — users, inventory, orders, and invitations. This action cannot be
+              undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

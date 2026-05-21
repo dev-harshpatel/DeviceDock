@@ -1,5 +1,35 @@
 import type { InventoryItem } from "@/data/inventory";
 
+// ── Manual Sale Wizard types ──────────────────────────────────────────────────
+
+export interface ScannedIdentifierUnit {
+  id: string;
+  inventoryIdentifierId: string;
+  displayLabel: string;
+  color?: string | null;
+  damageNote?: string | null;
+}
+
+/** Scanned units grouped by inventory row (same device / grade / storage). */
+export interface IdentifierScanGroup {
+  inventoryId: string;
+  item: InventoryItem;
+  units: ScannedIdentifierUnit[];
+}
+
+export interface SelectedItem {
+  item: InventoryItem;
+  quantity: number;
+}
+
+export interface AvailableIdentifierUnit {
+  id: string;
+  imei: string | null;
+  serialNumber: string | null;
+  color: string | null;
+  displayLabel: string;
+}
+
 /** Result of resolving an IMEI or serial for manual sale (PLAN-5). */
 export interface IdentifierSaleLookup {
   identifierId: string;

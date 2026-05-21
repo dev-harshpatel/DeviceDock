@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext } from "react";
+import { createContext, useContext, useMemo } from "react";
 import type { Company, CompanyMembership, CompanyRole } from "@/types/company";
 
 interface CompanyContextType {
@@ -32,19 +32,22 @@ interface CompanyProviderProps {
 export function CompanyProvider({ company, membership, children }: CompanyProviderProps) {
   const role = membership.role;
 
-  const value: CompanyContextType = {
-    company,
-    membership,
-    companyId: company.id,
-    slug: company.slug,
-    companyName: company.name,
-    role,
-    isOwner: role === "owner",
-    isManager: role === "manager",
-    isInventoryAdmin: role === "inventory_admin",
-    isAnalyst: role === "analyst",
-    canWrite: role === "owner" || role === "manager" || role === "inventory_admin",
-  };
+  const value = useMemo<CompanyContextType>(
+    () => ({
+      company,
+      membership,
+      companyId: company.id,
+      slug: company.slug,
+      companyName: company.name,
+      role,
+      isOwner: role === "owner",
+      isManager: role === "manager",
+      isInventoryAdmin: role === "inventory_admin",
+      isAnalyst: role === "analyst",
+      canWrite: role === "owner" || role === "manager" || role === "inventory_admin",
+    }),
+    [company, membership, role],
+  );
 
   return <CompanyContext.Provider value={value}>{children}</CompanyContext.Provider>;
 }

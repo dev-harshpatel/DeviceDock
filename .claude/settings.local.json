@@ -55,7 +55,18 @@
       "Bash(cmd /c \"npx tsc --noEmit 2>&1\")",
       "Bash(cmd:*)",
       "Bash(echo \"exit:$?\")",
-      "Bash(node_modules/.bin/tsc --noEmit)"
+      "Bash(node_modules/.bin/tsc --noEmit)",
+      "Bash(Get-ChildItem -Path \"d:\\\\Projects\\\\learning-projects\\\\devicedock\\\\app\" -Recurse -Filter \"*order*\")",
+      "PowerShell(\\(Get-Content \"d:\\\\Projects\\\\learning-projects\\\\devicedock\\\\src\\\\components\\\\manual-sale\\\\ManualSaleWizard.tsx\" | Measure-Object -Line\\).Lines)",
+      "Bash(Get-Item src/components/manual-sale/ManualSaleWizard.tsx)",
+      "Bash(Select-Object Name, Length)",
+      "Bash(Get-Item src/hooks/use-manual-sale-wizard.ts)",
+      "PowerShell(\\(Get-Content \"d:\\\\Projects\\\\learning-projects\\\\devicedock\\\\src\\\\components\\\\manual-sale\\\\ManualSaleWizard.tsx\"\\).Count; \\(Get-Content \"d:\\\\Projects\\\\learning-projects\\\\devicedock\\\\src\\\\hooks\\\\use-manual-sale-wizard.ts\"\\).Count)",
+      "Bash(npx supabase *)",
+      "Bash(git stash *)",
+      "Bash(cat next.config.js)",
+      "Bash(cat next.config.mjs)",
+      "Bash(cat next.config.ts)"
     ]
   },
   "statusLine": {

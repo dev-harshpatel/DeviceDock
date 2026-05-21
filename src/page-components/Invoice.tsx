@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { useOrders } from "@/contexts/OrdersContext";
 import { useCompany } from "@/contexts/CompanyContext";
 import { supabase } from "@/lib/supabase/client";
+import { fetchOrderById } from "@/lib/supabase/queries";
+import { queryKeys } from "@/lib/query-keys";
 import { toast } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
 import { useForm } from "react-hook-form";
@@ -32,10 +35,17 @@ export default function Invoice() {
   const router = useRouter();
   const { companyRoute } = useCompanyRoute();
   const orderId = params.orderId as string;
-  const { getOrderById, updateInvoice, downloadInvoicePDF, isLoading: ordersLoading } = useOrders();
+  const { updateInvoice, downloadInvoicePDF } = useOrders();
   const { canWrite: isAdmin, companyId } = useCompany();
+  const queryClient = useQueryClient();
   const [companyHstNumber, setCompanyHstNumber] = useState("");
-  const [order, setOrder] = useState<ReturnType<typeof getOrderById>>(undefined);
+
+  const { data: order, isLoading: orderLoading } = useQuery({
+    queryKey: queryKeys.orderDetail(orderId),
+    queryFn: () => fetchOrderById(orderId, companyId),
+    enabled: !!orderId && !!companyId,
+    staleTime: 30_000,
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -69,35 +79,24 @@ export default function Invoice() {
     }
   }, [isAdmin, router]);
 
-  // Load order and customer info
+  // Load customer info and initialize form when order data arrives
   useEffect(() => {
-    const loadData = async () => {
-      // Wait for orders to finish loading first
-      if (ordersLoading) {
-        return;
-      }
+    let mounted = true;
 
+    const loadData = async () => {
       setIsLoading(true);
       try {
-        // Retry mechanism: wait for order to appear in context (handles race condition after approval)
-        let currentOrder = getOrderById(orderId);
-        let retries = 0;
-        const maxRetries = 5;
-        const retryDelay = 200; // 200ms between retries
-
-        while (!currentOrder && retries < maxRetries) {
-          await new Promise((resolve) => setTimeout(resolve, retryDelay));
-          currentOrder = getOrderById(orderId);
-          retries++;
-        }
+        const currentOrder = order;
 
         if (!currentOrder) {
-          toast.error("The order you are looking for does not exist.");
-          router.push(companyRoute("/orders"));
+          if (mounted) {
+            toast.error("The order you are looking for does not exist.");
+            router.push(companyRoute("/orders"));
+          }
           return;
         }
 
-        setOrder(currentOrder);
+        if (!mounted) return;
 
         // Fetch company HST number from settings (single source of truth)
         const { data: settingsRow } = await (supabase as any)
@@ -105,6 +104,7 @@ export default function Invoice() {
           .select("hst_number")
           .eq("company_id", companyId)
           .maybeSingle();
+        if (!mounted) return;
         const fetchedHstNumber: string = settingsRow?.hst_number || "";
         setCompanyHstNumber(fetchedHstNumber);
 
@@ -129,6 +129,7 @@ export default function Invoice() {
           });
         } else {
           const customerProfile = await getUserProfile(currentOrder.userId);
+          if (!mounted) return;
           setCustomerInfo({
             businessName: customerProfile?.businessName || null,
             businessAddress: customerProfile?.businessAddress || null,
@@ -176,6 +177,7 @@ export default function Invoice() {
           // New invoice - generate invoice number and PO
           const invoiceNumber = await generateInvoiceNumber(orderDate);
           const poNumber = await generatePONumber(orderDate);
+          if (!mounted) return;
 
           form.reset({
             invoiceNumber,
@@ -196,17 +198,20 @@ export default function Invoice() {
           });
         }
       } catch (error) {
-        toast.error("Failed to load order data.");
+        if (mounted) toast.error("Failed to load order data.");
       } finally {
-        setIsLoading(false);
+        if (mounted) setIsLoading(false);
       }
     };
 
-    if (orderId && !ordersLoading) {
+    if (orderId && !orderLoading) {
       loadData();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderId, ordersLoading]);
+
+    return () => {
+      mounted = false;
+    };
+  }, [orderId, orderLoading, order, companyId, companyRoute, router, form]);
 
   // Update due date when payment terms or invoice date changes
   const paymentTerms = form.watch("paymentTerms");
@@ -253,7 +258,7 @@ export default function Invoice() {
         imeiNumbers: imeiNumbers,
       });
 
-      setOrder({
+      queryClient.setQueryData(queryKeys.orderDetail(orderId), {
         ...order,
         invoiceNumber: data.invoiceNumber,
         invoiceDate: data.invoiceDate,

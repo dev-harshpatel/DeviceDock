@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Building2, ShieldCheck, TrendingUp, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { StatCard } from "@/components/common/StatCard";
 import { Loader } from "@/components/common/Loader";
+import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 
 interface TenantHealthCompany {
@@ -36,54 +38,29 @@ interface TenantHealthResponse {
 }
 
 const getHealthBadgeClass = (status: TenantHealthCompany["healthStatus"]) => {
-  if (status === "healthy") {
-    return "border-success text-success";
-  }
-  if (status === "attention") {
-    return "border-warning text-warning";
-  }
+  if (status === "healthy") return "border-success text-success";
+  if (status === "attention") return "border-warning text-warning";
   return "border-destructive text-destructive";
 };
 
-const formatTrend = (trend: number) => {
-  if (trend > 0) {
-    return `+${trend}%`;
-  }
-  return `${trend}%`;
-}
+const formatTrend = (trend: number) => (trend > 0 ? `+${trend}%` : `${trend}%`);
 
 export default function SuperAdminDashboard() {
-  const [stats, setStats] = useState<TenantHealthSummary | null>(null);
-  const [companies, setCompanies] = useState<TenantHealthCompany[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { data, isLoading } = useQuery({
+    queryKey: queryKeys.superAdminHealth,
+    queryFn: async () => {
+      const res = await fetch("/api/superadmin/tenant-health");
+      if (!res.ok) throw new Error("Failed to fetch tenant health");
+      return res.json() as Promise<TenantHealthResponse>;
+    },
+    staleTime: 60_000,
+  });
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await fetch("/api/superadmin/tenant-health");
-        const json = (await res.json()) as TenantHealthResponse;
-
-        const companyRows = (json.companies ?? []).sort(
-          (first, second) => second.healthScore - first.healthScore,
-        );
-        setCompanies(companyRows);
-        setStats(json.summary);
-      } catch {
-        setCompanies([]);
-        setStats({
-          activeCompanies: 0,
-          averageHealthScore: 0,
-          totalCompanies: 0,
-          totalOrdersLast30Days: 0,
-          totalUniqueActiveUsers30Days: 0,
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    load();
-  }, []);
+  const stats = data?.summary ?? null;
+  const companies = useMemo(
+    () => (data?.companies ?? []).sort((a, b) => b.healthScore - a.healthScore),
+    [data],
+  );
 
   if (isLoading) {
     return <Loader size="lg" text="Loading dashboard..." />;
@@ -94,9 +71,7 @@ export default function SuperAdminDashboard() {
       <div className="space-y-6 pb-6">
         {/* Header */}
         <div>
-          <h2 className="text-2xl font-semibold text-foreground">
-            Platform Dashboard
-          </h2>
+          <h2 className="text-2xl font-semibold text-foreground">Platform Dashboard</h2>
           <p className="text-sm text-muted-foreground mt-1">
             Overview of all companies on the platform
           </p>
@@ -186,7 +161,9 @@ export default function SuperAdminDashboard() {
                           >
                             {company.healthStatus}
                           </Badge>
-                          <span className="text-xs text-muted-foreground">{company.healthScore}/100</span>
+                          <span className="text-xs text-muted-foreground">
+                            {company.healthScore}/100
+                          </span>
                         </div>
                       </td>
                       <td className="px-4 py-3 text-right text-foreground">
@@ -215,7 +192,10 @@ export default function SuperAdminDashboard() {
 
                   {companies.length === 0 && (
                     <tr>
-                      <td className="px-6 py-8 text-center text-sm text-muted-foreground" colSpan={6}>
+                      <td
+                        className="px-6 py-8 text-center text-sm text-muted-foreground"
+                        colSpan={6}
+                      >
                         No tenant metrics available yet.
                       </td>
                     </tr>

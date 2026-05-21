@@ -227,18 +227,19 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
         throw new Error("No active company context");
       }
 
-      const updateData: Record<string, string | null> = {};
+      const updateData: { color?: string | null; damage_note?: string | null; updated_at: string } =
+        {
+          updated_at: new Date().toISOString(),
+        };
 
       if (updates.color !== undefined) updateData.color = updates.color;
       if (updates.damageNote !== undefined) updateData.damage_note = updates.damageNote;
 
-      if (Object.keys(updateData).length === 0) return;
+      if (Object.keys(updateData).length <= 1) return;
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { error } = await (supabase.from("inventory_identifiers") as any)
-        .update({
-          ...updateData,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq("id", identifierId)
         .eq("company_id", companyId);
 
@@ -371,6 +372,7 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
             pricePerUnit: calculatePricePerUnit(mergedPurchase, mergedQuantity, nextHst),
           });
 
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const { error: moveError } = await (supabase.from("inventory_identifiers") as any)
             .update({
               inventory_id: matchingTarget.id,
@@ -469,6 +471,7 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
           ),
         });
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { error: moveError } = await (supabase.from("inventory_identifiers") as any)
           .update({
             inventory_id: targetInventoryId,
@@ -543,7 +546,8 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
       );
 
       // Delete the identifier record first.
-      const { error: deleteIdError } = await (supabase.from("inventory_identifiers") as any)
+      const { error: deleteIdError } = await supabase
+        .from("inventory_identifiers")
         .delete()
         .eq("id", lookup.identifierId)
         .eq("company_id", companyId);
@@ -615,7 +619,10 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
         ...(newPurchasePrice !== null && { purchase_price: newPurchasePrice }),
       };
 
-      const { error } = await (supabase.from("inventory") as any).update(updateData).eq("id", id);
+      const { error } = await (supabase.from("inventory") as any)
+        .update(updateData)
+        .eq("id", id)
+        .eq("company_id", companyId);
 
       if (error) throw error;
 
@@ -744,6 +751,7 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
       if (!imei && !serialNumber)
         throw new Error("At least one identifier (IMEI or serial number) is required");
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { error } = await (supabase.from("inventory_identifiers") as any).insert({
         inventory_id: inventoryId,
         company_id: companyId,
@@ -783,22 +791,20 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
 
       const allowSold = new Set(options?.allowSoldIdentifierIds ?? []);
 
-      const fetchIdent = async (
-        column: "imei" | "serial_number",
-      ): Promise<Record<string, unknown> | null> => {
-        const { data, error } = await (supabase.from("inventory_identifiers") as any)
-          .select("id, inventory_id, imei, serial_number, status, color, damage_note")
-          .eq("company_id", companyId)
-          .eq(column, q)
-          .maybeSingle();
-        if (error) {
-          console.error("[InventoryContext] lookupIdentifierForSale:", error.message);
-          return null;
-        }
-        return data ?? null;
-      };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: rowData, error: rowErr } = await (supabase.from("inventory_identifiers") as any)
+        .select("id, inventory_id, imei, serial_number, status, color, damage_note")
+        .eq("company_id", companyId)
+        .or(`imei.eq.${q},serial_number.eq.${q}`)
+        .limit(1)
+        .maybeSingle();
 
-      const row = (await fetchIdent("imei")) ?? (await fetchIdent("serial_number"));
+      if (rowErr) {
+        console.error("[InventoryContext] lookupIdentifierForSale:", rowErr.message);
+        return null;
+      }
+
+      const row: Record<string, unknown> | null = rowData ?? null;
       if (!row) return null;
 
       const status = String(row.status ?? "");
@@ -843,6 +849,7 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
     async (identifierId: string): Promise<void> => {
       if (!companyId) throw new Error("No active company context");
       const now = new Date().toISOString();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase.from("inventory_identifiers") as any)
         .update({
           status: "sold",
@@ -869,6 +876,7 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
     async (identifierId: string): Promise<void> => {
       if (!companyId) return;
       const now = new Date().toISOString();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (supabase.from("inventory_identifiers") as any)
         .update({
           status: "in_stock",
@@ -885,6 +893,7 @@ export const InventoryProvider = ({ children }: InventoryProviderProps) => {
   const getUploadHistory = useCallback(async (): Promise<UploadHistory[]> => {
     if (!companyId) return [];
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (supabase.from("product_uploads") as any)
       .select(
         [

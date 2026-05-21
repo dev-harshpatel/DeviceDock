@@ -3,6 +3,8 @@
 import {
   createContext,
   ReactNode,
+  Suspense,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -16,22 +18,31 @@ type NavigationContextValue = {
   startNavigation: () => void;
 };
 
-const NavigationContext = createContext<NavigationContextValue | undefined>(
-  undefined,
-);
+const NavigationContext = createContext<NavigationContextValue | undefined>(undefined);
 
 const NAVIGATION_SAFETY_TIMEOUT_MS = 12_000;
 const NAVIGATION_MIN_VISIBLE_MS = 250;
 
-export function NavigationProvider({ children }: { children: ReactNode }) {
+// Inner component that watches route changes — must be Suspense-wrapped because
+// useSearchParams() requires it in Next.js 14 App Router.
+function RouteChangeWatcher({ onRouteChange }: { onRouteChange: () => void }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+
+  useEffect(() => {
+    onRouteChange();
+  }, [pathname, searchParams?.toString(), onRouteChange]);
+
+  return null;
+}
+
+export function NavigationProvider({ children }: { children: ReactNode }) {
   const [isNavigating, setIsNavigating] = useState(false);
 
   const lastStartAtRef = useRef<number | null>(null);
   const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const stopNavigation = () => {
+  const stopNavigation = useCallback(() => {
     const startedAt = lastStartAtRef.current;
     if (!startedAt) {
       setIsNavigating(false);
@@ -49,9 +60,9 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
         safetyTimerRef.current = null;
       }
     }, remainingMs);
-  };
+  }, []);
 
-  const startNavigation = () => {
+  const startNavigation = useCallback(() => {
     setIsNavigating(true);
     lastStartAtRef.current = Date.now();
 
@@ -64,24 +75,21 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       lastStartAtRef.current = null;
       safetyTimerRef.current = null;
     }, NAVIGATION_SAFETY_TIMEOUT_MS);
-  };
-
-  // Stop loader when route actually changes.
-  useEffect(() => {
-    stopNavigation();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname, searchParams?.toString()]);
+  }, []);
 
   const value = useMemo<NavigationContextValue>(
     () => ({
       isNavigating,
       startNavigation,
     }),
-    [isNavigating],
+    [isNavigating, startNavigation],
   );
 
   return (
     <NavigationContext.Provider value={value}>
+      <Suspense fallback={null}>
+        <RouteChangeWatcher onRouteChange={stopNavigation} />
+      </Suspense>
       {children}
     </NavigationContext.Provider>
   );

@@ -21,11 +21,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { OrderRejectionDialog } from "@/components/modals/OrderRejectionDialog";
-import { OrderColorFulfillmentDialog } from "@/components/modals/OrderColorFulfillmentDialog";
-import {
-  OutOfStockWarningDialog,
-  InsufficientStockItem,
-} from "@/components/modals/OutOfStockWarningDialog";
 import {
   Dialog,
   DialogContent,
@@ -73,18 +68,14 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
   const { canWrite: isAdmin, slug: companySlug } = useCompany();
   const router = useRouter();
 
-  const [isApproving, setIsApproving] = useState(false);
   const [isRejecting, setIsRejecting] = useState(false);
   const [rejectionDialogOpen, setRejectionDialogOpen] = useState(false);
-  const [colorFulfillmentOpen, setColorFulfillmentOpen] = useState(false);
   const [customerEmail, setCustomerEmail] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
-  const [stockWarningDialogOpen, setStockWarningDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   const isDeleteInFlightRef = useRef(false);
-  const [insufficientStockItems, setInsufficientStockItems] = useState<InsufficientStockItem[]>([]);
   const [colorAssignments, setColorAssignments] = useState<
     Record<string, { color: string; quantity: number }[]>
   >({});
@@ -231,48 +222,6 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
   const totalMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
 
   // ── Handlers ─────────────────────────────────────────────────────────────
-  const checkStockAvailability = (): InsufficientStockItem[] =>
-    orderItems.reduce<InsufficientStockItem[]>((acc, oi) => {
-      if (!oi?.item?.id || !oi?.quantity) return acc;
-      const inv = inventory.find((i) => i.id === oi.item.id);
-      const available = inv?.quantity ?? 0;
-      if (available < oi.quantity) {
-        acc.push({
-          deviceName: oi.item.deviceName || "Unknown Device",
-          requestedQty: oi.quantity,
-          availableQty: available,
-        });
-      }
-      return acc;
-    }, []);
-
-  const openColorFulfillment = () => {
-    setStockWarningDialogOpen(false);
-    setColorFulfillmentOpen(true);
-  };
-
-  const handleFulfillmentSuccess = async () => {
-    await Promise.all([refreshInventory(), refreshOrders()]);
-    toast.success(TOAST_MESSAGES.ORDER_APPROVED(order.id));
-    setStockWarningDialogOpen(false);
-    setColorFulfillmentOpen(false);
-    onOpenChange(false);
-  };
-
-  const handleApprove = () => {
-    if (orderItems.length === 0) {
-      toast.error(TOAST_MESSAGES.ORDER_NO_ITEMS);
-      return;
-    }
-    const insufficient = checkStockAvailability();
-    if (insufficient.length > 0) {
-      setInsufficientStockItems(insufficient);
-      setStockWarningDialogOpen(true);
-      return;
-    }
-    openColorFulfillment();
-  };
-
   const handleReject = async (reason: string, comment: string) => {
     setIsRejecting(true);
     try {
@@ -308,7 +257,6 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
   };
 
   // ── Permission flags ──────────────────────────────────────────────────────
-  const canApprove = order.status === "pending" && isAdmin;
   const canReject = order.status === "pending" && isAdmin;
   const canDeleteOrder = isAdmin && (order.status === "approved" || order.status === "completed");
   const canEditManualSale =
@@ -530,7 +478,7 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
                   onClick={handleCreateEditInvoice}
                   onMouseEnter={handlePrefetchInvoice}
                   onFocus={handlePrefetchInvoice}
-                  disabled={isApproving || isRejecting}
+                  disabled={isRejecting}
                 >
                   <FileText className="mr-2 h-4 w-4" />
                   {hasInvoice ? "Edit Invoice" : "Create Invoice"}
@@ -540,7 +488,7 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
                 <Button
                   variant="outline"
                   onClick={handleDownloadInvoice}
-                  disabled={isDownloading || isApproving || isRejecting}
+                  disabled={isDownloading || isRejecting}
                 >
                   {isDownloading ? (
                     <>
@@ -562,7 +510,7 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
             <Button
               variant="outline"
               onClick={() => onOpenChange(false)}
-              disabled={isApproving || isRejecting || isDeleting}
+              disabled={isRejecting || isDeleting}
             >
               Close
             </Button>
@@ -570,7 +518,7 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
               <Button
                 variant="outline"
                 onClick={handleEditManualSale}
-                disabled={isApproving || isRejecting || isDeleting}
+                disabled={isRejecting || isDeleting}
               >
                 <ShoppingBag className="mr-2 h-4 w-4" />
                 Edit manual sale
@@ -580,7 +528,7 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
               <Button
                 variant="destructive"
                 onClick={() => setDeleteDialogOpen(true)}
-                disabled={isApproving || isRejecting || isDeleting}
+                disabled={isRejecting || isDeleting}
               >
                 <Trash2 className="mr-2 h-4 w-4" />
                 Delete Order
@@ -590,22 +538,10 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
               <Button
                 variant="destructive"
                 onClick={() => setRejectionDialogOpen(true)}
-                disabled={isApproving || isRejecting || isDeleting}
+                disabled={isRejecting || isDeleting}
               >
                 <XCircle className="mr-2 h-4 w-4" />
                 Reject Order
-              </Button>
-            )}
-            {canApprove && (
-              <Button onClick={handleApprove} disabled={isApproving || isRejecting || isDeleting}>
-                {isApproving ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Approving...
-                  </>
-                ) : (
-                  "Approve Order"
-                )}
               </Button>
             )}
           </div>
@@ -673,30 +609,6 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
         open={rejectionDialogOpen}
         onOpenChange={setRejectionDialogOpen}
         onReject={handleReject}
-      />
-
-      <OutOfStockWarningDialog
-        open={stockWarningDialogOpen}
-        onOpenChange={setStockWarningDialogOpen}
-        insufficientItems={insufficientStockItems}
-        onCancel={() => {
-          setStockWarningDialogOpen(false);
-          setInsufficientStockItems([]);
-        }}
-        onReject={() => {
-          setStockWarningDialogOpen(false);
-          setRejectionDialogOpen(true);
-        }}
-        onApproveAnyway={openColorFulfillment}
-        isApproving={isApproving}
-      />
-
-      <OrderColorFulfillmentDialog
-        open={colorFulfillmentOpen}
-        onOpenChange={setColorFulfillmentOpen}
-        orderId={order.id}
-        orderItems={orderItems}
-        onSuccess={handleFulfillmentSuccess}
       />
     </Dialog>
   );

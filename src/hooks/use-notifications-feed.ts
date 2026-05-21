@@ -5,7 +5,6 @@ import { useQuery } from "@tanstack/react-query";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useInventory } from "@/contexts/InventoryContext";
 import { useNotificationSettings } from "@/contexts/NotificationSettingsContext";
-import { useRealtimeContext } from "@/contexts/RealtimeContext";
 import { getStockStatus } from "@/data/inventory";
 import { fetchNotificationEvents } from "@/lib/supabase/queries";
 import { queryKeys } from "@/lib/query-keys";
@@ -15,9 +14,6 @@ export const useNotificationsFeed = () => {
   const { companyId } = useCompany();
   const { inventory } = useInventory();
   const { criticalStockThreshold, lowStockThreshold, readIds } = useNotificationSettings();
-  // inventoryVersion is kept so stockNotifications recalculates when realtime fires,
-  // even if the inventory query hasn't resolved its background refetch yet.
-  const { inventoryVersion } = useRealtimeContext();
 
   // Notification events — invalidated by use-realtime-invalidation when notificationVersion bumps.
   // staleTime: 0 means any invalidation triggers an immediate background refetch.
@@ -51,7 +47,7 @@ export const useNotificationsFeed = () => {
         } as InAppNotificationItem;
       })
       .filter((item): item is InAppNotificationItem => Boolean(item));
-  }, [criticalStockThreshold, inventory, inventoryVersion, lowStockThreshold]);
+  }, [criticalStockThreshold, inventory, lowStockThreshold]);
 
   const allNotifications = useMemo(() => {
     const merged = [...events, ...stockNotifications];

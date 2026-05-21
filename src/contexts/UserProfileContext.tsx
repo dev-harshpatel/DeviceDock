@@ -3,8 +3,10 @@
 import {
   ReactNode,
   createContext,
+  useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -19,9 +21,7 @@ interface UserProfileContextType {
   refreshProfile: () => Promise<void>;
 }
 
-const UserProfileContext = createContext<UserProfileContextType | undefined>(
-  undefined,
-);
+const UserProfileContext = createContext<UserProfileContextType | undefined>(undefined);
 
 interface UserProfileProviderProps {
   children: ReactNode;
@@ -31,22 +31,27 @@ export const UserProfileProvider = ({ children }: UserProfileProviderProps) => {
   const { user, loading: authLoading } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  // Ref-based guards — avoid stale closures over `profile` state
   const inFlightUserIdRef = useRef<string | null>(null);
+  const loadedUserIdRef = useRef<string | null>(null);
+  const userIdRef = useRef<string | undefined>(undefined);
+  userIdRef.current = user?.id;
 
-  const loadProfile = async (userId: string | null) => {
+  const loadProfile = useCallback(async (userId: string | null) => {
     if (!userId) {
       setProfile(null);
+      loadedUserIdRef.current = null;
       setIsLoading(false);
       return;
     }
 
-    // Skip if we already have the profile for this auth user
-    if (profile?.userId === userId) {
+    // Skip if we already have the profile for this user (ref read, not state closure)
+    if (loadedUserIdRef.current === userId) {
       setIsLoading(false);
       return;
     }
 
-    // Avoid duplicate requests (dev StrictMode can trigger effects twice)
+    // Avoid duplicate in-flight requests (React 18 Strict Mode double-invoke)
     if (inFlightUserIdRef.current === userId) {
       return;
     }
@@ -62,43 +67,39 @@ export const UserProfileProvider = ({ children }: UserProfileProviderProps) => {
       }
 
       setProfile(userProfile);
+      loadedUserIdRef.current = userProfile?.userId ?? userId;
     } catch {
       setProfile(null);
+      loadedUserIdRef.current = null;
     } finally {
       inFlightUserIdRef.current = null;
       setIsLoading(false);
     }
-  };
+  }, []); // stable — all guards use refs, no state in closure
 
   useEffect(() => {
     if (!authLoading) {
       loadProfile(user?.id ?? null);
     }
-    // Use user?.id to avoid re-fetching when user object reference changes but ID is the same
-  }, [user?.id, authLoading]);
+  }, [user?.id, authLoading, loadProfile]);
 
-  const refreshProfile = async () => {
-    if (user?.id) {
-      // Force refresh by clearing profile first
+  const refreshProfile = useCallback(async () => {
+    const uid = userIdRef.current;
+    if (uid) {
+      loadedUserIdRef.current = null; // clear guard so loadProfile re-fetches
       setProfile(null);
-      await loadProfile(user.id);
+      await loadProfile(uid);
     }
-  };
+  }, [loadProfile]);
 
   const isAdmin = profile?.role === "admin";
 
-  return (
-    <UserProfileContext.Provider
-      value={{
-        profile,
-        isLoading: isLoading || authLoading,
-        isAdmin,
-        refreshProfile,
-      }}
-    >
-      {children}
-    </UserProfileContext.Provider>
+  const value = useMemo(
+    () => ({ profile, isLoading: isLoading || authLoading, isAdmin, refreshProfile }),
+    [profile, isLoading, authLoading, isAdmin, refreshProfile],
   );
+
+  return <UserProfileContext.Provider value={value}>{children}</UserProfileContext.Provider>;
 };
 
 export const useUserProfile = () => {
