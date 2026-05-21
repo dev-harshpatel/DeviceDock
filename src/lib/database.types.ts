@@ -1,12 +1,6 @@
 // This file will be auto-generated, but for now we'll define the types manually
 
-export type Json =
-  | string
-  | number
-  | boolean
-  | null
-  | { [key: string]: Json | undefined }
-  | Json[];
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export interface Database {
   public: {
@@ -176,7 +170,7 @@ export interface Database {
           id: string;
           name: string;
           slug: string;
-          status: 'active' | 'inactive';
+          status: "active" | "inactive";
           timezone: string;
           currency: string;
           settings_json: Json;
@@ -187,7 +181,7 @@ export interface Database {
           id?: string;
           name: string;
           slug: string;
-          status?: 'active' | 'inactive';
+          status?: "active" | "inactive";
           timezone?: string;
           currency?: string;
           settings_json?: Json;
@@ -197,7 +191,7 @@ export interface Database {
         Update: {
           name?: string;
           slug?: string;
-          status?: 'active' | 'inactive';
+          status?: "active" | "inactive";
           timezone?: string;
           currency?: string;
           settings_json?: Json;
@@ -210,8 +204,8 @@ export interface Database {
           id: string;
           company_id: string;
           user_id: string;
-          role: 'owner' | 'manager' | 'inventory_admin' | 'analyst';
-          status: 'active' | 'invited' | 'suspended';
+          role: "owner" | "manager" | "inventory_admin" | "analyst";
+          status: "active" | "invited" | "suspended";
           created_at: string;
           updated_at: string;
         };
@@ -219,14 +213,14 @@ export interface Database {
           id?: string;
           company_id: string;
           user_id: string;
-          role: 'owner' | 'manager' | 'inventory_admin' | 'analyst';
-          status?: 'active' | 'invited' | 'suspended';
+          role: "owner" | "manager" | "inventory_admin" | "analyst";
+          status?: "active" | "invited" | "suspended";
           created_at?: string;
           updated_at?: string;
         };
         Update: {
-          role?: 'owner' | 'manager' | 'inventory_admin' | 'analyst';
-          status?: 'active' | 'invited' | 'suspended';
+          role?: "owner" | "manager" | "inventory_admin" | "analyst";
+          status?: "active" | "invited" | "suspended";
           updated_at?: string;
         };
         Relationships: [];
@@ -292,7 +286,7 @@ export interface Database {
           company_id: string;
           company_slug: string;
           invitee_email: string;
-          role_to_assign: 'owner' | 'manager' | 'inventory_admin' | 'analyst';
+          role_to_assign: "owner" | "manager" | "inventory_admin" | "analyst";
           token_hash: string;
           expires_at: string;
           consumed_at: string | null;
@@ -303,7 +297,7 @@ export interface Database {
           company_id: string;
           company_slug: string;
           invitee_email: string;
-          role_to_assign: 'owner' | 'manager' | 'inventory_admin' | 'analyst';
+          role_to_assign: "owner" | "manager" | "inventory_admin" | "analyst";
           token_hash: string;
           expires_at: string;
           consumed_at?: string | null;
@@ -586,6 +580,233 @@ export interface Database {
             columns: ["user_id"];
             isOneToOne: false;
             referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      inventory_identifiers: {
+        Row: {
+          id: string;
+          inventory_id: string;
+          company_id: string;
+          imei: string | null;
+          serial_number: string | null;
+          status: "in_stock" | "reserved" | "sold" | "returned" | "damaged";
+          sold_at: string | null;
+          color: string | null;
+          damage_note: string | null;
+          purchase_price: number | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          inventory_id: string;
+          company_id: string;
+          imei?: string | null;
+          serial_number?: string | null;
+          status?: "in_stock" | "reserved" | "sold" | "returned" | "damaged";
+          sold_at?: string | null;
+          color?: string | null;
+          damage_note?: string | null;
+          purchase_price?: number | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          inventory_id?: string;
+          company_id?: string;
+          imei?: string | null;
+          serial_number?: string | null;
+          status?: "in_stock" | "reserved" | "sold" | "returned" | "damaged";
+          sold_at?: string | null;
+          color?: string | null;
+          damage_note?: string | null;
+          purchase_price?: number | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "inventory_identifiers_inventory_id_fkey";
+            columns: ["inventory_id"];
+            isOneToOne: false;
+            referencedRelation: "inventory";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "inventory_identifiers_company_id_fkey";
+            columns: ["company_id"];
+            isOneToOne: false;
+            referencedRelation: "companies";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      inventory_colors: {
+        Row: {
+          id: string;
+          inventory_id: string;
+          color: string;
+          quantity: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          inventory_id: string;
+          color: string;
+          quantity?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          inventory_id?: string;
+          color?: string;
+          quantity?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "inventory_colors_inventory_id_fkey";
+            columns: ["inventory_id"];
+            isOneToOne: false;
+            referencedRelation: "inventory";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      notification_events: {
+        Row: {
+          id: string;
+          company_id: string;
+          event_type: string;
+          title: string;
+          message: string;
+          metadata: Json;
+          entity_type: string | null;
+          entity_id: string | null;
+          actor_user_id: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          company_id: string;
+          event_type: string;
+          title: string;
+          message: string;
+          metadata?: Json;
+          entity_type?: string | null;
+          entity_id?: string | null;
+          actor_user_id?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          event_type?: string;
+          title?: string;
+          message?: string;
+          metadata?: Json;
+          entity_type?: string | null;
+          entity_id?: string | null;
+          actor_user_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "notification_events_company_id_fkey";
+            columns: ["company_id"];
+            isOneToOne: false;
+            referencedRelation: "companies";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      company_settings: {
+        Row: {
+          id: string;
+          company_id: string;
+          company_name: string;
+          company_address: string;
+          hst_number: string;
+          logo_url: string | null;
+          push_notifications_enabled: boolean;
+          low_stock_threshold: number;
+          critical_stock_threshold: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          company_id: string;
+          company_name?: string;
+          company_address?: string;
+          hst_number?: string;
+          logo_url?: string | null;
+          push_notifications_enabled?: boolean;
+          low_stock_threshold?: number;
+          critical_stock_threshold?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          company_name?: string;
+          company_address?: string;
+          hst_number?: string;
+          logo_url?: string | null;
+          push_notifications_enabled?: boolean;
+          low_stock_threshold?: number;
+          critical_stock_threshold?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "company_settings_company_id_fkey";
+            columns: ["company_id"];
+            isOneToOne: true;
+            referencedRelation: "companies";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      product_uploads: {
+        Row: {
+          id: string;
+          company_id: string;
+          uploaded_by: string;
+          file_name: string;
+          total_products: number;
+          successful_inserts: number;
+          failed_inserts: number;
+          upload_status: "pending" | "completed" | "failed";
+          error_message: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          company_id: string;
+          uploaded_by: string;
+          file_name: string;
+          total_products?: number;
+          successful_inserts?: number;
+          failed_inserts?: number;
+          upload_status?: "pending" | "completed" | "failed";
+          error_message?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          total_products?: number;
+          successful_inserts?: number;
+          failed_inserts?: number;
+          upload_status?: "pending" | "completed" | "failed";
+          error_message?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "product_uploads_company_id_fkey";
+            columns: ["company_id"];
+            isOneToOne: false;
+            referencedRelation: "companies";
             referencedColumns: ["id"];
           },
         ];

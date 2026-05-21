@@ -71,4 +71,17 @@ export const queryKeys = {
 
   // Damage notes per inventory item — staleTime: Infinity, invalidated on new identifier added
   damageNotes: (inventoryId: string) => ["damageNotes", inventoryId] as const,
+
+  // Super-admin pages — not tenant-scoped; cached separately
+  superAdminHealth: ["superadmin", "health"] as const,
+  superAdminCompanies: ["superadmin", "companies"] as const,
+  superAdminAuditLogs: (
+    page: number,
+    q: string,
+    action: string,
+    resourceType: string,
+    companyId: string,
+    from: string,
+    to: string,
+  ) => ["superadmin", "audit-logs", page, q, action, resourceType, companyId, from, to] as const,
 };

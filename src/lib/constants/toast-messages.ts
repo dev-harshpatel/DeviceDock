@@ -28,18 +28,9 @@ export const TOAST_MESSAGES = {
   SIGNUP_FIX_STEP: "Please fix errors in this step",
 
   // Order messages
-  ORDER_APPROVED: (orderId: string) =>
-    `Order #${orderId
-      .slice(-8)
-      .toUpperCase()} has been approved. Inventory quantities have been updated.`,
   ORDER_REJECTED: (orderId: string) =>
     `Order #${orderId.slice(-8).toUpperCase()} has been rejected.`,
-  ORDER_NO_ITEMS: "Order has no items to approve.",
-  ORDER_PLACED: (orderId: string) =>
-    `Order #${orderId.slice(-8)} has been submitted. Admin will contact you soon.`,
-  ORDER_FAILED_APPROVE: "Failed to update inventory quantities. Please try again.",
   ORDER_FAILED_REJECT: "Failed to reject order. Please try again.",
-  ORDER_FAILED_CREATE: "Failed to create order. Please try again.",
 
   // Invoice messages
   INVOICE_DOWNLOADED: "Invoice PDF has been downloaded.",

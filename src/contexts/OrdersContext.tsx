@@ -9,25 +9,12 @@ import { ReactNode, createContext, useCallback, useContext, useMemo } from "reac
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query-keys";
 import { percentToRate } from "@/lib/tax";
-import { dbRowToOrder, fetchAllOrders, ORDER_FIELDS } from "@/lib/supabase/queries";
+import { dbRowToOrder, fetchAllOrders, fetchOrderById, ORDER_FIELDS } from "@/lib/supabase/queries";
 import { createNotificationEvent } from "@/lib/notifications/client";
 import { NOTIFICATION_EVENT_TYPES } from "@/lib/notifications/types";
 
-export interface OrderAddresses {
-  shippingAddress: string | null;
-  billingAddress: string | null;
-}
-
 interface OrdersContextType {
   orders: Order[];
-  createOrder: (
-    userId: string,
-    items: OrderItem[],
-    subtotal?: number,
-    taxRate?: number,
-    taxAmount?: number,
-    addresses?: OrderAddresses,
-  ) => Promise<Order>;
   createManualOrder: (
     adminUserId: string,
     items: OrderItem[],
@@ -56,7 +43,6 @@ interface OrdersContextType {
     status: OrderStatus,
     rejectionReason?: string,
     rejectionComment?: string,
-    discountAmount?: number,
   ) => Promise<void>;
   deleteOrder: (orderId: string) => Promise<void>;
   updateInvoice: (
@@ -117,38 +103,6 @@ const generateUUID = () =>
     return v.toString(16);
   });
 
-const buildOrderInsert = (
-  userId: string,
-  companyId: string,
-  items: OrderItem[],
-  subtotal?: number,
-  taxRate?: number,
-  taxAmount?: number,
-  addresses?: OrderAddresses,
-): OrderInsert => {
-  const calculatedSubtotal = subtotal ?? calculateOrderSubtotal(items);
-  const calculatedTaxAmount =
-    taxAmount ?? (taxRate ? Math.round(calculatedSubtotal * taxRate * 100) / 100 : 0);
-  const totalPrice = calculatedSubtotal + calculatedTaxAmount;
-  const itemsJson: Json = items as unknown as Json;
-
-  return {
-    id: generateUUID(),
-    user_id: userId,
-    company_id: companyId,
-    items: itemsJson,
-    subtotal: calculatedSubtotal,
-    tax_rate: taxRate ?? null,
-    tax_amount: calculatedTaxAmount > 0 ? calculatedTaxAmount : null,
-    total_price: totalPrice,
-    status: "pending",
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    shipping_address: addresses?.shippingAddress ?? null,
-    billing_address: addresses?.billingAddress ?? null,
-  } as OrderInsert;
-};
-
 export const OrdersProvider = ({ children }: OrdersProviderProps) => {
   const { user } = useAuth();
   const { companyId } = useCompany();
@@ -168,75 +122,6 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
     queryClient.invalidateQueries({ queryKey: queryKeys.ordersAll(companyId) });
     queryClient.invalidateQueries({ queryKey: queryKeys.orders });
   }, [companyId, queryClient]);
-
-  const createOrder = useCallback(
-    async (
-      userId: string,
-      items: OrderItem[],
-      subtotal?: number,
-      taxRate?: number,
-      taxAmount?: number,
-      addresses?: OrderAddresses,
-    ): Promise<Order> => {
-      if (!items || items.length === 0) {
-        throw new Error("Order must have at least one item");
-      }
-
-      const newOrder = buildOrderInsert(
-        userId,
-        companyId,
-        items,
-        subtotal,
-        taxRate,
-        taxAmount,
-        addresses,
-      );
-
-      const { data, error } = await (supabase.from("orders") as any)
-        .insert([newOrder])
-        .select()
-        .single();
-
-      if (error) {
-        throw new Error(error.message || "Failed to create order");
-      }
-
-      if (data) {
-        const createdOrder = dbRowToOrder(data);
-        // Prepend to cache immediately; background sync happens via realtime invalidation.
-        queryClient.setQueryData<Order[]>(queryKeys.ordersAll(companyId), (old) => [
-          createdOrder,
-          ...(old ?? []),
-        ]);
-        return createdOrder;
-      }
-
-      const fallbackSubtotal = subtotal ?? calculateOrderSubtotal(items);
-      const fallbackTaxAmount =
-        taxAmount ?? (taxRate ? Math.round(fallbackSubtotal * taxRate * 100) / 100 : 0);
-      const fallbackTotalPrice = fallbackSubtotal + fallbackTaxAmount;
-
-      return {
-        id: newOrder.id ?? "",
-        userId: newOrder.user_id,
-        items,
-        subtotal: Number((newOrder as any).subtotal ?? fallbackSubtotal),
-        taxRate: (newOrder as any).tax_rate
-          ? Number((newOrder as any).tax_rate)
-          : (taxRate ?? null),
-        taxAmount: (newOrder as any).tax_amount
-          ? Number((newOrder as any).tax_amount)
-          : fallbackTaxAmount > 0
-            ? fallbackTaxAmount
-            : null,
-        totalPrice: Number(newOrder.total_price ?? fallbackTotalPrice),
-        status: (newOrder.status ?? "pending") as OrderStatus,
-        createdAt: newOrder.created_at ?? new Date().toISOString(),
-        updatedAt: newOrder.updated_at ?? new Date().toISOString(),
-      };
-    },
-    [companyId, queryClient],
-  );
 
   const createManualOrder = useCallback(
     async (
@@ -423,23 +308,11 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
       status: OrderStatus,
       rejectionReason?: string,
       rejectionComment?: string,
-      discountAmount?: number,
     ) => {
       const updateData: OrderUpdate = {
         status,
         updated_at: new Date().toISOString(),
       };
-
-      if (status === "approved" && discountAmount !== undefined) {
-        (updateData as any).discount_amount = discountAmount;
-        const order = getOrderById(orderId);
-        if (order) {
-          const subtotal = order.subtotal;
-          const taxAmount = order.taxAmount || 0;
-          const newTotal = subtotal + taxAmount - discountAmount;
-          (updateData as any).total_price = Math.max(0, newTotal);
-        }
-      }
 
       if (status === "rejected") {
         (updateData as any).rejection_reason = rejectionReason || null;
@@ -517,8 +390,8 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
         imeiNumbers?: Record<string, string> | null;
       },
     ): Promise<void> => {
-      const order = getOrderById(orderId);
-      if (!order) throw new Error("Order not found");
+      // Fetch fresh from DB so subtotal/taxRate are authoritative, not a stale snapshot.
+      const order = await fetchOrderById(orderId, companyId);
 
       const discountAmount = invoiceData.discountAmount || 0;
       const shippingAmount = invoiceData.shippingAmount || 0;
@@ -568,7 +441,7 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
 
       invalidateOrders();
     },
-    [getOrderById, invalidateOrders],
+    [companyId, invalidateOrders],
   );
 
   const confirmInvoice = useCallback(
@@ -656,7 +529,6 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
   const contextValue = useMemo(
     () => ({
       orders,
-      createOrder,
       createManualOrder,
       updateManualOrder,
       patchManualSaleOrderDetails,
@@ -674,7 +546,6 @@ export const OrdersProvider = ({ children }: OrdersProviderProps) => {
     [
       orders,
       isLoading,
-      createOrder,
       createManualOrder,
       updateManualOrder,
       patchManualSaleOrderDetails,

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useMemo, useState, useEffect, ReactNode } from "react";
 import { supabase } from "@/lib/supabase/client";
 
 interface RealtimeContextType {
@@ -72,19 +72,24 @@ export function RealtimeProvider({ children }: RealtimeProviderProps) {
     };
   }, []);
 
-  return (
-    <RealtimeContext.Provider
-      value={{
-        inventoryVersion,
-        inventoryIdentifiersVersion,
-        notificationVersion,
-        ordersVersion,
-        userProfilesVersion,
-      }}
-    >
-      {children}
-    </RealtimeContext.Provider>
+  const value = useMemo(
+    () => ({
+      inventoryVersion,
+      inventoryIdentifiersVersion,
+      notificationVersion,
+      ordersVersion,
+      userProfilesVersion,
+    }),
+    [
+      inventoryVersion,
+      inventoryIdentifiersVersion,
+      notificationVersion,
+      ordersVersion,
+      userProfilesVersion,
+    ],
   );
+
+  return <RealtimeContext.Provider value={value}>{children}</RealtimeContext.Provider>;
 }
 
 const DEFAULT_REALTIME: RealtimeContextType = {

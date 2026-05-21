@@ -160,15 +160,18 @@ export function AddProductModal({
       return;
     }
 
-    (supabase as any)
-      .from("inventory_colors")
-      .select("color")
-      .in("inventory_id", sameDeviceIds)
-      .then(({ data }: { data: Array<{ color: string }> | null }) => {
-        const unique = [...new Set((data ?? []).map((r) => r.color))].sort();
-        setSuggestedColors(unique);
-      })
-      .catch(() => setSuggestedColors([]));
+    void (async () => {
+      const { data, error } = await supabase
+        .from("inventory_colors")
+        .select("color")
+        .in("inventory_id", sameDeviceIds);
+      if (error || !data) {
+        setSuggestedColors([]);
+        return;
+      }
+      const unique = [...new Set((data as Array<{ color: string }>).map((r) => r.color))].sort();
+      setSuggestedColors(unique);
+    })();
   }, [colourDialogOpen, form.brand, form.deviceName, inventory]);
 
   // Legacy restock without identifiers edits the full SKU colour totals.
@@ -183,22 +186,21 @@ export function AddProductModal({
     }
 
     setIsLoadingExistingColors(true);
-    (supabase as any)
-      .from("inventory_colors")
-      .select("color, quantity")
-      .eq("inventory_id", selectedExistingId)
-      .order("color")
-      .then(({ data }: { data: Array<{ color: string; quantity: number }> | null }) => {
-        setExistingColorRows(
-          (data ?? []).map((r) => ({ color: r.color, quantity: String(r.quantity) })),
-        );
-      })
-      .catch((error: unknown) => {
-        console.error("Failed to load existing colors:", error);
-      })
-      .finally(() => {
-        setIsLoadingExistingColors(false);
-      });
+    void (async () => {
+      const { data, error } = await supabase
+        .from("inventory_colors")
+        .select("color, quantity")
+        .eq("inventory_id", selectedExistingId)
+        .order("color");
+      if (error) console.error("Failed to load existing colors:", error);
+      setExistingColorRows(
+        ((data as Array<{ color: string; quantity: number }>) ?? []).map((r) => ({
+          color: r.color,
+          quantity: String(r.quantity),
+        })),
+      );
+      setIsLoadingExistingColors(false);
+    })();
   }, [colourDialogOpen, selectedExistingId, hasIdentifier]);
 
   // Pre-select item when initialItemId is provided (e.g. from Demand restock flow)
@@ -693,7 +695,8 @@ export function AddProductModal({
         const alreadyExists: string[] = [];
 
         if (imeiValues.length > 0) {
-          const { data } = await (supabase.from("inventory_identifiers") as any)
+          const { data } = await supabase
+            .from("inventory_identifiers")
             .select("imei")
             .eq("company_id", companyId)
             .in("imei", imeiValues);
@@ -703,7 +706,8 @@ export function AddProductModal({
         }
 
         if (serialValues.length > 0) {
-          const { data } = await (supabase.from("inventory_identifiers") as any)
+          const { data } = await supabase
+            .from("inventory_identifiers")
             .select("serial_number")
             .eq("company_id", companyId)
             .in("serial_number", serialValues);

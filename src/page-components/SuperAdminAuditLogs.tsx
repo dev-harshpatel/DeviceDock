@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { AlertCircle, Search, ShieldCheck } from "lucide-react";
 import { Loader } from "@/components/common/Loader";
 import { Badge } from "@/components/ui/badge";
@@ -20,8 +21,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner";
 
 interface AuditLog {
   action: string;
@@ -50,10 +51,6 @@ interface CompanyOption {
   name: string;
 }
 
-interface CompaniesResponse {
-  companies: Array<{ id: string; name: string }>;
-}
-
 const ACTION_OPTIONS = [
   { label: "All actions", value: "all" },
   { label: "Company status updated", value: "company.status_updated" },
@@ -76,92 +73,73 @@ const RESOURCE_TYPE_OPTIONS = [
 export default function SuperAdminAuditLogs() {
   const [actionFilter, setActionFilter] = useState("all");
   const [companyFilter, setCompanyFilter] = useState("all");
-  const [companies, setCompanies] = useState<CompanyOption[]>([]);
   const [fromDate, setFromDate] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
-  const [logs, setLogs] = useState<AuditLog[]>([]);
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
   const [resourceTypeFilter, setResourceTypeFilter] = useState("all");
   const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
   const [toDate, setToDate] = useState("");
-  const [totalCount, setTotalCount] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
 
-  const loadCompanies = useCallback(async () => {
-    try {
-      const response = await fetch("/api/superadmin/companies");
-      if (!response.ok) {
-        throw new Error("Failed to load companies");
-      }
-      const data = (await response.json()) as CompaniesResponse;
-      const companyOptions = (data.companies ?? []).map((company) => ({
-        id: company.id,
-        name: company.name,
-      }));
-      setCompanies(companyOptions);
-    } catch {
-      toast.error("Failed to load company filter options.");
-    }
-  }, []);
-
-  const loadLogs = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const params = new URLSearchParams();
-      params.set("page", String(page));
-      if (query.trim()) {
-        params.set("q", query.trim());
-      }
-      if (actionFilter !== "all") {
-        params.set("action", actionFilter);
-      }
-      if (resourceTypeFilter !== "all") {
-        params.set("resourceType", resourceTypeFilter);
-      }
-      if (companyFilter !== "all") {
-        params.set("companyId", companyFilter);
-      }
-      if (fromDate) {
-        params.set("from", fromDate);
-      }
-      if (toDate) {
-        params.set("to", toDate);
-      }
-
-      const response = await fetch(`/api/superadmin/audit-logs?${params.toString()}`);
-      if (!response.ok) {
-        throw new Error("Failed to load audit logs");
-      }
-      const data = (await response.json()) as AuditLogResponse;
-      setLogs(data.logs ?? []);
-      setTotalCount(data.totalCount ?? 0);
-      setTotalPages(data.totalPages ?? 1);
-    } catch {
-      toast.error("Failed to load audit logs.");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [actionFilter, companyFilter, fromDate, page, query, resourceTypeFilter, toDate]);
-
-  useEffect(() => {
-    void loadCompanies();
-  }, [loadCompanies]);
-
-  useEffect(() => {
-    void loadLogs();
-  }, [loadLogs]);
-
+  // Reset to page 1 when any filter changes
   useEffect(() => {
     setPage(1);
   }, [actionFilter, companyFilter, fromDate, query, resourceTypeFilter, toDate]);
 
-  const companyNameMap = useMemo(() => {
-    return companies.reduce<Record<string, string>>((accumulator, company) => {
-      accumulator[company.id] = company.name;
-      return accumulator;
-    }, {});
-  }, [companies]);
+  const { data: companiesData } = useQuery({
+    queryKey: queryKeys.superAdminCompanies,
+    queryFn: async () => {
+      const res = await fetch("/api/superadmin/companies");
+      if (!res.ok) throw new Error("Failed to load companies");
+      const json = (await res.json()) as { companies: Array<{ id: string; name: string }> };
+      return json.companies ?? [];
+    },
+    staleTime: 300_000,
+  });
+
+  const companies = useMemo(
+    (): CompanyOption[] => (companiesData ?? []).map((c) => ({ id: c.id, name: c.name })),
+    [companiesData],
+  );
+
+  const { data: logsData, isLoading } = useQuery({
+    queryKey: queryKeys.superAdminAuditLogs(
+      page,
+      query,
+      actionFilter,
+      resourceTypeFilter,
+      companyFilter,
+      fromDate,
+      toDate,
+    ),
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.set("page", String(page));
+      if (query.trim()) params.set("q", query.trim());
+      if (actionFilter !== "all") params.set("action", actionFilter);
+      if (resourceTypeFilter !== "all") params.set("resourceType", resourceTypeFilter);
+      if (companyFilter !== "all") params.set("companyId", companyFilter);
+      if (fromDate) params.set("from", fromDate);
+      if (toDate) params.set("to", toDate);
+      const res = await fetch(`/api/superadmin/audit-logs?${params.toString()}`);
+      if (!res.ok) throw new Error("Failed to load audit logs");
+      return res.json() as Promise<AuditLogResponse>;
+    },
+    staleTime: 30_000,
+    placeholderData: keepPreviousData,
+  });
+
+  const logs = logsData?.logs ?? [];
+  const totalCount = logsData?.totalCount ?? 0;
+  const totalPages = logsData?.totalPages ?? 1;
+
+  const companyNameMap = useMemo(
+    () =>
+      companies.reduce<Record<string, string>>((acc, c) => {
+        acc[c.id] = c.name;
+        return acc;
+      }, {}),
+    [companies],
+  );
 
   if (isLoading && logs.length === 0) {
     return <Loader size="lg" text="Loading audit logs..." />;
@@ -187,7 +165,7 @@ export default function SuperAdminAuditLogs() {
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               className="pl-9"
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(e) => setQuery(e.target.value)}
               placeholder="Search actor, action, resource..."
               value={query}
             />
@@ -233,16 +211,8 @@ export default function SuperAdminAuditLogs() {
             </SelectContent>
           </Select>
 
-          <Input
-            onChange={(event) => setFromDate(event.target.value)}
-            type="date"
-            value={fromDate}
-          />
-          <Input
-            onChange={(event) => setToDate(event.target.value)}
-            type="date"
-            value={toDate}
-          />
+          <Input onChange={(e) => setFromDate(e.target.value)} type="date" value={fromDate} />
+          <Input onChange={(e) => setToDate(e.target.value)} type="date" value={toDate} />
         </div>
       </div>
 
@@ -290,7 +260,7 @@ export default function SuperAdminAuditLogs() {
                       <span className="font-mono text-xs">{log.resource_id}</span>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
-                      {log.company_id ? companyNameMap[log.company_id] ?? log.company_id : "—"}
+                      {log.company_id ? (companyNameMap[log.company_id] ?? log.company_id) : "—"}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <Button onClick={() => setSelectedLog(log)} size="sm" variant="outline">
@@ -312,7 +282,7 @@ export default function SuperAdminAuditLogs() {
         <div className="flex items-center gap-2">
           <Button
             disabled={page <= 1}
-            onClick={() => setPage((currentPage) => Math.max(1, currentPage - 1))}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
             size="sm"
             variant="outline"
           >
@@ -320,9 +290,7 @@ export default function SuperAdminAuditLogs() {
           </Button>
           <Button
             disabled={page >= totalPages}
-            onClick={() =>
-              setPage((currentPage) => Math.min(totalPages, currentPage + 1))
-            }
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             size="sm"
             variant="outline"
           >
@@ -338,9 +306,7 @@ export default function SuperAdminAuditLogs() {
               <AlertCircle className="h-4 w-4" />
               Audit Event Details
             </DialogTitle>
-            <DialogDescription>
-              Full event payload captured for this action.
-            </DialogDescription>
+            <DialogDescription>Full event payload captured for this action.</DialogDescription>
           </DialogHeader>
 
           {selectedLog && (
@@ -364,7 +330,12 @@ export default function SuperAdminAuditLogs() {
                 </div>
                 <div>
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">IP</p>
-                  <p className={cn("text-foreground", !selectedLog.ip_address && "text-muted-foreground")}>
+                  <p
+                    className={cn(
+                      "text-foreground",
+                      !selectedLog.ip_address && "text-muted-foreground",
+                    )}
+                  >
                     {selectedLog.ip_address ?? "—"}
                   </p>
                 </div>

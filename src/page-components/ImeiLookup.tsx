@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { List, Loader2, Printer, ScanLine, Search, Tag, X } from "lucide-react";
 import { toast } from "sonner";
 import { useCompany } from "@/contexts/CompanyContext";
-import { fetchFilterOptions, lookupIdentifierByImei } from "@/lib/supabase/queries/inventory";
+import { lookupIdentifierByImei } from "@/lib/supabase/queries/inventory";
+import { useFilterOptions } from "@/hooks/use-filter-options";
 import { useIdentifierMap } from "@/hooks/use-identifier-map";
 import { TOAST_MESSAGES } from "@/lib/constants/toast-messages";
 import { formatPrice } from "@/lib/utils/formatters";
@@ -81,16 +82,8 @@ function saleLookupToFull(r: IdentifierSaleLookup): IdentifierFullLookup {
 export default function ImeiLookup() {
   const { companyId } = useCompany();
   const { lookup: lookupFromMap } = useIdentifierMap();
+  const { storageOptions } = useFilterOptions();
   const [activeTab, setActiveTab] = useState<string>("single");
-  const [storageOptions, setStorageOptions] = useState<string[]>([]);
-
-  // Fetch storage options once for the "All IMEIs" tab filter
-  useEffect(() => {
-    if (!companyId) return;
-    fetchFilterOptions(companyId)
-      .then(({ storageOptions: opts }) => setStorageOptions(opts))
-      .catch(() => {});
-  }, [companyId]);
 
   // ── Single Lookup state ──
   const [query, setQuery] = useState("");

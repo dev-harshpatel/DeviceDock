@@ -75,11 +75,15 @@ export default function Settings() {
 
   // Load current user's email
   useEffect(() => {
+    let cancelled = false;
     supabase.auth.getUser().then(({ data }) => {
-      if (data.user?.email) {
+      if (!cancelled && data.user?.email) {
         setProfileSettings((s) => ({ ...s, email: data.user!.email! }));
       }
     });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Load company settings row (company_id scoped)

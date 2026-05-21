@@ -34,8 +34,8 @@ function mapEventTypeToViewType(eventType: string): InAppNotificationItem["type"
  * Maps DB rows to InAppNotificationItem so callers don't deal with raw rows.
  */
 export async function fetchNotificationEvents(companyId: string): Promise<InAppNotificationItem[]> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase.from("notification_events") as any)
+  const { data, error } = await supabase
+    .from("notification_events")
     .select(NOTIFICATION_FIELDS)
     .eq("company_id", companyId)
     .order("created_at", { ascending: false })

@@ -129,8 +129,6 @@ export async function fetchPaginatedInventory(
 ): Promise<PaginatedResult<InventoryItem>> {
   const fields = options?.includeAdminFields ? INVENTORY_ADMIN_FIELDS : INVENTORY_PUBLIC_FIELDS;
 
-  console.log("[fetchPaginatedInventory] companyId:", options?.companyId, "range:", range);
-
   let query = supabase.from("inventory").select(fields, { count: "exact" });
 
   if (options?.companyId) {
@@ -160,7 +158,6 @@ export async function fetchPaginatedInventory(
     throw error;
   }
 
-  console.log("[fetchPaginatedInventory] returned rows:", data?.length ?? 0, "total count:", count);
   return {
     data: (data || []).map(dbRowToInventoryItem),
     count: count || 0,
@@ -350,14 +347,14 @@ export async function fetchPaginatedIdentifiers(
     if (inventoryIds.length === 0) return { data: [], count: 0 };
   }
 
-  // Step 2 — query identifiers
+  // Step 2 — query identifiers with inventory fields joined in a single round-trip.
+  // Filtering on embedded-resource fields (e.g. inventory.grade) is intentionally
+  // avoided here (see comment above); we only select fields, which PostgREST handles reliably.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let q = (supabase.from("inventory_identifiers") as any)
     .select(
-      "id, imei, serial_number, status, sold_at, color, damage_note, purchase_price, inventory_id",
-      {
-        count: "exact",
-      },
+      "id, imei, serial_number, status, sold_at, color, damage_note, purchase_price, inventory_id, inventory:inventory(id, device_name, brand, grade, storage, selling_price, price_per_unit)",
+      { count: "exact" },
     )
     .eq("company_id", companyId);
 
@@ -373,7 +370,7 @@ export async function fetchPaginatedIdentifiers(
   const { data: rows, count, error } = await q;
   if (error) throw error;
 
-  const identifierRows = (rows ?? []) as Array<{
+  type IdentifierRow = {
     id: string;
     imei: string | null;
     serial_number: string | null;
@@ -383,46 +380,21 @@ export async function fetchPaginatedIdentifiers(
     damage_note: string | null;
     purchase_price: number | null;
     inventory_id: string;
-  }>;
-
-  if (identifierRows.length === 0) return { data: [], count: count ?? 0 };
-
-  // Step 3 — fetch inventory details for the unique inventory_ids in this page
-  const uniqueInvIds = Array.from(new Set(identifierRows.map((r) => r.inventory_id)));
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: invDetails, error: invDetailErr } = await (supabase.from("inventory") as any)
-    .select("id, device_name, brand, grade, storage, selling_price, price_per_unit")
-    .in("id", uniqueInvIds);
-
-  if (invDetailErr) throw invDetailErr;
-
-  const invMap = new Map<
-    string,
-    {
+    inventory: {
       device_name: string;
       brand: string;
       grade: string;
       storage: string;
       selling_price: number | null;
       price_per_unit: number | null;
-    }
-  >();
-  for (const inv of invDetails ?? []) {
-    invMap.set(
-      inv.id as string,
-      inv as {
-        device_name: string;
-        brand: string;
-        grade: string;
-        storage: string;
-        selling_price: number | null;
-        price_per_unit: number | null;
-      },
-    );
-  }
+    } | null;
+  };
+
+  const identifierRows = (rows ?? []) as IdentifierRow[];
+  if (identifierRows.length === 0) return { data: [], count: count ?? 0 };
 
   const data: IdentifierListItem[] = identifierRows.map((row) => {
-    const inv = invMap.get(row.inventory_id);
+    const inv = row.inventory;
     return {
       identifierId: row.id,
       imei: row.imei,
@@ -479,8 +451,8 @@ export async function lookupIdentifierByImei(
 
   let color: string | null = identifierColor;
   if (!color) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: colorRows, error: colorError } = await (supabase.from("inventory_colors") as any)
+    const { data: colorRows, error: colorError } = await supabase
+      .from("inventory_colors")
       .select("color")
       .eq("inventory_id", row.inventory_id as string)
       .order("color");

@@ -174,7 +174,9 @@ export default function Orders() {
   // The summary list omits invoice/address/IMEI fields to reduce payload;
   // this query fetches only when a modal is actually opened.
   const { data: selectedOrderDetail = null } = useQuery({
-    queryKey: queryKeys.orderDetail(selectedOrderId ?? ""),
+    queryKey: selectedOrderId
+      ? queryKeys.orderDetail(selectedOrderId)
+      : ["order", "detail", "__none__"],
     queryFn: () => fetchOrderById(selectedOrderId!, companyId),
     enabled: selectedOrderId !== null && modalOpen,
     staleTime: 30 * 1000,

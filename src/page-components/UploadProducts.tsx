@@ -213,7 +213,7 @@ export default function UploadProducts() {
     setIsUploading(true);
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- product_uploads not in generated Database
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data: uploadRecord, error: uploadError } = await (
         supabase.from("product_uploads") as any
       )
@@ -344,7 +344,7 @@ export default function UploadProducts() {
         }
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- product_uploads not in generated Database
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { error: updateError } = await (supabase.from("product_uploads") as any)
         .update({
           successful_inserts: successCount,

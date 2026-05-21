@@ -57,7 +57,9 @@ export default function Inventory() {
 
   const [currentPage, setCurrentPage] = usePageParam();
 
-  // Apply filters and sort client-side on the grouped inventory (active items only).
+  // InventoryContext provides `groupedInventory` (grouped + deduplicated, all items).
+  // This component applies filter/sort on top client-side so the full list is cached in
+  // the context and never re-fetched per filter change — only the derived slice changes.
   const filteredSorted = useMemo(() => {
     const active = groupedInventory.filter((item) => item.isActive !== false);
     const filtered = filterInventoryItems(active, serverFilters);

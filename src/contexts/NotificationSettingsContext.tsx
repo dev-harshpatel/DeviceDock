@@ -73,12 +73,14 @@ export function NotificationSettingsProvider({ children }: { children: ReactNode
   useEffect(() => {
     if (!companyId) return;
 
-    supabase
-      .from("company_settings")
-      .select("push_notifications_enabled, low_stock_threshold, critical_stock_threshold")
-      .eq("company_id", companyId)
-      .maybeSingle()
-      .then(({ data }) => {
+    const load = async () => {
+      try {
+        const { data } = await supabase
+          .from("company_settings")
+          .select("push_notifications_enabled, low_stock_threshold, critical_stock_threshold")
+          .eq("company_id", companyId)
+          .maybeSingle();
+
         const row = data as {
           push_notifications_enabled: boolean | null;
           low_stock_threshold: number | null;
@@ -93,7 +95,12 @@ export function NotificationSettingsProvider({ children }: { children: ReactNode
           isLoaded: true,
           // readIds intentionally NOT overwritten — already loaded from localStorage
         }));
-      });
+      } catch {
+        setState((prev) => ({ ...prev, isLoaded: true }));
+      }
+    };
+
+    void load();
   }, [companyId]);
 
   const updateSettings = useCallback(
