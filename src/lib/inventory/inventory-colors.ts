@@ -1,3 +1,9 @@
+import {
+  upsertInventoryColorsQuery,
+  fetchInventoryColorsQuery,
+  deleteInventoryColorsQuery,
+} from "../supabase/queries";
+
 export interface InventoryColorQuantityRow {
   color: string;
   quantity: number;
@@ -6,9 +12,10 @@ export interface InventoryColorQuantityRow {
 /**
  * Replaces the full colour breakdown for an inventory row (upsert + delete removed colours).
  * Use after new inventory insert or when overwriting breakdown.
+ * The _supabase param is kept for backward compatibility; DB calls go through the query layer.
  */
 export const replaceInventoryColors = async (
-  supabase: any,
+  _supabase: unknown,
   inventoryId: string,
   rows: InventoryColorQuantityRow[],
 ): Promise<void> => {
@@ -22,65 +29,43 @@ export const replaceInventoryColors = async (
     }));
 
   if (validRows.length > 0) {
-    const { error: upsertError } = await supabase
-      .from("inventory_colors")
-      .upsert(validRows, { onConflict: "inventory_id,color" });
-    if (upsertError) throw upsertError;
+    await upsertInventoryColorsQuery(validRows);
 
     const keptColors = validRows.map((row) => row.color);
-    const { data: existing, error: existingError } = await supabase
-      .from("inventory_colors")
-      .select("color")
-      .eq("inventory_id", inventoryId);
-    if (existingError) throw existingError;
+    const existing = await fetchInventoryColorsQuery([inventoryId]);
 
     const toDelete = (existing ?? [])
       .map((row: { color: string }) => row.color)
       .filter((color: string) => !keptColors.includes(color));
     if (toDelete.length > 0) {
-      const { error: deleteError } = await supabase
-        .from("inventory_colors")
-        .delete()
-        .eq("inventory_id", inventoryId)
-        .in("color", toDelete);
-      if (deleteError) throw deleteError;
+      await deleteInventoryColorsQuery(inventoryId, toDelete);
     }
     return;
   }
 
-  const { error: clearError } = await supabase
-    .from("inventory_colors")
-    .delete()
-    .eq("inventory_id", inventoryId);
-  if (clearError) throw clearError;
+  await deleteInventoryColorsQuery(inventoryId);
 };
 
-/** Removes all aggregate colour rows for a SKU (e.g. when stock hits zero). */
+/** Removes all aggregate colour rows for a SKU (e.g. when stock hits zero).
+ *  The _supabase param is kept for backward compatibility.
+ */
 export const deleteAllInventoryColors = async (
-  supabase: any,
+  _supabase: unknown,
   inventoryId: string,
 ): Promise<void> => {
-  const { error } = await supabase
-    .from("inventory_colors")
-    .delete()
-    .eq("inventory_id", inventoryId);
-  if (error) throw error;
+  await deleteInventoryColorsQuery(inventoryId);
 };
 
 /** Aggregate colour rows with quantity > 0 for SKU-level display.
- *  Accepts a single ID or an array (grouped rows share the same spec). */
+ *  Accepts a single ID or an array (grouped rows share the same spec).
+ *  The _supabase param is kept for backward compatibility.
+ */
 export const fetchPositiveInventoryColors = async (
-  supabase: any,
+  _supabase: unknown,
   inventoryId: string | string[],
 ): Promise<InventoryColorQuantityRow[]> => {
   const ids = Array.isArray(inventoryId) ? inventoryId : [inventoryId];
-  const { data, error } = await supabase
-    .from("inventory_colors")
-    .select("color, quantity")
-    .in("inventory_id", ids)
-    .gt("quantity", 0)
-    .order("color");
-  if (error) throw error;
+  const data = await fetchInventoryColorsQuery(ids);
 
   // Sum quantities across rows when multiple inventory IDs map to the same colour.
   const totals = new Map<string, number>();
@@ -95,20 +80,17 @@ export const fetchPositiveInventoryColors = async (
 
 /**
  * Merges additive colour quantities into existing DB rows (restock / additive flows).
+ * The _supabase param is kept for backward compatibility.
  */
 export const mergeInventoryColorsAdditive = async (
-  supabase: any,
+  _supabase: unknown,
   inventoryId: string,
   newRows: InventoryColorQuantityRow[],
 ): Promise<void> => {
   const validRows = newRows.filter((r) => r.color.trim() && r.quantity > 0);
   if (validRows.length === 0) return;
 
-  const { data: existing, error: existingError } = await supabase
-    .from("inventory_colors")
-    .select("color, quantity")
-    .eq("inventory_id", inventoryId);
-  if (existingError) throw existingError;
+  const existing = await fetchInventoryColorsQuery([inventoryId]);
 
   const existingMap = new Map<string, number>(
     (existing ?? []).map((row: { color: string; quantity: number }) => [row.color, row.quantity]),
@@ -121,15 +103,14 @@ export const mergeInventoryColorsAdditive = async (
     updated_at: new Date().toISOString(),
   }));
 
-  const { error: upsertError } = await supabase
-    .from("inventory_colors")
-    .upsert(mergedRows, { onConflict: "inventory_id,color" });
-  if (upsertError) throw upsertError;
+  await upsertInventoryColorsQuery(mergedRows);
 };
 
-/** Applies a +/- quantity delta for one colour on one inventory row. */
+/** Applies a +/- quantity delta for one colour on one inventory row.
+ *  The _supabase param is kept for backward compatibility.
+ */
 export const applyInventoryColorDelta = async (
-  supabase: any,
+  _supabase: unknown,
   inventoryId: string,
   color: string | null,
   delta: number,
@@ -137,35 +118,23 @@ export const applyInventoryColorDelta = async (
   const normalizedColor = color?.trim() ?? "";
   if (!normalizedColor || delta === 0) return;
 
-  const { data, error } = await supabase
-    .from("inventory_colors")
-    .select("quantity")
-    .eq("inventory_id", inventoryId)
-    .eq("color", normalizedColor)
-    .maybeSingle();
-  if (error) throw error;
+  const existing = await fetchInventoryColorsQuery([inventoryId]);
+  const matched = existing.find((row) => row.color === normalizedColor);
 
-  const currentQuantity = Number((data as { quantity?: number } | null)?.quantity ?? 0);
+  const currentQuantity = Number(matched?.quantity ?? 0);
   const nextQuantity = currentQuantity + delta;
 
   if (nextQuantity > 0) {
-    const { error: upsertError } = await supabase.from("inventory_colors").upsert(
+    await upsertInventoryColorsQuery([
       {
         inventory_id: inventoryId,
         color: normalizedColor,
         quantity: nextQuantity,
         updated_at: new Date().toISOString(),
       },
-      { onConflict: "inventory_id,color" },
-    );
-    if (upsertError) throw upsertError;
+    ]);
     return;
   }
 
-  const { error: deleteError } = await supabase
-    .from("inventory_colors")
-    .delete()
-    .eq("inventory_id", inventoryId)
-    .eq("color", normalizedColor);
-  if (deleteError) throw deleteError;
+  await deleteInventoryColorsQuery(inventoryId, [normalizedColor]);
 };

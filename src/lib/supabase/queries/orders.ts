@@ -3,7 +3,7 @@
  * Functions for querying order data from Supabase
  */
 
-import type { PaginatedResult } from "@/hooks/use-paginated-query";
+import type { PaginatedResult } from "@/hooks/common/use-paginated-query";
 import { Order, OrderStatus } from "@/types/order";
 import { supabase } from "../client/browser";
 import { dbRowToOrder } from "./mappers";
@@ -119,6 +119,7 @@ export async function fetchPaginatedOrders(
       .order("created_at", { ascending: false });
 
     if (companyId) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       query = (query as any).eq("company_id", companyId);
     }
 
@@ -145,6 +146,7 @@ export async function fetchPaginatedOrders(
     .order("created_at", { ascending: false });
 
   if (companyId) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     query = (query as any).eq("company_id", companyId);
   }
 
@@ -168,6 +170,7 @@ export async function fetchOrderById(id: string, companyId?: string): Promise<Or
   let query = supabase.from("orders").select(ORDER_FIELDS).eq("id", id);
 
   if (companyId) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     query = (query as any).eq("company_id", companyId);
   }
 
@@ -180,13 +183,14 @@ export async function fetchPaginatedDeletedOrders(
   range: { from: number; to: number },
   companyId?: string,
 ): Promise<PaginatedResult<DeletedOrder>> {
-  let query = (supabase as any)
-    .from("deleted_orders")
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let query = (supabase.from("deleted_orders") as any)
     .select(DELETED_ORDER_FIELDS, { count: "exact" })
     .order("deleted_at", { ascending: false });
 
   if (companyId) {
-    query = query.eq("company_id", companyId);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    query = (query as any).eq("company_id", companyId);
   }
 
   query = query.range(range.from, range.to);
@@ -196,9 +200,10 @@ export async function fetchPaginatedDeletedOrders(
 
   return {
     data: (data || []).map(
-      (row: any): DeletedOrder => ({
-        ...dbRowToOrder(row),
-        deletedAt: row.deleted_at,
+      (row: Record<string, unknown>): DeletedOrder => ({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ...dbRowToOrder(row as any),
+        deletedAt: row.deleted_at as string,
       }),
     ),
     count: count || 0,
@@ -234,6 +239,7 @@ export async function fetchPaginatedUserOrders(
     .order("created_at", { ascending: false });
 
   if (companyId) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     query = (query as any).eq("company_id", companyId);
   }
 
@@ -250,4 +256,108 @@ export async function fetchPaginatedUserOrders(
     data: (data || []).map(dbRowToOrder),
     count: count || 0,
   };
+}
+
+/**
+ * Inserts a new manual sale order in the database.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function insertOrder(newOrder: any): Promise<any> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase.from("orders") as any)
+    .insert([newOrder])
+    .select()
+    .single();
+
+  if (error) {
+    console.error("[insertOrder] failed:", error);
+    throw error;
+  }
+  return data;
+}
+
+/**
+ * Triggers the update_manual_sale_order RPC function.
+ */
+export async function updateManualSaleOrderRpc(
+  orderId: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  items: any,
+  taxRate: number | null,
+): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase as any).rpc("update_manual_sale_order", {
+    p_order_id: orderId,
+    p_items: items,
+    p_tax_rate: taxRate,
+  });
+
+  if (error) {
+    console.error("[updateManualSaleOrderRpc] failed:", error);
+    throw error;
+  }
+}
+
+/**
+ * Updates columns for a single order in the database.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function updateOrderInDb(orderId: string, updateData: any): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase.from("orders") as any).update(updateData).eq("id", orderId);
+
+  if (error) {
+    console.error("[updateOrderInDb] failed:", error);
+    throw error;
+  }
+}
+
+/**
+ * Updates status and handles rejection reason updates.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function updateOrderStatusInDb(orderId: string, updateData: any): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase.from("orders") as any)
+    .update(updateData)
+    .eq("id", orderId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error("[updateOrderStatusInDb] failed:", error);
+    throw error;
+  }
+}
+
+/**
+ * Invokes the delete_order_and_restore_inventory RPC function.
+ */
+export async function deleteOrderRpc(orderId: string): Promise<boolean> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any).rpc("delete_order_and_restore_inventory", {
+    p_order_id: orderId,
+  });
+
+  if (error) {
+    console.error("[deleteOrderRpc] failed:", error);
+    throw error;
+  }
+  return !!data;
+}
+
+export async function checkIdentifierOrderReferencesQuery(
+  companyId: string,
+  identifierId: string,
+): Promise<number> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { count, error } = await (supabase.from("orders") as any)
+    .select("id", { count: "exact", head: true })
+    .eq("company_id", companyId)
+    .filter("items", "cs", JSON.stringify([{ inventoryIdentifierId: identifierId }]));
+
+  if (error) {
+    throw error;
+  }
+  return count || 0;
 }

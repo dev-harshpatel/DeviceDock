@@ -14,8 +14,8 @@ import {
   type IdentifierListItem,
 } from "@/lib/supabase/queries/inventory";
 import { queryKeys } from "@/lib/query-keys";
-import { useDebounce } from "@/hooks/use-debounce";
-import { usePaginatedReactQuery } from "@/hooks/use-paginated-react-query";
+import { useDebounce } from "@/hooks/common/use-debounce";
+import { usePaginatedReactQuery } from "@/hooks/common/use-paginated-react-query";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

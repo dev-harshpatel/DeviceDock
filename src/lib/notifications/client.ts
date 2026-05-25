@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase/client";
+import { createNotificationEventQuery } from "@/lib/supabase/queries";
 import type { NotificationEventType } from "@/lib/notifications/types";
 
 interface CreateNotificationEventInput {
@@ -22,19 +22,18 @@ export const createNotificationEvent = async ({
   metadata = {},
   title,
 }: CreateNotificationEventInput): Promise<void> => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (supabase.from("notification_events") as any).insert({
-    actor_user_id: actorUserId,
-    company_id: companyId,
-    entity_id: entityId,
-    entity_type: entityType,
-    event_type: eventType,
-    message,
-    metadata,
-    title,
-  });
-
-  if (error) {
+  try {
+    await createNotificationEventQuery({
+      actor_user_id: actorUserId,
+      company_id: companyId,
+      entity_id: entityId,
+      entity_type: entityType,
+      event_type: eventType,
+      message,
+      metadata,
+      title,
+    });
+  } catch (error) {
     console.error("[notifications] createNotificationEvent failed:", error);
   }
 };
