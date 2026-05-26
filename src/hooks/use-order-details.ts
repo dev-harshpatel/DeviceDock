@@ -46,14 +46,12 @@ const getCostPerUnitWithoutHst = (
 
 export function useOrderDetails({ open, onOpenChange, order }: UseOrderDetailsProps) {
   const { startNavigation } = useNavigation();
-  const { updateOrderStatus, downloadInvoicePDF, deleteOrder } = useOrders();
+  const { downloadInvoicePDF, deleteOrder } = useOrders();
   const { inventory, refreshInventory } = useInventory();
   const { canWrite: isAdmin, slug: companySlug } = useCompany();
   const router = useRouter();
 
   // ── Dialog & Action States ────────────────────────────────────────────────
-  const [isRejecting, setIsRejecting] = useState(false);
-  const [rejectionDialogOpen, setRejectionDialogOpen] = useState(false);
   const [customerEmail, setCustomerEmail] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -76,7 +74,6 @@ export function useOrderDetails({ open, onOpenChange, order }: UseOrderDetailsPr
   >({});
 
   const orderId = order?.id;
-  const orderStatus = order?.status;
   const orderUserId = order?.userId;
   const orderIsManualSale = order?.isManualSale;
   const orderItemsJsonKey = order?.items != null ? JSON.stringify(order.items) : "";
@@ -134,15 +131,11 @@ export function useOrderDetails({ open, onOpenChange, order }: UseOrderDetailsPr
   // ── Fetch Color Assignments Side-Effect ────────────────────────────────────
   useEffect(() => {
     if (!open || !orderId || !isAdmin) return;
-    if (orderStatus !== "approved" && orderStatus !== "completed") {
-      setColorAssignments({});
-      return;
-    }
     fetch(`/api/admin/order-color-assignments?order_id=${encodeURIComponent(orderId)}`)
       .then((r) => (r.ok ? r.json() : { assignments: {} }))
       .then((data) => setColorAssignments(data.assignments ?? {}))
       .catch(() => setColorAssignments({}));
-  }, [open, isAdmin, orderId, orderStatus]);
+  }, [open, isAdmin, orderId]);
 
   // ── Permission Guards & Utility Flags ──────────────────────────────────────
   const invoiceRoute = order ? `/${companySlug}/orders/${order.id}/invoice` : "";
@@ -152,36 +145,16 @@ export function useOrderDetails({ open, onOpenChange, order }: UseOrderDetailsPr
     router.prefetch(invoiceRoute);
   }, [invoiceRoute, order, router]);
 
-  const canReject = order ? order.status === "pending" && isAdmin : false;
-  const canDeleteOrder = order
-    ? isAdmin && (order.status === "approved" || order.status === "completed")
-    : false;
+  const canReject = false;
+  const canDeleteOrder = order ? isAdmin : false;
   const canEditManualSale = order
-    ? isAdmin &&
-      order.isManualSale === true &&
-      (order.status === "approved" || order.status === "completed") &&
-      order.invoiceConfirmed !== true
+    ? isAdmin && order.isManualSale === true && order.invoiceConfirmed !== true
     : false;
   const hasInvoice = order ? !!order.invoiceNumber : false;
   const canDownloadInvoice = hasInvoice && isAdmin;
-  const canCreateEditInvoice = order ? isAdmin && order.status === "approved" : false;
+  const canCreateEditInvoice = order ? isAdmin : false;
 
   // ── Action Event Handlers ──────────────────────────────────────────────────
-  const handleReject = async (reason: string, comment: string) => {
-    if (!order) return;
-    setIsRejecting(true);
-    try {
-      await updateOrderStatus(order.id, "rejected", reason, comment);
-      toast.success(TOAST_MESSAGES.ORDER_REJECTED(order.id));
-      onOpenChange(false);
-    } catch (error) {
-      toast.error(TOAST_MESSAGES.ORDER_FAILED_REJECT);
-      throw error;
-    } finally {
-      setIsRejecting(false);
-    }
-  };
-
   const handleDeleteOrder = async () => {
     if (!order) return;
     if (deleteConfirmText.trim().toLowerCase() !== "confirm") return;
@@ -296,9 +269,6 @@ export function useOrderDetails({ open, onOpenChange, order }: UseOrderDetailsPr
 
   return {
     // Action States
-    isRejecting,
-    rejectionDialogOpen,
-    setRejectionDialogOpen,
     customerEmail,
     isDownloading,
     deleteDialogOpen,
@@ -319,7 +289,6 @@ export function useOrderDetails({ open, onOpenChange, order }: UseOrderDetailsPr
     handlePrefetchInvoice,
 
     // Handlers
-    handleReject,
     handleDeleteOrder,
     handleDownloadInvoice,
     handleCreateEditInvoice,

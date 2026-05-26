@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useMemo, useCallback, useTransition } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Order, OrderStatus } from "@/types/order";
+import { Order } from "@/types/order";
 import { useDebounce } from "@/hooks/common/use-debounce";
 import { usePaginatedReactQuery } from "@/hooks/common/use-paginated-react-query";
 import { usePageParam } from "@/hooks/common/use-page-param";
@@ -24,14 +24,12 @@ export function useOrdersManagement() {
   const [activeTab, setActiveTab] = useState<"orders" | "deleted">("orders");
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<OrderStatus | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
 
   const debouncedSearch = useDebounce(searchQuery);
 
   const serverFilters: OrdersFilters = {
     search: debouncedSearch,
-    status: statusFilter,
   };
 
   const [currentPage, setCurrentPage] = usePageParam();
@@ -120,11 +118,10 @@ export function useOrdersManagement() {
   }, []);
 
   const handleResetFilter = () => {
-    setStatusFilter("all");
     setSearchQuery("");
   };
 
-  const hasActiveFilters = statusFilter !== "all" || searchQuery.trim() !== "";
+  const hasActiveFilters = searchQuery.trim() !== "";
   const orderRows = useMemo(
     () =>
       filteredOrders.map((order) => ({
@@ -158,10 +155,6 @@ export function useOrdersManagement() {
     setSearchQuery(event.target.value);
   }, []);
 
-  const handleStatusFilterChange = useCallback((value: string) => {
-    setStatusFilter(value as OrderStatus | "all");
-  }, []);
-
   const handleTabChange = useCallback((value: string) => {
     setActiveTab(value as "orders" | "deleted");
   }, []);
@@ -177,7 +170,6 @@ export function useOrdersManagement() {
     selectedOrderId,
     modalOpen,
     setModalOpen,
-    statusFilter,
     searchQuery,
     filteredOrders,
     totalCount,
@@ -198,7 +190,6 @@ export function useOrdersManagement() {
     orderRows,
     deletedOrderRows,
     handleSearchChange,
-    handleStatusFilterChange,
     handleTabChange,
     handleOpenManualSale,
     isPendingManualSale,

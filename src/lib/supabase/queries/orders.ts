@@ -4,12 +4,14 @@
  */
 
 import type { PaginatedResult } from "@/hooks/common/use-paginated-query";
-import { Order, OrderStatus } from "@/types/order";
+import { Order } from "@/types/order";
 import { supabase } from "../client/browser";
 import { dbRowToOrder } from "./mappers";
 
 export interface DeletedOrder extends Order {
   deletedAt: string;
+  /** Preserved from deleted_orders archive — nullable after migration 048 made it optional. */
+  status?: string | null;
 }
 
 const DELETED_ORDER_FIELDS = [
@@ -39,7 +41,6 @@ const DELETED_ORDER_FIELDS = [
 
 export interface OrdersFilters {
   search: string;
-  status: OrderStatus | "all";
 }
 
 // Columns required to build an Order via dbRowToOrder
@@ -51,11 +52,8 @@ export const ORDER_FIELDS = [
   "tax_rate",
   "tax_amount",
   "total_price",
-  "status",
   "created_at",
   "updated_at",
-  "rejection_reason",
-  "rejection_comment",
   "invoice_number",
   "invoice_date",
   "po_number",
@@ -76,7 +74,6 @@ export const ORDER_FIELDS = [
   "manual_customer_name",
   "manual_customer_email",
   "manual_customer_phone",
-  "profit",
 ].join(", ");
 
 // Lightweight field set for paginated list views — omits large/detail-only columns.
@@ -89,18 +86,14 @@ const ORDER_SUMMARY_FIELDS = [
   "tax_rate",
   "tax_amount",
   "total_price",
-  "status",
   "created_at",
   "updated_at",
-  "rejection_reason",
-  "rejection_comment",
   "invoice_number",
   "discount_amount",
   "discount_type",
   "shipping_amount",
   "is_manual_sale",
   "manual_customer_name",
-  "profit",
 ].join(", ");
 
 export async function fetchPaginatedOrders(
@@ -110,36 +103,6 @@ export async function fetchPaginatedOrders(
 ): Promise<PaginatedResult<Order>> {
   const hasSearch = filters.search.trim().length > 0;
 
-  if (hasSearch) {
-    const q = filters.search.trim().toLowerCase();
-
-    let query = supabase
-      .from("orders")
-      .select(ORDER_SUMMARY_FIELDS, { count: "exact" })
-      .order("created_at", { ascending: false });
-
-    if (companyId) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      query = (query as any).eq("company_id", companyId);
-    }
-
-    if (filters.status !== "all") {
-      query = query.eq("status", filters.status);
-    }
-
-    query = query.or(`id.ilike.%${q}%,status.ilike.%${q}%`);
-    query = query.range(range.from, range.to);
-
-    const { data, count, error } = await query;
-    if (error) throw error;
-
-    return {
-      data: (data || []).map(dbRowToOrder),
-      count: count || 0,
-    };
-  }
-
-  // No search - simple paginated query
   let query = supabase
     .from("orders")
     .select(ORDER_SUMMARY_FIELDS, { count: "exact" })
@@ -150,8 +113,9 @@ export async function fetchPaginatedOrders(
     query = (query as any).eq("company_id", companyId);
   }
 
-  if (filters.status !== "all") {
-    query = query.eq("status", filters.status);
+  if (hasSearch) {
+    const q = filters.search.trim().toLowerCase();
+    query = query.ilike("id", `%${q}%`);
   }
 
   query = query.range(range.from, range.to);
@@ -204,6 +168,7 @@ export async function fetchPaginatedDeletedOrders(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ...dbRowToOrder(row as any),
         deletedAt: row.deleted_at as string,
+        status: (row.status as string | null) ?? null,
       }),
     ),
     count: count || 0,
@@ -228,7 +193,6 @@ export async function fetchAllOrders(companyId: string): Promise<Order[]> {
 
 export async function fetchPaginatedUserOrders(
   userId: string,
-  statusFilter: OrderStatus | "all",
   range: { from: number; to: number },
   companyId?: string,
 ): Promise<PaginatedResult<Order>> {
@@ -241,10 +205,6 @@ export async function fetchPaginatedUserOrders(
   if (companyId) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     query = (query as any).eq("company_id", companyId);
-  }
-
-  if (statusFilter !== "all") {
-    query = query.eq("status", statusFilter);
   }
 
   query = query.range(range.from, range.to);
@@ -308,24 +268,6 @@ export async function updateOrderInDb(orderId: string, updateData: any): Promise
 
   if (error) {
     console.error("[updateOrderInDb] failed:", error);
-    throw error;
-  }
-}
-
-/**
- * Updates status and handles rejection reason updates.
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function updateOrderStatusInDb(orderId: string, updateData: any): Promise<void> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (supabase.from("orders") as any)
-    .update(updateData)
-    .eq("id", orderId)
-    .select()
-    .single();
-
-  if (error) {
-    console.error("[updateOrderStatusInDb] failed:", error);
     throw error;
   }
 }

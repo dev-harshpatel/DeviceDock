@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 "use client";
 
-import { Order, OrderItem, OrderStatus } from "@/types/order";
+import { Order, OrderItem } from "@/types/order";
 import { ReactNode, createContext, useContext, useMemo } from "react";
 import { useOrdersActions } from "@/hooks/use-orders-actions";
 
@@ -29,12 +29,6 @@ interface OrdersContextType {
       shippingAddress?: string | null;
       notes?: string | null;
     },
-  ) => Promise<void>;
-  updateOrderStatus: (
-    orderId: string,
-    status: OrderStatus,
-    rejectionReason?: string,
-    rejectionComment?: string,
   ) => Promise<void>;
   deleteOrder: (orderId: string) => Promise<void>;
   updateInvoice: (

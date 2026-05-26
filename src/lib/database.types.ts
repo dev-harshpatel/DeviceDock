@@ -479,11 +479,8 @@ export interface Database {
           tax_rate: number | null;
           tax_amount: number | null;
           total_price: number;
-          status: string;
           created_at: string;
           updated_at: string;
-          rejection_reason?: string | null;
-          rejection_comment?: string | null;
           invoice_number?: string | null;
           invoice_date?: string | null;
           po_number?: string | null;
@@ -514,11 +511,8 @@ export interface Database {
           tax_rate?: number | null;
           tax_amount?: number | null;
           total_price: number;
-          status?: string;
           created_at?: string;
           updated_at?: string;
-          rejection_reason?: string | null;
-          rejection_comment?: string | null;
           invoice_number?: string | null;
           invoice_date?: string | null;
           po_number?: string | null;
@@ -548,11 +542,8 @@ export interface Database {
           tax_rate?: number | null;
           tax_amount?: number | null;
           total_price?: number;
-          status?: string;
           created_at?: string;
           updated_at?: string;
-          rejection_reason?: string | null;
-          rejection_comment?: string | null;
           invoice_number?: string | null;
           invoice_date?: string | null;
           po_number?: string | null;

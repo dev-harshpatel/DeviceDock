@@ -1,5 +1,4 @@
 import type { InventoryFilters, OrdersFilters } from "./supabase/queries";
-import type { OrderStatus } from "@/types/order";
 
 export const queryKeys = {
   // Base keys for invalidation
@@ -35,12 +34,12 @@ export const queryKeys = {
     ] as const,
 
   ordersPage: (page: number, filters: OrdersFilters) =>
-    [...queryKeys.orders, page, filters.search, filters.status] as const,
+    [...queryKeys.orders, page, filters.search] as const,
 
   deletedOrdersPage: (page: number) => [...queryKeys.deletedOrders, page] as const,
 
-  userOrdersPage: (userId: string, page: number, status: OrderStatus | "all") =>
-    [...queryKeys.userOrders(userId), page, status] as const,
+  userOrdersPage: (userId: string, page: number) =>
+    [...queryKeys.userOrders(userId), page] as const,
 
   usersPage: (page: number, search: string) => [...queryKeys.users, page, search] as const,
 

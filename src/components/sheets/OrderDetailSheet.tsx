@@ -3,14 +3,11 @@
 import { Order } from "@/types/order";
 import { formatPrice } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { GradeBadge } from "@/components/common/GradeBadge";
-import { RejectionNote } from "@/components/common/RejectionNote";
 import { cn } from "@/lib/utils";
 import { formatDateInOntario } from "@/lib/utils";
-import { getStatusColor, getStatusLabel } from "@/lib/utils/status";
-import { Download, FileText, Loader2 } from "lucide-react";
+import { Download, Loader2 } from "lucide-react";
 
 interface OrderDetailSheetProps {
   open: boolean;
@@ -38,7 +35,6 @@ export function OrderDetailSheet({
 
   const total = formatPrice(order.totalPrice);
 
-  const isRejected = order.status === "rejected";
   const hasDiscount = order.discountAmount != null && order.discountAmount > 0;
 
   return (
@@ -55,11 +51,8 @@ export function OrderDetailSheet({
         </SheetHeader>
 
         <div className="space-y-4 pt-4">
-          {/* Status + Total */}
+          {/* Total */}
           <div className="flex items-center justify-between">
-            <Badge variant="outline" className={cn("text-sm", getStatusColor(order.status))}>
-              {getStatusLabel(order.status)}
-            </Badge>
             <div className="text-right">
               {hasDiscount && (
                 <p className="text-xs text-success">
@@ -151,17 +144,6 @@ export function OrderDetailSheet({
                   <span>Total</span>
                   <span>{total}</span>
                 </div>
-              </div>
-            )}
-
-            {/* Rejection note */}
-            {isRejected && (order.rejectionReason || order.rejectionComment) && (
-              <div className="col-span-2">
-                <span className="text-xs text-muted-foreground block mb-1">Rejection Reason</span>
-                <RejectionNote
-                  rejectionReason={order.rejectionReason}
-                  rejectionComment={order.rejectionComment}
-                />
               </div>
             )}
           </div>

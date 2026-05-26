@@ -19,8 +19,6 @@ export default function Reports() {
     stockByGrade,
     stockByStatus,
     valueByDevice,
-    orderStatusDistribution,
-    revenueByStatus,
     summaryStats,
     estimatedProfitStats,
     isEstimatedProfitPending,
@@ -77,8 +75,6 @@ export default function Reports() {
           valueByDevice={valueByDevice}
           stockByGrade={stockByGrade}
           stockByStatus={stockByStatus}
-          orderStatusDistribution={orderStatusDistribution}
-          revenueByStatus={revenueByStatus}
         />
       </div>
     </div>

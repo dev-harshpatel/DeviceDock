@@ -51,14 +51,6 @@ const gradeChartConfig = {
   value: { label: "Units" },
 } satisfies ChartConfig;
 
-const orderStatusConfig = {
-  value: { label: "Orders" },
-} satisfies ChartConfig;
-
-const revenueByStatusConfig = {
-  value: { label: "Revenue", color: "hsl(142, 76%, 36%)" },
-} satisfies ChartConfig;
-
 interface TrendDataPoint {
   period: string;
   units: number;
@@ -92,8 +84,6 @@ interface ReportsChartsGridProps {
   valueByDevice: ValueByDevicePoint[];
   stockByGrade: NameValuePoint[];
   stockByStatus: StockByStatusPoint[];
-  orderStatusDistribution: NameValuePoint[];
-  revenueByStatus: NameValuePoint[];
 }
 
 export function ReportsChartsGrid({
@@ -103,8 +93,6 @@ export function ReportsChartsGrid({
   valueByDevice,
   stockByGrade,
   stockByStatus,
-  orderStatusDistribution,
-  revenueByStatus,
 }: ReportsChartsGridProps) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -277,65 +265,6 @@ export function ReportsChartsGrid({
         ) : (
           <div className="h-64 flex items-center justify-center text-muted-foreground">
             No data available
-          </div>
-        )}
-      </div>
-
-      {/* Order Status Distribution */}
-      <div className="bg-card rounded-lg border border-border shadow-soft p-6">
-        <h3 className="font-semibold text-foreground mb-4">Order Status Distribution</h3>
-        {orderStatusDistribution.length > 0 ? (
-          <div className="h-64 flex items-center justify-center">
-            <ChartContainer config={orderStatusConfig} className="h-full w-full">
-              <PieChart>
-                <Pie
-                  data={orderStatusDistribution}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={90}
-                  paddingAngle={2}
-                  dataKey="value"
-                  label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                  labelLine={false}
-                >
-                  {orderStatusDistribution.map((_, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <ChartTooltip content={<ChartTooltipContent nameKey="name" hideLabel />} />
-              </PieChart>
-            </ChartContainer>
-          </div>
-        ) : (
-          <div className="h-64 flex items-center justify-center text-muted-foreground">
-            No orders found
-          </div>
-        )}
-      </div>
-
-      {/* Revenue by Status */}
-      <div className="bg-card rounded-lg border border-border shadow-soft p-6">
-        <h3 className="font-semibold text-foreground mb-4">Revenue by Status</h3>
-        {revenueByStatus.length > 0 ? (
-          <div className="h-64">
-            <ChartContainer config={revenueByStatusConfig} className="h-full w-full">
-              <BarChart data={revenueByStatus}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" fontSize={12} />
-                <YAxis fontSize={12} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
-                <ChartTooltip
-                  content={
-                    <ChartTooltipContent formatter={(value) => formatPrice(value as number)} />
-                  }
-                />
-                <Bar dataKey="value" fill="var(--color-value)" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ChartContainer>
-          </div>
-        ) : (
-          <div className="h-64 flex items-center justify-center text-muted-foreground">
-            No revenue data
           </div>
         )}
       </div>

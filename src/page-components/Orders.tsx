@@ -23,7 +23,6 @@ export default function Orders() {
     activeTab,
     modalOpen,
     setModalOpen,
-    statusFilter,
     searchQuery,
     filteredOrders,
     totalCount,
@@ -44,7 +43,6 @@ export default function Orders() {
     orderRows,
     deletedOrderRows,
     handleSearchChange,
-    handleStatusFilterChange,
     handleTabChange,
     handleOpenManualSale,
     isPendingManualSale,
@@ -64,11 +62,9 @@ export default function Orders() {
           totalCount={totalCount}
           deletedTotal={deletedTotal}
           hasActiveFilters={hasActiveFilters}
-          statusFilter={statusFilter}
           searchQuery={searchQuery}
           isPendingManualSale={isPendingManualSale}
           onSearchChange={handleSearchChange}
-          onStatusFilterChange={handleStatusFilterChange}
           onOpenManualSale={handleOpenManualSale}
           onResetFilter={handleResetFilter}
         />
@@ -102,14 +98,8 @@ export default function Orders() {
                         <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-4">
                           Total
                         </th>
-                        <th className="text-center text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-4">
-                          Status
-                        </th>
                         <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-4">
                           Date
-                        </th>
-                        <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-4">
-                          Notes
                         </th>
                         <th className="text-center text-xs font-medium text-muted-foreground uppercase tracking-wider px-6 py-4">
                           Action

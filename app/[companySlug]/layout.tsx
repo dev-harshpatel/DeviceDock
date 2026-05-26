@@ -1,10 +1,7 @@
 import { redirect } from "next/navigation";
-import { HydrationBoundary, QueryClient, dehydrate } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client/server";
 import { getCompanyBySlug } from "@/lib/supabase/auth-helpers";
 import { CompanyShell } from "@/components/providers/CompanyShell";
-import { fetchAllInventory, fetchAllOrders, fetchFilterOptions } from "@/lib/supabase/queries";
-import { queryKeys } from "@/lib/query-keys";
 import type { Database } from "@/lib/database.types";
 import type { CompanyMembership } from "@/types/company";
 
@@ -50,29 +47,9 @@ export default async function CompanyLayout({ params, children }: CompanyLayoutP
     updated_at: row.updated_at,
   };
 
-  const queryClient = new QueryClient();
-
-  // Parallel prefetch of foundational company data
-  await Promise.all([
-    queryClient.prefetchQuery({
-      queryKey: queryKeys.inventoryAll(company.id),
-      queryFn: () => fetchAllInventory(company.id),
-    }),
-    queryClient.prefetchQuery({
-      queryKey: queryKeys.ordersAll(company.id),
-      queryFn: () => fetchAllOrders(company.id),
-    }),
-    queryClient.prefetchQuery({
-      queryKey: queryKeys.filterOptions(company.id),
-      queryFn: () => fetchFilterOptions(company.id),
-    }),
-  ]);
-
   return (
-    <HydrationBoundary state={dehydrate(queryClient)}>
-      <CompanyShell company={company} membership={membership}>
-        {children}
-      </CompanyShell>
-    </HydrationBoundary>
+    <CompanyShell company={company} membership={membership}>
+      {children}
+    </CompanyShell>
   );
 }

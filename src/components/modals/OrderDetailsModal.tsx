@@ -1,8 +1,6 @@
 "use client";
 
-import { AlertCircle, ShoppingBag } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { OrderRejectionDialog } from "@/components/modals/OrderRejectionDialog";
+import { ShoppingBag } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -12,8 +10,6 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Order } from "@/types/order";
-import { cn } from "@/lib/utils";
-import { getStatusColor, getStatusLabel } from "@/lib/utils/status";
 import { OrderInfoSection } from "@/components/modals/OrderInfoSection";
 import { OrderTotalSection } from "@/components/modals/OrderTotalSection";
 import { useOrderDetails } from "@/hooks/use-order-details";
@@ -31,9 +27,6 @@ interface OrderDetailsModalProps {
 export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsModalProps) => {
   const {
     // Action States
-    isRejecting,
-    rejectionDialogOpen,
-    setRejectionDialogOpen,
     customerEmail,
     isDownloading,
     deleteDialogOpen,
@@ -53,7 +46,6 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
     handlePrefetchInvoice,
 
     // Handlers
-    handleReject,
     handleDeleteOrder,
     handleDownloadInvoice,
     handleCreateEditInvoice,
@@ -84,28 +76,6 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
     </div>
   );
 
-  const rejectionInfo = order.status === "rejected" &&
-    (order.rejectionReason || order.rejectionComment) && (
-      <div className="border-t border-border pt-3">
-        <div className="px-3 py-2 bg-destructive/10 rounded-md border border-destructive/20">
-          <div className="flex items-start gap-2">
-            <AlertCircle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
-            <div className="flex-1 space-y-1">
-              <p className="text-xs font-medium text-destructive">Rejected</p>
-              {order.rejectionReason && (
-                <p className="text-xs text-muted-foreground">
-                  <span className="font-medium">Reason:</span> {order.rejectionReason}
-                </p>
-              )}
-              {order.rejectionComment && (
-                <p className="text-xs text-muted-foreground">{order.rejectionComment}</p>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col overflow-hidden w-[calc(100%-2rem)] sm:w-full">
@@ -115,12 +85,6 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
               <DialogTitle>Order #{order.id.slice(-8).toUpperCase()}</DialogTitle>
               <DialogDescription>Order details and summary</DialogDescription>
             </div>
-            <Badge
-              variant="outline"
-              className={cn("text-sm flex-shrink-0", getStatusColor(order.status))}
-            >
-              {getStatusLabel(order.status)}
-            </Badge>
           </div>
         </DialogHeader>
 
@@ -149,7 +113,6 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
                   isAdmin={isAdmin}
                 />
 
-                {rejectionInfo}
                 <OrderTotalSection order={order} />
               </div>
             </TabsContent>
@@ -182,7 +145,6 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
               isAdmin={isAdmin}
             />
 
-            {rejectionInfo}
             <OrderTotalSection order={order} />
           </div>
         )}
@@ -195,7 +157,7 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
           canEditManualSale={canEditManualSale}
           canDeleteOrder={canDeleteOrder}
           canReject={canReject}
-          isRejecting={isRejecting}
+          isRejecting={false}
           isDownloading={isDownloading}
           isDeleting={isDeleting}
           hasInvoice={hasInvoice}
@@ -205,7 +167,7 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
           onPrefetchInvoice={handlePrefetchInvoice}
           onEditManualSale={handleEditManualSale}
           onDeleteClick={() => setDeleteDialogOpen(true)}
-          onRejectClick={() => setRejectionDialogOpen(true)}
+          onRejectClick={() => {}}
         />
       </DialogContent>
 
@@ -217,12 +179,6 @@ export const OrderDetailsModal = ({ open, onOpenChange, order }: OrderDetailsMod
         setDeleteConfirmText={setDeleteConfirmText}
         isDeleting={isDeleting}
         onDelete={handleDeleteOrder}
-      />
-
-      <OrderRejectionDialog
-        open={rejectionDialogOpen}
-        onOpenChange={setRejectionDialogOpen}
-        onReject={handleReject}
       />
     </Dialog>
   );

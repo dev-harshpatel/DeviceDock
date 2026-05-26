@@ -18,10 +18,9 @@ import {
   ORDER_FIELDS,
   updateManualSaleOrderRpc,
   updateOrderInDb,
-  updateOrderStatusInDb,
 } from "@/lib/supabase/queries";
 import { percentToRate } from "@/lib/tax";
-import { Order, OrderItem, OrderStatus } from "@/types/order";
+import { Order, OrderItem } from "@/types/order";
 
 type OrderUpdate = Database["public"]["Tables"]["orders"]["Update"];
 
@@ -90,7 +89,6 @@ export function useOrdersActions() {
         tax_rate: taxRate,
         tax_amount: taxAmount,
         total_price: totalPrice,
-        status: "approved",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         is_manual_sale: true,
@@ -206,39 +204,6 @@ export function useOrdersActions() {
       return orders.find((order) => order.id === orderId);
     },
     [orders],
-  );
-
-  const updateOrderStatus = useCallback(
-    async (
-      orderId: string,
-      status: OrderStatus,
-      rejectionReason?: string,
-      rejectionComment?: string,
-    ) => {
-      const updateData: OrderUpdate = {
-        status,
-        updated_at: new Date().toISOString(),
-      };
-
-      if (status === "rejected") {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (updateData as any).rejection_reason = rejectionReason || null;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (updateData as any).rejection_comment = rejectionComment || null;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (updateData as any).discount_amount = 0;
-      } else {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (updateData as any).rejection_reason = null;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (updateData as any).rejection_comment = null;
-      }
-
-      await updateOrderStatusInDb(orderId, updateData);
-
-      invalidateOrders();
-    },
-    [invalidateOrders],
   );
 
   const deleteOrder = useCallback(
@@ -418,7 +383,6 @@ export function useOrdersActions() {
     createManualOrder,
     updateManualOrder,
     patchManualSaleOrderDetails,
-    updateOrderStatus,
     deleteOrder,
     updateInvoice,
     confirmInvoice,

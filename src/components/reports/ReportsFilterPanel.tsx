@@ -14,14 +14,12 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { type Grade, GRADES, GRADE_LABELS } from "@/lib/constants/grades";
-import { OrderStatus } from "@/types/order";
 
 export interface ReportFilters {
   dateRange: {
     from: Date | null;
     to: Date | null;
   };
-  orderStatus: OrderStatus | "all";
   grade: Grade | "all";
   brand: string | "all";
 }
@@ -133,25 +131,6 @@ export function ReportsFilterPanel({
             />
           </PopoverContent>
         </Popover>
-
-        {/* Order Status Filter */}
-        <Select
-          value={filters.orderStatus}
-          onValueChange={(value) =>
-            setFilters((prev) => ({ ...prev, orderStatus: value as OrderStatus | "all" }))
-          }
-        >
-          <SelectTrigger className="w-full sm:w-[140px] h-9 text-sm">
-            <SelectValue placeholder="Order Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Statuses</SelectItem>
-            <SelectItem value="pending">Pending</SelectItem>
-            <SelectItem value="approved">Approved</SelectItem>
-            <SelectItem value="rejected">Rejected</SelectItem>
-            <SelectItem value="completed">Completed</SelectItem>
-          </SelectContent>
-        </Select>
 
         {/* Grade Filter */}
         <Select
