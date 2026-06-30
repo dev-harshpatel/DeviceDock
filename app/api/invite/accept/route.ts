@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import type { Database } from "@/lib/database.types";
 import { supabaseAdmin } from "@/lib/supabase/client/admin";
 import { getAuthUser } from "@/lib/supabase/auth-helpers";
+import type { Database } from "@/lib/database.types";
 
-type CompanyInvitationRow = Database["public"]["Tables"]["company_invitations"]["Row"];
+type InvitationRow = Database["public"]["Tables"]["company_invitations"]["Row"];
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
@@ -20,18 +20,19 @@ export async function POST(request: NextRequest) {
   }
 
   // Validate the invitation token
-  const { data: invitation, error: inviteError } = await supabaseAdmin
+  const { data: invitationRaw, error: inviteError } = await supabaseAdmin
     .from("company_invitations")
     .select("*")
     .eq("token_hash", token)
     .is("consumed_at", null)
     .single();
+  const invitation = invitationRaw as InvitationRow | null;
 
   if (inviteError || !invitation) {
     return NextResponse.json({ error: "Invitation not found or already used" }, { status: 404 });
   }
 
-  const inv = invitation as CompanyInvitationRow;
+  const inv = invitation;
 
   if (new Date(inv.expires_at) < new Date()) {
     return NextResponse.json({ error: "This invitation has expired" }, { status: 410 });
