@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth/context";
 import { supabase } from "@/lib/supabase/client/browser";
+import { fetchUserActiveCompanySlugQuery } from "@/lib/supabase/queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -162,16 +163,7 @@ export default function AdminLogin() {
 
       if (loggedInUser) {
         // Find the user's active company membership
-        const { data: membership } = await supabase
-          .from("company_users")
-          .select("companies(slug)")
-          .eq("user_id", loggedInUser.id)
-          .eq("status", "active")
-          .limit(1)
-          .single();
-
-        const row = membership as { companies: { slug: string } | null } | null;
-        const slug = row?.companies?.slug;
+        const slug = await fetchUserActiveCompanySlugQuery(loggedInUser.id);
 
         if (slug) {
           // Keep spinner running through navigation — component unmounts when route loads

@@ -3,7 +3,7 @@
  * Functions for querying user profile data from Supabase
  */
 
-import type { PaginatedResult } from "@/hooks/use-paginated-query";
+import type { PaginatedResult } from "@/hooks/common/use-paginated-query";
 import { UserProfile } from "@/types/user";
 import { supabase } from "../client";
 import { dbRowToUserProfile } from "./mappers";
@@ -35,7 +35,7 @@ const ADMIN_USER_LIST_FIELDS = [
 
 export async function fetchPaginatedUsers(
   search: string,
-  range: { from: number; to: number }
+  range: { from: number; to: number },
 ): Promise<PaginatedResult<UserProfile>> {
   let query = supabase
     .from("user_profiles")
@@ -45,7 +45,7 @@ export async function fetchPaginatedUsers(
   if (search.trim()) {
     const q = `%${search.trim()}%`;
     query = query.or(
-      `first_name.ilike.${q},last_name.ilike.${q},business_name.ilike.${q},business_email.ilike.${q},phone.ilike.${q},business_city.ilike.${q}`
+      `first_name.ilike.${q},last_name.ilike.${q},business_name.ilike.${q},business_email.ilike.${q},phone.ilike.${q},business_city.ilike.${q}`,
     );
   }
 
@@ -55,9 +55,38 @@ export async function fetchPaginatedUsers(
   if (error) throw error;
 
   return {
-    data: (data || []).map((row: any) =>
-      dbRowToUserProfile(row as UserProfileRow)
-    ),
+    data: (data || []).map((row: unknown) => dbRowToUserProfile(row as UserProfileRow)),
     count: count || 0,
   };
+}
+
+/**
+ * Fetches user's active company membership slug
+ */
+export async function fetchUserActiveCompanySlugQuery(userId: string): Promise<string | null> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase.from("company_users") as any)
+    .select("companies(slug)")
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .limit(1)
+    .single();
+
+  if (error || !data) return null;
+  const row = data as { companies: { slug: string } | null } | null;
+  return row?.companies?.slug ?? null;
+}
+
+/**
+ * Verifies if user is a platform super admin
+ */
+export async function verifyPlatformSuperAdminQuery(userId: string): Promise<boolean> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase.from("platform_super_admins") as any)
+    .select("user_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error || !data) return false;
+  return true;
 }

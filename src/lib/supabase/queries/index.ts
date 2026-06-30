@@ -13,3 +13,5 @@ export * from "./orders";
 export * from "./users";
 export * from "./stats";
 export * from "./cart";
+export * from "./settings";
+export * from "./uploads";

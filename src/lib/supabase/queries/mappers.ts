@@ -184,6 +184,8 @@ export const dbRowToOrder = (row: OrderRow): Order => {
         : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    // status is omitted for active orders (column dropped in migration 048).
+    // It survives in deleted_orders and is merged in by callers that need it.
     invoiceNumber: (row as any).invoice_number ?? null,
     invoiceDate: (row as any).invoice_date ?? null,
     poNumber: (row as any).po_number ?? null,

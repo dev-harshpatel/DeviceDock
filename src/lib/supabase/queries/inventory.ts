@@ -4,8 +4,8 @@
  */
 
 import { InventoryItem } from "@/data/inventory";
-import type { PaginatedResult } from "@/hooks/use-paginated-query";
-import type { IdentifierFullLookup } from "@/types/inventory-identifiers";
+import type { PaginatedResult } from "@/hooks/common/use-paginated-query";
+import type { IdentifierFullLookup, IdentifierSaleLookup } from "@/types/inventory-identifiers";
 import { supabase } from "../client/browser";
 import { INVENTORY_SORT_ORDER } from "../../constants";
 import { dbRowToInventoryItem } from "./mappers";
@@ -477,4 +477,511 @@ export async function lookupIdentifierByImei(
     purchasePrice: row.purchase_price != null ? Number(row.purchase_price) : null,
     item: dbRowToInventoryItem(invRow),
   };
+}
+
+// ── Centralized Write & Mutation Queries ──────────────────────────────────────
+
+export async function updateInventoryProductQuery(
+  id: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  updates: any,
+  companyId?: string,
+): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let query = (supabase.from("inventory") as any).update(updates).eq("id", id);
+  if (companyId) {
+    query = query.eq("company_id", companyId);
+  }
+  const { error } = await query;
+  if (error) {
+    throw error;
+  }
+}
+
+export async function deleteInventoryProductQuery(id: string, companyId: string): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase.from("inventory") as any)
+    .delete()
+    .eq("id", id)
+    .eq("company_id", companyId);
+  if (error) {
+    throw error;
+  }
+}
+
+export async function insertInventoryProductQuery(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  payload: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): Promise<any> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase.from("inventory") as any)
+    .insert(payload)
+    .select(INVENTORY_ADMIN_FIELDS)
+    .single();
+  if (error) {
+    throw error;
+  }
+  return data;
+}
+
+export async function bulkInsertInventoryQuery(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  insertData: any[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): Promise<any[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase.from("inventory") as any).insert(insertData).select();
+  if (error) {
+    throw error;
+  }
+  return data || [];
+}
+
+export async function findMatchingInventoryRowsQuery(params: {
+  companyId: string;
+  deviceName: string;
+  brand: string;
+  grade: string;
+  storage: string;
+  sellingPrice: number;
+  isActive: boolean;
+  hst: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+}): Promise<any[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase.from("inventory") as any)
+    .select(INVENTORY_ADMIN_FIELDS)
+    .eq("company_id", params.companyId)
+    .eq("device_name", params.deviceName)
+    .eq("brand", params.brand)
+    .eq("grade", params.grade)
+    .eq("storage", params.storage)
+    .eq("selling_price", params.sellingPrice)
+    .eq("is_active", params.isActive)
+    .eq("hst", params.hst)
+    .gt("quantity", 0);
+
+  if (error) {
+    throw error;
+  }
+  return data || [];
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function fetchInventoryItemByIdQuery(id: string, companyId: string): Promise<any> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase.from("inventory") as any)
+    .select(INVENTORY_ADMIN_FIELDS)
+    .eq("id", id)
+    .eq("company_id", companyId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+  return data;
+}
+
+export async function updateInventoryIdentifierQuery(
+  identifierId: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  payload: any,
+  companyId: string,
+): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase.from("inventory_identifiers") as any)
+    .update(payload)
+    .eq("id", identifierId)
+    .eq("company_id", companyId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function deleteInventoryIdentifierQuery(
+  identifierId: string,
+  companyId: string,
+): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase.from("inventory_identifiers") as any)
+    .delete()
+    .eq("id", identifierId)
+    .eq("company_id", companyId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function insertInventoryIdentifierQuery(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  payload: any,
+): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase.from("inventory_identifiers") as any).insert(payload);
+
+  if (error) {
+    throw error;
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function lookupIdentifierForSaleQuery(q: string, companyId: string): Promise<any> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase.from("inventory_identifiers") as any)
+    .select("id, inventory_id, imei, serial_number, status, color, damage_note")
+    .eq("company_id", companyId)
+    .or(`imei.eq.${q},serial_number.eq.${q}`)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+  return data;
+}
+
+export async function markIdentifierSoldQuery(
+  identifierId: string,
+  companyId: string,
+  now: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): Promise<any> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase.from("inventory_identifiers") as any)
+    .update({
+      status: "sold",
+      sold_at: now,
+      updated_at: now,
+    })
+    .eq("id", identifierId)
+    .eq("company_id", companyId)
+    .in("status", ["in_stock", "reserved"])
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+  return data;
+}
+
+export async function revertIdentifierSoldQuery(
+  identifierId: string,
+  companyId: string,
+  now: string,
+): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase.from("inventory_identifiers") as any)
+    .update({
+      status: "in_stock",
+      sold_at: null,
+      updated_at: now,
+    })
+    .eq("id", identifierId)
+    .eq("company_id", companyId)
+    .eq("status", "sold");
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function upsertInventoryColorsQuery(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  rows: any[],
+  onConflict: string = "inventory_id,color",
+): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase.from("inventory_colors") as any).upsert(rows, { onConflict });
+
+  if (error) {
+    throw error;
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function fetchInventoryColorsQuery(ids: string[]): Promise<any[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase.from("inventory_colors") as any)
+    .select("color, quantity")
+    .in("inventory_id", ids)
+    .gt("quantity", 0)
+    .order("color");
+
+  if (error) {
+    throw error;
+  }
+  return data || [];
+}
+
+export async function deleteInventoryColorsQuery(
+  inventoryId: string,
+  colors?: string[],
+): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let query = (supabase.from("inventory_colors") as any).delete().eq("inventory_id", inventoryId);
+  if (colors && colors.length > 0) {
+    query = query.in("color", colors);
+  }
+  const { error } = await query;
+  if (error) {
+    throw error;
+  }
+}
+
+/**
+ * Fetch unique colour names used across a set of inventory IDs.
+ * Used to build colour suggestions when the colour dialog is opened
+ * for a device that already has siblings in the same brand/model family.
+ */
+export async function fetchColorSuggestionsByInventoryIdsQuery(
+  inventoryIds: string[],
+): Promise<string[]> {
+  if (inventoryIds.length === 0) return [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase.from("inventory_colors") as any)
+    .select("color")
+    .in("inventory_id", inventoryIds);
+  if (error || !data) return [];
+  return [...new Set((data as Array<{ color: string }>).map((r) => r.color))].sort();
+}
+
+/**
+ * Fetch colour rows (color + quantity) for a single inventory item.
+ * Used to pre-populate the colour breakdown dialog during a legacy restock.
+ */
+export async function fetchColorRowsByItemIdQuery(
+  inventoryId: string,
+): Promise<Array<{ color: string; quantity: number }>> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase.from("inventory_colors") as any)
+    .select("color, quantity")
+    .eq("inventory_id", inventoryId)
+    .order("color");
+  if (error) console.error("Failed to load existing colors:", error);
+  return (data as Array<{ color: string; quantity: number }>) ?? [];
+}
+
+/**
+ * Fetch the live quantity for a single inventory row.
+ * Used to get an authoritative count from DB (avoids stale in-memory value
+ * in the restock merge preview).
+ */
+export async function fetchInventoryQuantityQuery(
+  itemId: string,
+  companyId: string,
+): Promise<number | null> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase.from("inventory") as any)
+    .select("quantity")
+    .eq("id", itemId)
+    .eq("company_id", companyId)
+    .maybeSingle();
+  if (error) return null;
+  const qty = (data as { quantity?: number } | null)?.quantity;
+  return typeof qty === "number" ? qty : null;
+}
+
+/**
+ * Check whether any of the supplied IMEI/serial values already exist in
+ * inventory_identifiers for the company. Returns the set of values that
+ * are already registered, so callers can surface precise duplicates.
+ */
+export async function checkDuplicateIdentifiersQuery(
+  companyId: string,
+  imeiValues: string[],
+  serialValues: string[],
+): Promise<{ existingImeis: Set<string>; existingSerials: Set<string> }> {
+  const existingImeis = new Set<string>();
+  const existingSerials = new Set<string>();
+
+  if (imeiValues.length > 0) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase.from("inventory_identifiers") as any)
+      .select("imei")
+      .eq("company_id", companyId)
+      .in("imei", imeiValues);
+    if (error) throw error;
+    for (const row of (data ?? []) as Array<{ imei: string | null }>) {
+      if (row.imei) existingImeis.add(row.imei.toLowerCase());
+    }
+  }
+
+  if (serialValues.length > 0) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase.from("inventory_identifiers") as any)
+      .select("serial_number")
+      .eq("company_id", companyId)
+      .in("serial_number", serialValues);
+    if (error) throw error;
+    for (const row of (data ?? []) as Array<{ serial_number: string | null }>) {
+      if (row.serial_number) existingSerials.add(row.serial_number.toLowerCase());
+    }
+  }
+
+  return { existingImeis, existingSerials };
+}
+
+/**
+ * Check whether any of the supplied IMEI/serial values already exist in
+ * the inventory table for the company. Returns the set of values that
+ * are already registered, so callers can surface precise duplicates.
+ */
+export async function checkDuplicateInventoryQuery(
+  companyId: string,
+  imeiValues: string[],
+  serialValues: string[],
+): Promise<{ existingImeis: Set<string>; existingSerials: Set<string> }> {
+  const existingImeis = new Set<string>();
+  const existingSerials = new Set<string>();
+
+  if (imeiValues.length > 0) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase.from("inventory") as any)
+      .select("imei")
+      .eq("company_id", companyId)
+      .in("imei", imeiValues);
+    if (error) throw error;
+    for (const row of (data ?? []) as Array<{ imei: string | null }>) {
+      if (row.imei) existingImeis.add(row.imei.toLowerCase());
+    }
+  }
+
+  if (serialValues.length > 0) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase.from("inventory") as any)
+      .select("serial_number")
+      .eq("company_id", companyId)
+      .in("serial_number", serialValues);
+    if (error) throw error;
+    for (const row of (data ?? []) as Array<{ serial_number: string | null }>) {
+      if (row.serial_number) existingSerials.add(row.serial_number.toLowerCase());
+    }
+  }
+
+  return { existingImeis, existingSerials };
+}
+
+export interface IdentifierLabelRow {
+  id: string;
+  imei: string | null;
+  serial_number: string | null;
+  color: string | null;
+  damage_note?: string | null;
+}
+
+/**
+ * Fetch identifier details (imei, serial, color, damage_note) for a list of identifier IDs.
+ */
+export async function fetchIdentifierLabelsQuery(ids: string[]): Promise<IdentifierLabelRow[]> {
+  if (ids.length === 0) return [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase.from("inventory_identifiers") as any)
+    .select("id, imei, serial_number, color, damage_note")
+    .in("id", ids);
+  if (error) {
+    console.error("Failed to fetch identifier labels:", error);
+    throw error;
+  }
+  return data ?? [];
+}
+
+export interface AvailableIdentifierRow {
+  id: string;
+  inventory_id: string;
+  imei: string | null;
+  serial_number: string | null;
+  color: string | null;
+}
+
+/**
+ * Fetch available identifiers (in stock / reserved) for list of item inventory IDs.
+ */
+export async function fetchAvailableIdentifiersQuery(
+  itemIds: string[],
+): Promise<AvailableIdentifierRow[]> {
+  if (itemIds.length === 0) return [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase.from("inventory_identifiers") as any)
+    .select("id, inventory_id, imei, serial_number, color")
+    .in("inventory_id", itemIds)
+    .in("status", ["in_stock", "reserved"]);
+  if (error) {
+    console.error("Failed to fetch available identifiers:", error);
+    throw error;
+  }
+  return data ?? [];
+}
+
+/**
+ * Delete colors for multiple inventory IDs.
+ */
+export async function deleteInventoryColorsByInventoryIdsQuery(
+  inventoryIds: string[],
+): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase.from("inventory_colors") as any)
+    .delete()
+    .in("inventory_id", inventoryIds);
+  if (error) throw error;
+}
+
+/**
+ * Check how many orders reference this product ID in their JSONB items array.
+ */
+export async function checkOrderProductReferencesQuery(
+  companyId: string,
+  productId: string,
+): Promise<number> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { count, error } = await (supabase.from("orders") as any)
+    .select("id", { count: "exact", head: true })
+    .eq("company_id", companyId)
+    .filter("items", "cs", JSON.stringify([{ item: { id: productId } }]));
+  if (error) throw error;
+  return count ?? 0;
+}
+
+/**
+ * Delete inventory rows safely by their IDs and company ID.
+ */
+export async function deleteInventoryItemsQuery(ids: string[], companyId: string): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase.from("inventory") as any)
+    .delete()
+    .in("id", ids)
+    .eq("company_id", companyId);
+  if (error) throw error;
+}
+
+/**
+ * Loads all active (in-stock, reserved, damaged) identifiers for a company, including their joined inventory details.
+ */
+export async function fetchAllActiveIdentifiersQuery(
+  companyId: string,
+): Promise<IdentifierSaleLookup[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase.from("inventory_identifiers") as any)
+    .select(
+      `id, imei, serial_number, status, color, damage_note, purchase_price, inventory!inner(${INVENTORY_ADMIN_FIELDS})`,
+    )
+    .eq("company_id", companyId)
+    .in("status", ["in_stock", "reserved", "damaged"]);
+
+  if (error) throw error;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data ?? []).map((row: any) => ({
+    identifierId: row.id as string,
+    imei: (row.imei as string | null) ?? null,
+    serialNumber: (row.serial_number as string | null) ?? null,
+    status: String(row.status ?? "in_stock"),
+    color: (row.color as string | null) ?? null,
+    damageNote: (row.damage_note as string | null) ?? null,
+    purchasePrice: row.purchase_price != null ? Number(row.purchase_price) : null,
+    item: dbRowToInventoryItem(row.inventory),
+  }));
 }

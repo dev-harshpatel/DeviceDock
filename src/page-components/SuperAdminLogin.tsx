@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/context";
 import { supabase } from "@/lib/supabase/client/browser";
+import { verifyPlatformSuperAdminQuery } from "@/lib/supabase/queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,13 +29,9 @@ export default function SuperAdminLogin() {
 
       if (loggedInUser) {
         // Verify this user is a platform super admin
-        const { data: superAdmin } = await supabase
-          .from("platform_super_admins")
-          .select("user_id")
-          .eq("user_id", loggedInUser.id)
-          .single();
+        const isSuperAdmin = await verifyPlatformSuperAdminQuery(loggedInUser.id);
 
-        if (superAdmin) {
+        if (isSuperAdmin) {
           router.push("/superadmin/dashboard");
         } else {
           await signOut();

@@ -35,7 +35,10 @@
       "Bash(node -e \"console.log\\(require\\(''./node_modules/@supabase/ssr/package.json''\\).version\\)\")",
       "Bash(node -e \"console.log\\(require\\(''./node_modules/next/package.json''\\).version\\)\")",
       "Bash(git diff *)",
-      "Bash(git rm *)"
+      "Bash(git rm *)",
+      "Bash(git checkout *)",
+      "Bash(git add *)",
+      "Bash(Remove-Item -Recurse -Force .next -ErrorAction SilentlyContinue)"
     ]
   },
   "statusLine": {

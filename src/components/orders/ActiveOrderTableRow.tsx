@@ -2,6 +2,7 @@
 
 import { memo } from "react";
 import { Eye } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Order } from "@/types/order";
 import { cn, formatDateInOntario, formatPrice } from "@/lib/utils";
@@ -28,7 +29,17 @@ export const ActiveOrderTableRow = memo(function ActiveOrderTableRow({
       className={cn("transition-colors hover:bg-table-hover", index % 2 === 1 && "bg-table-zebra")}
     >
       <td className="px-6 py-4">
-        <span className="font-medium text-foreground">#{order.id.slice(-8).toUpperCase()}</span>
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-foreground">#{order.id.slice(-8).toUpperCase()}</span>
+          {order.isManualSale && (
+            <Badge
+              variant="outline"
+              className="border-orange-300 bg-orange-50 px-1.5 py-0 text-xs text-orange-600 dark:border-orange-800 dark:bg-orange-950 dark:text-orange-400"
+            >
+              Manual
+            </Badge>
+          )}
+        </div>
       </td>
       <td className="px-4 py-4 text-sm text-foreground">{customerLabel}</td>
       <td className="px-4 py-4 text-sm text-foreground">{brands}</td>

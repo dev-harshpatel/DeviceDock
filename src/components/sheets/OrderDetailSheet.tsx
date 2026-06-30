@@ -3,7 +3,6 @@
 import { Order } from "@/types/order";
 import { formatPrice } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { GradeBadge } from "@/components/common/GradeBadge";
 import { cn } from "@/lib/utils";
@@ -54,16 +53,6 @@ export function OrderDetailSheet({
         <div className="space-y-4 pt-4">
           {/* Total */}
           <div className="flex items-center justify-between">
-            {order.isManualSale ? (
-              <Badge
-                variant="outline"
-                className="border-orange-300 bg-orange-50 px-1.5 py-0 text-xs text-orange-600 dark:border-orange-800 dark:bg-orange-950 dark:text-orange-400"
-              >
-                Manual
-              </Badge>
-            ) : (
-              <span />
-            )}
             <div className="text-right">
               {hasDiscount && (
                 <p className="text-xs text-success">

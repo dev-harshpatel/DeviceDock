@@ -56,3 +56,22 @@ export async function fetchNotificationEvents(companyId: string): Promise<InAppN
     type: mapEventTypeToViewType(row.event_type),
   }));
 }
+
+export async function createNotificationEventQuery(payload: {
+  actor_user_id: string | null;
+  company_id: string;
+  entity_id: string | null;
+  entity_type: string | null;
+  event_type: string;
+  message: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  metadata: any;
+  title: string;
+}): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase.from("notification_events") as any).insert(payload);
+  if (error) {
+    console.error("[createNotificationEventQuery] failed:", error);
+    throw error;
+  }
+}

@@ -9,7 +9,7 @@ import { useAuth } from "@/lib/auth/context";
 import { queryKeys } from "@/lib/query-keys";
 import { percentToRate } from "@/lib/tax";
 import { toastError } from "@/lib/utils/toast-helpers";
-import { supabase } from "@/lib/supabase/client";
+import { fetchIdentifierLabelsQuery, fetchAvailableIdentifiersQuery } from "@/lib/supabase/queries";
 import { InventoryItem } from "@/data/inventory";
 import { Order, OrderItem } from "@/types/order";
 import type {
@@ -54,22 +54,7 @@ type InventoryIdentifierRow = {
 };
 
 async function fetchInventoryIdentifierLabels(ids: string[]): Promise<InventoryIdentifierRow[]> {
-  if (ids.length === 0) return [];
-  const client = supabase as unknown as {
-    from: (table: string) => {
-      select: (columns: string) => {
-        in: (
-          column: string,
-          values: string[],
-        ) => PromiseLike<{ data: InventoryIdentifierRow[] | null }>;
-      };
-    };
-  };
-  const { data } = await client
-    .from("inventory_identifiers")
-    .select("id, imei, serial_number, color")
-    .in("id", ids);
-  return data ?? [];
+  return fetchIdentifierLabelsQuery(ids);
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
@@ -492,23 +477,19 @@ export function useManualSaleWizard({
       try {
         const existingScannedIds = new Set(identifierUnitsFlat.map((u) => u.inventoryIdentifierId));
         const itemIds = selectedItemsList.map(({ item }) => item.id);
-        const { data: rows } = await supabase
-          .from("inventory_identifiers")
-          .select("id, inventory_id, imei, serial_number, color")
-          .in("inventory_id", itemIds)
-          .in("status", ["in_stock", "reserved"]);
+        const rows = await fetchAvailableIdentifiersQuery(itemIds);
 
         const result: Record<string, AvailableIdentifierUnit[]> = {};
         for (const { item } of selectedItemsList) result[item.id] = [];
-        for (const row of (rows ?? []) as Record<string, unknown>[]) {
-          const invId = String(row.inventory_id);
-          if (!result[invId] || existingScannedIds.has(String(row.id))) continue;
+        for (const row of rows) {
+          const invId = row.inventory_id;
+          if (!result[invId] || existingScannedIds.has(row.id)) continue;
           result[invId].push({
-            id: String(row.id),
-            imei: (row.imei as string | null) ?? null,
-            serialNumber: (row.serial_number as string | null) ?? null,
-            color: (row.color as string | null) ?? null,
-            displayLabel: String(row.imei ?? row.serial_number ?? row.id),
+            id: row.id,
+            imei: row.imei,
+            serialNumber: row.serial_number,
+            color: row.color,
+            displayLabel: row.imei ?? row.serial_number ?? row.id,
           });
         }
         setAvailableIdentifiers(result);
